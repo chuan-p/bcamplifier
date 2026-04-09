@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Amplifier
 // @namespace    https://github.com/local/bcamplifier
-// @version      0.1.85
+// @version      0.1.86
 // @description  Enrich Bandcamp feed cards with release metadata, tags, descriptions, and track previews.
 // @author       chuanpeng
 // @match        https://bandcamp.com/feed*
@@ -1808,14 +1808,7 @@
     const subhead = compactJoin([formatReleaseDate(data.releaseDate), data.location], " · ");
     const panel = document.createElement("section");
     panel.className = "bcampx__slot-panel";
-    const autoExpandState = {
-      tracksDone: false,
-      descriptionDone: false,
-      expandTracks: null,
-      collapseTracks: null,
-      expandDescription: null,
-      collapseDescription: null,
-    };
+    const autoExpandState = { steps: [] };
     const header = document.createElement("div");
     header.className = "bcampx__slot-header";
     header.textContent = "Tracklist";
@@ -1857,27 +1850,18 @@
 
       if (data.tracks.length > initiallyVisible) {
         tracks.classList.add("bcampx__tracks--collapsed");
-        const expandButton = document.createElement("button");
-        expandButton.type = "button";
-        expandButton.className = "bcampx__slot-expand";
-        const setTracksExpanded = (expanded) => {
-          tracks.classList.toggle("bcampx__tracks--collapsed", !expanded);
-          expandButton.setAttribute("aria-expanded", expanded ? "true" : "false");
-          expandButton.textContent = expanded ? "Show less" : `Show all ${data.tracks.length} tracks`;
-        };
-        setTracksExpanded(false);
-        expandButton.addEventListener("click", () => {
-          const expanded = expandButton.getAttribute("aria-expanded") === "true";
-          setTracksExpanded(!expanded);
+        const tracksController = createExpandController({
+          className: "bcampx__slot-expand",
+          collapsedLabel: `Show all ${data.tracks.length} tracks`,
+          expandedLabel: "Show less",
+          onToggle: (expanded) => {
+            tracks.classList.toggle("bcampx__tracks--collapsed", !expanded);
+          },
         });
-        autoExpandState.expandTracks = () => setTracksExpanded(true);
-        autoExpandState.collapseTracks = () => setTracksExpanded(false);
+        const expandButton = tracksController.button;
         panel.append(expandButton);
-      } else {
-        autoExpandState.tracksDone = true;
+        autoExpandState.steps.push(tracksController);
       }
-    } else {
-      autoExpandState.tracksDone = true;
     }
 
     if (data.descriptionHtml || data.description) {
@@ -1897,32 +1881,23 @@
         normalizeDescriptionContent(description);
         description.classList.add("bcampx__description--collapsed");
         if (description.scrollHeight > description.clientHeight + 6) {
-          const descriptionToggle = document.createElement("button");
-          descriptionToggle.type = "button";
-          descriptionToggle.className = "bcampx__slot-expand bcampx__slot-expand--description";
-          const setDescriptionExpanded = (expanded) => {
-            description.classList.toggle("bcampx__description--collapsed", !expanded);
-            descriptionToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-            descriptionToggle.textContent = expanded ? "Show less" : "Show more";
-          };
-          setDescriptionExpanded(false);
-          descriptionToggle.addEventListener("click", () => {
-            const expanded = descriptionToggle.getAttribute("aria-expanded") === "true";
-            setDescriptionExpanded(!expanded);
+          const descriptionController = createExpandController({
+            className: "bcampx__slot-expand bcampx__slot-expand--description",
+            collapsedLabel: "Show more",
+            expandedLabel: "Show less",
+            onToggle: (expanded) => {
+              description.classList.toggle("bcampx__description--collapsed", !expanded);
+            },
           });
-          autoExpandState.expandDescription = () => setDescriptionExpanded(true);
-          autoExpandState.collapseDescription = () => setDescriptionExpanded(false);
-          descriptionBlock.append(descriptionToggle);
-          window.requestAnimationFrame(() => maybeAutoExpandSupportedSlot(panel, autoExpandState));
+          descriptionBlock.append(descriptionController.button);
+          autoExpandState.steps.push(descriptionController);
+          scheduleSupportedSlotAutoExpand(panel, autoExpandState);
           return;
         }
 
         description.classList.remove("bcampx__description--collapsed");
-        autoExpandState.descriptionDone = true;
-        window.requestAnimationFrame(() => maybeAutoExpandSupportedSlot(panel, autoExpandState));
+        scheduleSupportedSlotAutoExpand(panel, autoExpandState);
       });
-    } else {
-      autoExpandState.descriptionDone = true;
     }
 
     if (subhead) {
@@ -1933,31 +1908,53 @@
     }
 
     meta.append(panel);
-    window.requestAnimationFrame(() => maybeAutoExpandSupportedSlot(panel, autoExpandState));
+    scheduleSupportedSlotAutoExpand(panel, autoExpandState);
 
     toggle.hidden = true;
     text.hidden = true;
   }
 
+  function createExpandController({ className, collapsedLabel, expandedLabel, onToggle }) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = className;
+
+    const setExpanded = (expanded) => {
+      if (typeof onToggle === "function") {
+        onToggle(expanded);
+      }
+      button.setAttribute("aria-expanded", expanded ? "true" : "false");
+      button.textContent = expanded ? expandedLabel : collapsedLabel;
+    };
+
+    setExpanded(false);
+    button.addEventListener("click", () => {
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      setExpanded(!expanded);
+    });
+
+    return {
+      button,
+      expand: () => setExpanded(true),
+      collapse: () => setExpanded(false),
+    };
+  }
+
+  function scheduleSupportedSlotAutoExpand(panel, state) {
+    window.requestAnimationFrame(() => maybeAutoExpandSupportedSlot(panel, state));
+  }
+
   function maybeAutoExpandSupportedSlot(panel, state) {
-    if (!panel || !panel.isConnected || !state) {
+    if (!panel || !panel.isConnected || !state || !Array.isArray(state.steps)) {
       return;
     }
 
-    if (!state.tracksDone) {
-      if (state.expandTracks && state.collapseTracks) {
-        state.tracksDone = true;
-        tryExpandWithoutGrowingPage(state.expandTracks, state.collapseTracks);
-      } else {
-        return;
+    while (state.steps.length) {
+      const step = state.steps.shift();
+      if (!step || typeof step.expand !== "function" || typeof step.collapse !== "function") {
+        continue;
       }
-    }
-
-    if (!state.descriptionDone) {
-      if (state.expandDescription && state.collapseDescription) {
-        state.descriptionDone = true;
-        tryExpandWithoutGrowingPage(state.expandDescription, state.collapseDescription);
-      }
+      tryExpandWithoutGrowingPage(step.expand, step.collapse);
     }
   }
 

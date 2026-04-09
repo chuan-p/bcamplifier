@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Amplifier
 // @namespace    https://github.com/local/bcamplifier
-// @version      0.1.88
+// @version      0.1.90
 // @description  Enrich Bandcamp feed cards with release metadata, tags, descriptions, and track previews.
 // @author       chuanpeng
 // @match        https://bandcamp.com/feed*
@@ -60,6 +60,7 @@
     coverPlaybackStateNode: null,
     playerUi: null,
     playerHost: null,
+    pendingReleaseRequests: new Map(),
     tabId: `bcampx-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     playbackHeartbeatTimer: 0,
     playbackMonitorTimer: 0,
@@ -1348,12 +1349,28 @@
       }
     }
 
-    const html = await requestHtml(releaseUrl);
-    const data = normalizeReleaseData(parseReleasePage(html, releaseUrl));
-    const cacheValue = buildReleaseCacheValue(data);
+    const pending = STATE.pendingReleaseRequests.get(cacheKey);
+    if (pending) {
+      return pending;
+    }
 
-    await storageSet(cacheKey, cacheValue);
-    return { data: cacheValue, fromCache: false };
+    const request = (async () => {
+      const html = await requestHtml(releaseUrl);
+      const data = normalizeReleaseData(parseReleasePage(html, releaseUrl));
+      const cacheValue = buildReleaseCacheValue(data);
+
+      await storageSet(cacheKey, cacheValue);
+      return { data: cacheValue, fromCache: false };
+    })();
+
+    STATE.pendingReleaseRequests.set(cacheKey, request);
+    try {
+      return await request;
+    } finally {
+      if (STATE.pendingReleaseRequests.get(cacheKey) === request) {
+        STATE.pendingReleaseRequests.delete(cacheKey);
+      }
+    }
   }
 
   function getReleaseCacheKey(releaseUrl) {
@@ -1967,25 +1984,39 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = className;
+    let autoExpanded = false;
 
-    const setExpanded = (expanded) => {
+    const syncButton = (expanded) => {
+      button.hidden = expanded && autoExpanded;
+      button.textContent = expanded ? expandedLabel : collapsedLabel;
+    };
+
+    const setExpanded = (expanded, options = {}) => {
+      const auto = Boolean(options.auto);
+      if (!expanded) {
+        autoExpanded = false;
+      } else if (auto) {
+        autoExpanded = true;
+      } else {
+        autoExpanded = false;
+      }
       if (typeof onToggle === "function") {
         onToggle(expanded);
       }
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
-      button.textContent = expanded ? expandedLabel : collapsedLabel;
+      syncButton(expanded);
     };
 
     setExpanded(false);
     button.addEventListener("click", () => {
       const expanded = button.getAttribute("aria-expanded") === "true";
-      setExpanded(!expanded);
+      setExpanded(!expanded, { auto: false });
     });
 
     return {
       button,
-      expand: () => setExpanded(true),
-      collapse: () => setExpanded(false),
+      expand: (options) => setExpanded(true, options),
+      collapse: () => setExpanded(false, { auto: false }),
     };
   }
 
@@ -2003,7 +2034,10 @@
       if (!step || typeof step.expand !== "function" || typeof step.collapse !== "function") {
         continue;
       }
-      tryExpandWithoutGrowingPage(step.expand, step.collapse);
+      tryExpandWithoutGrowingPage(
+        () => step.expand({ auto: true }),
+        step.collapse
+      );
     }
   }
 

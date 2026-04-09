@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Amplifier
 // @namespace    https://github.com/local/bcamplifier
-// @version      0.1.75
+// @version      0.1.83
 // @description  Enrich Bandcamp feed cards with release metadata, tags, descriptions, and track previews.
 // @author       chuanpeng
 // @match        https://bandcamp.com/feed*
@@ -35,7 +35,8 @@
     autoExpandTracks: false,
   };
 
-  const CACHE_SCHEMA_VERSION = 6;
+  const CACHE_SCHEMA_VERSION = 7;
+  const RELEASE_CACHE_PREFIX = "bcampx:release:";
   const GLOBAL_PLAYBACK_KEY = "bcampx:globalPlaybackOwner";
   const GLOBAL_PLAYBACK_HEARTBEAT_MS = 1500;
   const GLOBAL_PLAYBACK_STALE_MS = 4500;
@@ -353,6 +354,11 @@
       return;
     }
 
+    if (isActiveReleaseForCard(releaseUrl) && STATE.activeTrack && STATE.activeTrack.streamUrl) {
+      toggleActiveReleasePlayback(card);
+      return;
+    }
+
     try {
       if ((!controller.data || !Array.isArray(controller.data.tracks) || !controller.data.tracks.length) && !controller.loading) {
         await controller.fetchAndRender({ auto: false });
@@ -368,6 +374,40 @@
     }
 
     playTrackForCard(card, null, track, data, releaseUrl);
+  }
+
+  function isActiveReleaseForCard(releaseUrl) {
+    const normalizedTarget = normalizeReleaseUrl(releaseUrl);
+    const normalizedActive = normalizeReleaseUrl(STATE.activeReleaseUrl || "");
+    return Boolean(normalizedTarget && normalizedActive && normalizedTarget === normalizedActive);
+  }
+
+  function toggleActiveReleasePlayback(card) {
+    const audio = ensureSharedAudio();
+    if (!audio || !STATE.activeTrack || !STATE.activeTrack.streamUrl) {
+      return;
+    }
+
+    const cardArtUrl = getCardArtUrl(card) || (STATE.activeReleaseData && STATE.activeReleaseData.__bcampxCardArtUrl) || "";
+    setActiveTrackCard(card);
+
+    if (STATE.activeReleaseData && cardArtUrl) {
+      STATE.activeReleaseData.__bcampxCardArtUrl = cardArtUrl;
+    }
+
+    if (!audio.paused) {
+      audio.pause();
+      syncCoverPlaybackState();
+      syncPlayerShell();
+      return;
+    }
+
+    pauseBandcampPageAudio();
+    syncWaypointNowPlaying(STATE.activeTrack, STATE.activeReleaseData, cardArtUrl);
+    syncTrackButtonsForActiveTrack();
+    syncCoverPlaybackState();
+    syncPlayerShell();
+    audio.play().catch(() => {});
   }
 
   function ensureCardController(card, releaseUrl) {
@@ -1252,26 +1292,46 @@
   }
 
   async function getReleaseData(releaseUrl) {
-    const cacheKey = `bcampx:release:${releaseUrl}`;
+    const cacheKey = getReleaseCacheKey(releaseUrl);
     const cached = await storageGet(cacheKey, null);
 
-    if (cached && cached.fetchedAt && Date.now() - cached.fetchedAt < CONFIG.cacheTtlMs) {
+    if (isFreshReleaseCache(cached)) {
       const normalizedCached = normalizeReleaseData(cached);
-      if (!needsTrackRefresh(normalizedCached) && !needsSchemaRefresh(cached, normalizedCached)) {
+      if (!shouldRefreshCachedRelease(cached, normalizedCached)) {
         return { data: normalizedCached, fromCache: true };
       }
     }
 
     const html = await requestHtml(releaseUrl);
     const data = normalizeReleaseData(parseReleasePage(html, releaseUrl));
-    const cacheValue = {
+    const cacheValue = buildReleaseCacheValue(data);
+
+    await storageSet(cacheKey, cacheValue);
+    return { data: cacheValue, fromCache: false };
+  }
+
+  function getReleaseCacheKey(releaseUrl) {
+    return `${RELEASE_CACHE_PREFIX}${releaseUrl}`;
+  }
+
+  function buildReleaseCacheValue(data) {
+    return {
       ...data,
       schemaVersion: CACHE_SCHEMA_VERSION,
       fetchedAt: Date.now(),
     };
+  }
 
-    await storageSet(cacheKey, cacheValue);
-    return { data: cacheValue, fromCache: false };
+  function isFreshReleaseCache(value) {
+    return Boolean(
+      value &&
+      value.fetchedAt &&
+      Date.now() - value.fetchedAt < CONFIG.cacheTtlMs
+    );
+  }
+
+  function shouldRefreshCachedRelease(rawData, normalizedData) {
+    return needsTrackRefresh(normalizedData) || needsSchemaRefresh(rawData, normalizedData);
   }
 
   function requestHtml(url) {
@@ -2549,23 +2609,25 @@
         width: min(920px, calc(100vw - 36px));
         transform: translateX(-50%);
         pointer-events: auto;
-        padding: 8px 9px 9px;
-        border: 0;
-        border-radius: 3px;
-        background: rgba(0, 0, 0, 0.58);
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
-        color: #fff;
+        padding: 14px;
+        border: 1px solid rgba(190, 198, 204, 0.68);
+        border-radius: 18px;
+        background: rgba(247, 247, 247, 0.98);
+        box-shadow: 0 18px 40px rgba(36, 28, 20, 0.12);
+        color: #2f2f2f;
         overflow: hidden;
         isolation: isolate;
         contain: paint;
         font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
       }
 
       .bcampx-player-controls {
         display: flex;
-        gap: 6px;
+        gap: 8px;
         align-items: center;
-        margin-bottom: 7px;
+        margin-bottom: 10px;
       }
 
       .bcampx-player-button {
@@ -2573,12 +2635,12 @@
         align-items: center;
         justify-content: center;
         min-width: 80px;
-        min-height: 31px;
-        padding: 6px 8px 5px;
+        min-height: 38px;
+        padding: 8px 12px;
         border: solid 1px #dedede;
-        border-radius: 4px;
-        background-color: #fafafa;
-        background-image: linear-gradient(to top, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0));
+        border-radius: 999px;
+        background-color: #fbfcfd;
+        background-image: none;
         color: #408294;
         font: 700 13px/1 "Helvetica Neue", Helvetica, Arial, sans-serif;
         cursor: pointer;
@@ -2594,22 +2656,22 @@
       }
 
       .bcampx-player-button--circle {
-        width: 31px;
-        min-width: 31px;
-        min-height: 31px;
+        width: 38px;
+        min-width: 38px;
+        min-height: 38px;
         padding: 0;
       }
 
       .bcampx-player-button--circle svg {
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
         display: block;
         flex: 0 0 auto;
       }
 
       .bcampx-player-button:hover {
         text-decoration: none;
-        background-image: linear-gradient(to top, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0));
+        background-color: #f3f7f9;
       }
 
       .bcampx-player-favorite {
@@ -2628,17 +2690,22 @@
       }
 
       .bcampx-player-favorite.active {
-        border: solid 1px #3d7c8f;
-        background-color: #408294;
-        background-image: linear-gradient(to top, rgba(51, 104, 126, 0.8), rgba(0, 0, 0, 0));
+        border: solid 1px #e06d2f;
+        background-color: #e06d2f;
+        background-image: none;
         color: #fff;
       }
 
       .bcampx-player-favorite.active:hover,
       .bcampx-player-button--circle:hover {
-        border-color: #7f7f7f;
-        background-color: #777;
-        background-image: linear-gradient(to top, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0));
+        border-color: #b8c6cf;
+        background-color: #f3f7f9;
+        color: #408294;
+      }
+
+      .bcampx-player-favorite.active:hover {
+        border-color: #d66428;
+        background-color: #d66428;
         color: #fff;
       }
 
@@ -2653,24 +2720,28 @@
       .bcampx-player-meta {
         display: flex;
         justify-content: space-between;
-        align-items: flex-end;
+        align-items: baseline;
         gap: 12px;
-        margin-bottom: 6px;
+        margin-bottom: 8px;
       }
 
       .bcampx-player-now {
         display: inline-block;
-        margin-bottom: 2px;
+        margin-bottom: 5px;
         font-size: 12px;
-        color: #fff;
+        line-height: 1;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #777;
       }
 
       .bcampx-player-track {
+        display: block;
         padding: 0;
         border: 0;
         background: transparent;
-        color: #fff;
-        font: 700 13px/1.15 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        color: #2f2f2f;
+        font: 700 16px/1.04 "Helvetica Neue", Helvetica, Arial, sans-serif;
         text-align: left;
         cursor: pointer;
       }
@@ -2681,12 +2752,11 @@
       }
 
       .bcampx-player-store {
-        color: #fff;
+        color: #6b6b6b;
         text-decoration: none;
-        font: 400 12px/1.15 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font: 500 13px/1.05 "Helvetica Neue", Helvetica, Arial, sans-serif;
         text-align: right;
         white-space: nowrap;
-        opacity: 0.92;
       }
 
       .bcampx-player-native {
@@ -2696,8 +2766,8 @@
 
       .bcampx-player-audio {
         width: 100%;
-        height: 38px;
-        border-radius: 0;
+        height: 40px;
+        border-radius: 10px;
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
@@ -2711,45 +2781,54 @@
           bottom: 10px;
           width: min(920px, calc(100vw - 20px));
           transform: translateX(-50%);
-          padding: 8px 8px 9px;
-          border-radius: 3px;
+          padding: 10px 12px;
+          border-radius: 16px;
         }
 
         .bcampx-player-controls {
-          gap: 5px;
-          margin-bottom: 6px;
+          gap: 6px;
+          margin-bottom: 8px;
         }
 
         .bcampx-player-button {
-          min-height: 29px;
+          min-height: 34px;
           min-width: 74px;
-          padding: 5px 7px 4px;
+          padding: 7px 10px;
           font-size: 12px;
         }
 
         .bcampx-player-button--circle {
-          width: 29px;
-          min-width: 29px;
-          min-height: 29px;
+          width: 34px;
+          min-width: 34px;
+          min-height: 34px;
         }
 
         .bcampx-player-button--circle svg {
-          width: 15px;
-          height: 15px;
+          width: 17px;
+          height: 17px;
         }
 
         .bcampx-player-meta {
           gap: 8px;
-          margin-bottom: 6px;
+          margin-bottom: 7px;
         }
 
         .bcampx-player-track {
-          font-size: 12px;
+          font-size: 15px;
+          line-height: 1.03;
         }
 
         .bcampx-player-store,
         .bcampx-player-now {
           font-size: 11px;
+        }
+
+        .bcampx-player-now {
+          margin-bottom: 4px;
+        }
+
+        .bcampx-player-audio {
+          height: 36px;
         }
       }
     `;
@@ -3184,168 +3263,6 @@
         display: none !important;
       }
 
-      .bcampx-player-shell {
-        position: fixed;
-        left: 50%;
-        bottom: 18px;
-        width: min(920px, calc(100vw - 36px));
-        transform: translateX(-50%);
-        z-index: 1000;
-        padding: 10px 12px;
-        border: 1px solid #cbd4db;
-        border-radius: 12px;
-        background: #f7f7f7;
-        box-shadow: 0 12px 22px rgba(0, 0, 0, 0.1);
-        color: #363636;
-        overflow: hidden;
-        isolation: isolate;
-        contain: paint;
-      }
-
-      .bcampx-player-controls {
-        display: flex;
-        gap: 3px;
-        align-items: center;
-        margin-bottom: 8px;
-      }
-
-      .bcampx-player-button {
-        border: 1px solid #c9d4dc;
-        background: #fbfcfd;
-        color: #3f4548;
-        border-radius: 999px;
-        padding: 8px 12px;
-        font: 500 14px/1 "Helvetica Neue", Helvetica, Arial, sans-serif;
-        cursor: pointer;
-        min-height: 38px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        line-height: 1;
-        white-space: nowrap;
-      }
-
-      .bcampx-player-button:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-
-      .bcampx-player-button--circle {
-        width: 38px;
-        min-width: 38px;
-        min-height: 38px;
-        padding: 0;
-        font-size: 18px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .bcampx-player-button--circle svg {
-        width: 18px;
-        height: 18px;
-        display: block;
-        flex: 0 0 auto;
-      }
-
-      .bcampx-player-meta {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        gap: 12px;
-        margin-bottom: 8px;
-      }
-
-      .bcampx-player-now {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        color: #7d7d7d;
-        margin-bottom: 2px;
-      }
-
-      .bcampx-player-track {
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: #2f2f2f;
-        font: 700 16px/1.12 "Helvetica Neue", Helvetica, Arial, sans-serif;
-        text-align: left;
-        cursor: pointer;
-      }
-
-      .bcampx-player-track:hover,
-      .bcampx-player-store:hover {
-        text-decoration: underline;
-      }
-
-      .bcampx-player-store {
-        color: #6b6b6b;
-        text-decoration: none;
-        font: 500 13px/1.2 "Helvetica Neue", Helvetica, Arial, sans-serif;
-        text-align: right;
-        white-space: nowrap;
-      }
-
-      .bcampx-player-native {
-        margin-top: 2px;
-        background: #f7f7f7;
-      }
-
-      .bcampx-player-audio {
-        width: 100%;
-        height: 38px;
-        border-radius: 10px;
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        position: static !important;
-        pointer-events: auto !important;
-      }
-
-      .bcampx-player-favorite {
-        border: 1px solid #e5c3b0;
-        background: #fff9f5;
-        color: #e06d2f;
-        box-shadow: none;
-        position: relative;
-        transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
-      }
-
-      .bcampx-player-favorite-outline,
-      .bcampx-player-favorite-fill {
-        transition: opacity 120ms ease;
-      }
-
-      .bcampx-player-favorite-fill {
-        opacity: 0;
-      }
-
-      .bcampx-player-button:hover {
-        border-color: #b8c6cf;
-        background: #f3f7f9;
-      }
-
-      .bcampx-player-favorite:hover {
-        border-color: #dfb091;
-        background: #fdf0e6;
-        transform: none;
-      }
-
-      .bcampx-player-favorite.active {
-        background: #e06d2f;
-        border-color: #e06d2f;
-        color: #fff;
-      }
-
-      .bcampx-player-favorite.active .bcampx-player-favorite-outline {
-        opacity: 0;
-      }
-
-      .bcampx-player-favorite.active .bcampx-player-favorite-fill {
-        opacity: 1;
-      }
-
       .bcampx__waypoint-toggle {
         position: absolute;
         right: -18px;
@@ -3371,47 +3288,6 @@
         background: rgba(132, 132, 132, 0.9);
       }
 
-
-      @media (max-width: 820px) {
-        .bcampx-player-shell {
-          left: 50%;
-          bottom: 10px;
-          width: min(920px, calc(100vw - 20px));
-          transform: translateX(-50%);
-          padding: 9px 10px;
-          border-radius: 12px;
-        }
-
-        .bcampx-player-controls {
-          gap: 3px;
-          margin-bottom: 6px;
-        }
-
-        .bcampx-player-button {
-          min-height: 34px;
-          padding: 7px 10px;
-          font-size: 13px;
-        }
-
-        .bcampx-player-meta {
-          gap: 8px;
-          margin-bottom: 6px;
-        }
-
-        .bcampx-player-track {
-          font-size: 15px;
-        }
-
-        .bcampx-player-store,
-        .bcampx-player-now {
-          font-size: 11px;
-        }
-
-        .bcampx-player-audio {
-          height: 34px;
-        }
-
-      }
 
       .bcampx__link {
         display: inline-block;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Amplifier
 // @namespace    https://github.com/local/bcamplifier
-// @version      0.1.87
+// @version      0.1.88
 // @description  Enrich Bandcamp feed cards with release metadata, tags, descriptions, and track previews.
 // @author       chuanpeng
 // @match        https://bandcamp.com/feed*
@@ -1191,11 +1191,11 @@
   }
 
   function findSupportedBySlot(card) {
-    const exactColumn = card.querySelector(SUPPORTED_SLOT_SELECTOR);
-    if (exactColumn) {
+    const explicitSlot = findExplicitSupportedSlot(card);
+    if (explicitSlot) {
       return {
-        container: exactColumn,
-        hiddenNodes: Array.from(exactColumn.children),
+        container: explicitSlot,
+        hiddenNodes: Array.from(explicitSlot.children),
       };
     }
 
@@ -1205,53 +1205,23 @@
     }
 
     const cardRect = card.getBoundingClientRect();
-    let container = nearestAncestorWithin(label, card, (node) => {
-      const rect = node.getBoundingClientRect();
-      const widthRatio = cardRect.width > 0 ? rect.width / cardRect.width : 1;
-      const leftRatio = cardRect.width > 0 ? (rect.left - cardRect.left) / cardRect.width : 0;
-      const avatarCount = node.querySelectorAll("img").length;
-      return widthRatio < 0.48 && leftRatio > 0.42 && avatarCount >= 2;
-    });
-
-    if (!container) {
-      container = label.parentElement;
-    }
-
-    if (!container || container === card) {
+    const container =
+      nearestAncestorWithin(label, card, (node) => isSupportedSlotCandidate(node, cardRect)) ||
+      label.parentElement;
+    if (!container || container === card || !isSupportedSlotCandidate(container, cardRect)) {
       return null;
     }
-
-    const containerRect = container.getBoundingClientRect();
-    const widthRatio = cardRect.width > 0 ? containerRect.width / cardRect.width : 1;
-    const leftRatio = cardRect.width > 0 ? (containerRect.left - cardRect.left) / cardRect.width : 0;
-    const avatarCount = container.querySelectorAll("img").length;
-    if (!(widthRatio < 0.48 && leftRatio > 0.42 && avatarCount >= 2)) {
-      return null;
-    }
-
-    const hiddenNodes = [label];
-    Array.from(container.children).forEach((child) => {
-      if (child === label) {
-        return;
-      }
-
-      const childText = normalizedText(child);
-      const childAvatars = child.querySelectorAll("img").length;
-      if (childAvatars >= 1 || /^more\.\.\.$/i.test(childText) || /supported by/i.test(childText)) {
-        hiddenNodes.push(child);
-      }
-    });
 
     return {
       container,
-      hiddenNodes: Array.from(new Set(hiddenNodes)),
+      hiddenNodes: collectSupportedSlotHiddenNodes(container, label),
     };
   }
 
   function findContentColumn(card) {
-    const exactColumn = card.querySelector(CONTENT_COLUMN_SELECTOR);
-    if (exactColumn) {
-      return exactColumn;
+    const explicitColumn = card.querySelector(CONTENT_COLUMN_SELECTOR);
+    if (explicitColumn) {
+      return explicitColumn;
     }
 
     const releaseLink = card.querySelector(RELEASE_LINK_SELECTOR);
@@ -1267,6 +1237,40 @@
     }
 
     return card;
+  }
+
+  function findExplicitSupportedSlot(card) {
+    return card.querySelector(SUPPORTED_SLOT_SELECTOR);
+  }
+
+  function isSupportedSlotCandidate(node, cardRect) {
+    if (!(node instanceof Element)) {
+      return false;
+    }
+
+    const rect = node.getBoundingClientRect();
+    const widthRatio = cardRect.width > 0 ? rect.width / cardRect.width : 1;
+    const leftRatio = cardRect.width > 0 ? (rect.left - cardRect.left) / cardRect.width : 0;
+    const avatarCount = node.querySelectorAll("img").length;
+    return widthRatio < 0.48 && leftRatio > 0.42 && avatarCount >= 2;
+  }
+
+  function collectSupportedSlotHiddenNodes(container, label) {
+    const hiddenNodes = [label];
+
+    Array.from(container.children).forEach((child) => {
+      if (child === label) {
+        return;
+      }
+
+      const childText = normalizedText(child);
+      const childAvatars = child.querySelectorAll("img").length;
+      if (childAvatars >= 1 || /^more\.\.\.$/i.test(childText) || /supported by/i.test(childText)) {
+        hiddenNodes.push(child);
+      }
+    });
+
+    return Array.from(new Set(hiddenNodes));
   }
 
   function findUsefulActionRow(node, stopAt) {

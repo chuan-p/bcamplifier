@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Amplifier
 // @namespace    https://github.com/local/bcamplifier
-// @version      0.1.86
+// @version      0.1.87
 // @description  Enrich Bandcamp feed cards with release metadata, tags, descriptions, and track previews.
 // @author       chuanpeng
 // @match        https://bandcamp.com/feed*
@@ -916,6 +916,11 @@
   }
 
   function findCardRoot(link) {
+    const explicitStory = link.closest("li.story, .story");
+    if (explicitStory) {
+      return explicitStory;
+    }
+
     let node = link;
     let fallback = null;
 
@@ -969,6 +974,11 @@
       return false;
     }
 
+    const story = link.closest("li.story, .story");
+    if (story) {
+      return isLikelyFanActivityCard(story);
+    }
+
     const card = link.closest(CARD_SELECTOR) || link.closest("article, li, div");
     if (card && !isLikelyFanActivityCard(card)) {
       return false;
@@ -978,6 +988,14 @@
   }
 
   function hasFanActivitySignals(node) {
+    if (node.querySelector(".story-title .fan-name, .story-title .artist-name")) {
+      return true;
+    }
+
+    if (node.querySelector(".story-title") && FAN_ACTIVITY_TEXT_PATTERN.test(normalizedText(node.querySelector(".story-title")))) {
+      return true;
+    }
+
     const text = normalizedText(node);
     if (FAN_ACTIVITY_TEXT_PATTERN.test(text)) {
       return true;
@@ -1019,12 +1037,39 @@
       return false;
     }
 
+    if (hasExplicitFeedStoryStructure(node)) {
+      return true;
+    }
+
     const rect = node.getBoundingClientRect();
     if (rect.width > 0 && rect.width < CONFIG.minFanActivityCardWidth) {
       return false;
     }
 
     return true;
+  }
+
+  function hasExplicitFeedStoryStructure(node) {
+    const story =
+      node.matches("li.story, .story") ? node : node.closest("li.story, .story");
+
+    if (!(story instanceof Element)) {
+      return false;
+    }
+
+    if (story.matches("li.story") && story.hasAttribute("data-story-fan-id")) {
+      return true;
+    }
+
+    if (story.querySelector(".story-title") && story.querySelector(".story-innards")) {
+      return true;
+    }
+
+    if (story.querySelector(".story-title") && story.querySelector(".tralbum-wrapper")) {
+      return true;
+    }
+
+    return false;
   }
 
   function hasSidebarLikeAncestor(node) {

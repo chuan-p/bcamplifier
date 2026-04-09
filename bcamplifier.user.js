@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Amplifier
 // @namespace    https://github.com/local/bcamplifier
-// @version      0.1.83
+// @version      0.1.84
 // @description  Enrich Bandcamp feed cards with release metadata, tags, descriptions, and track previews.
 // @author       chuanpeng
 // @match        https://bandcamp.com/feed*
@@ -388,7 +388,7 @@
       return;
     }
 
-    const cardArtUrl = getCardArtUrl(card) || (STATE.activeReleaseData && STATE.activeReleaseData.__bcampxCardArtUrl) || "";
+    const cardArtUrl = getActiveCardArtUrl(card);
     setActiveTrackCard(card);
 
     if (STATE.activeReleaseData && cardArtUrl) {
@@ -403,10 +403,7 @@
     }
 
     pauseBandcampPageAudio();
-    syncWaypointNowPlaying(STATE.activeTrack, STATE.activeReleaseData, cardArtUrl);
-    syncTrackButtonsForActiveTrack();
-    syncCoverPlaybackState();
-    syncPlayerShell();
+    syncActiveTrackUi(cardArtUrl);
     audio.play().catch(() => {});
   }
 
@@ -2071,11 +2068,8 @@
     } else {
       clearActiveTrackButton();
     }
-    setActiveTrackContext(track, data, releaseUrl, triggerButton, card, cardArtUrl);
-    syncWaypointNowPlaying(track, data, cardArtUrl);
-    setActiveTrackCard(card);
-    syncTrackButtonsForActiveTrack();
-    syncCoverPlaybackState();
+    setActiveTrackContext(track, data, releaseUrl, card, cardArtUrl);
+    syncActiveTrackUi(cardArtUrl);
     audio.play().catch(() => {
       clearActiveTrackButton();
     });
@@ -2183,6 +2177,17 @@
     syncCoverPlaybackState();
   }
 
+  function getActiveCardArtUrl(card) {
+    return getCardArtUrl(card) || (STATE.activeReleaseData && STATE.activeReleaseData.__bcampxCardArtUrl) || "";
+  }
+
+  function syncActiveTrackUi(cardArtUrl) {
+    syncWaypointNowPlaying(STATE.activeTrack, STATE.activeReleaseData, cardArtUrl);
+    syncTrackButtonsForActiveTrack();
+    syncCoverPlaybackState();
+    syncPlayerShell();
+  }
+
   function syncCoverPlaybackState() {
     if (STATE.coverPlaybackStateNode) {
       STATE.coverPlaybackStateNode.classList.remove("playing", "paused");
@@ -2230,7 +2235,7 @@
     );
   }
 
-  function setActiveTrackContext(track, data, releaseUrl, button, card, cardArtUrl) {
+  function setActiveTrackContext(track, data, releaseUrl, card, cardArtUrl) {
     STATE.activeTrack = track || null;
     STATE.activeReleaseData = data || null;
     STATE.activeReleaseUrl = releaseUrl || "";
@@ -2242,10 +2247,6 @@
 
     if (STATE.activeReleaseData) {
       STATE.activeReleaseData.__bcampxCardArtUrl = cardArtUrl || STATE.activeReleaseData.__bcampxCardArtUrl || "";
-    }
-
-    if (button) {
-      button.dataset.releaseUrl = releaseUrl || "";
     }
 
     syncPlayerShell();
@@ -2512,7 +2513,7 @@
     }
 
     const card = STATE.activeTrackCard;
-    const cardArtUrl = getCardArtUrl(card) || (STATE.activeReleaseData && STATE.activeReleaseData.__bcampxCardArtUrl) || "";
+    const cardArtUrl = getActiveCardArtUrl(card);
     STATE.activeTrackIndex = nextIndex;
     STATE.activeTrack = nextTrack;
 
@@ -2522,10 +2523,8 @@
     }
 
     audio.src = nextTrack.streamUrl;
-    syncWaypointNowPlaying(nextTrack, STATE.activeReleaseData, cardArtUrl);
-    syncPlayerShell();
+    syncActiveTrackUi(cardArtUrl);
     audio.play().catch(() => {});
-    syncTrackButtonsForActiveTrack();
     syncFavoriteButtonState();
   }
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BC Amplifier
 // @namespace    https://github.com/local/bcamplifier
-// @version      0.1.84
+// @version      0.1.85
 // @description  Enrich Bandcamp feed cards with release metadata, tags, descriptions, and track previews.
 // @author       chuanpeng
 // @match        https://bandcamp.com/feed*
@@ -1406,14 +1406,12 @@
       itempropDescriptionText ||
       rawDescriptionHtml
     );
-    const shouldSuppressDescription =
-      !hasBodyDescriptionSource ||
-      isLikelyTracklistText(descriptionSource, tracks) ||
-      isLikelyTracklistHtml(rawDescriptionHtml, tracks);
-    const description = shouldSuppressDescription ? "" : truncate(descriptionSource, CONFIG.maxDescriptionLength);
-    const descriptionHtml = shouldSuppressDescription
-      ? ""
-      : rawDescriptionHtml || plainTextToDescriptionHtml(descriptionSource, CONFIG.maxDescriptionLength);
+    const descriptionState = normalizeDescriptionState({
+      descriptionText: descriptionSource,
+      descriptionHtml: rawDescriptionHtml,
+      tracks,
+      hasBodyDescriptionSource,
+    });
 
     const tags = uniqueStrings([
       ...queryTexts(documentFromHtml, ".tralbum-tags a"),
@@ -1442,8 +1440,8 @@
       location,
       artUrl: metaContent(documentFromHtml, 'meta[property="og:image"]'),
       hasBodyDescriptionSource,
-      description,
-      descriptionHtml,
+      description: descriptionState.description,
+      descriptionHtml: descriptionState.descriptionHtml,
       tags,
       tracks,
     };
@@ -1465,21 +1463,38 @@
     }
 
     const tracks = normalizeTracks(data.tracks);
-    const description = cleanText(data.description || "");
-    const descriptionHtml = sanitizeDescriptionHtml(data.descriptionHtml || "") || plainTextToDescriptionHtml(description, CONFIG.maxDescriptionLength);
     const hasBodyDescriptionSource = data.hasBodyDescriptionSource !== false;
-    const shouldSuppressDescription =
-      !hasBodyDescriptionSource ||
-      isLikelyTracklistText(description, tracks) ||
-      isLikelyTracklistHtml(descriptionHtml, tracks);
+    const descriptionState = normalizeDescriptionState({
+      descriptionText: data.description || "",
+      descriptionHtml: data.descriptionHtml || "",
+      tracks,
+      hasBodyDescriptionSource,
+    });
 
     return {
       ...data,
       hasBodyDescriptionSource,
-      description: shouldSuppressDescription ? "" : description,
-      descriptionHtml: shouldSuppressDescription ? "" : descriptionHtml,
+      description: descriptionState.description,
+      descriptionHtml: descriptionState.descriptionHtml,
       tags: Array.isArray(data.tags) ? data.tags.map((tag) => cleanText(tag)).filter(Boolean) : [],
       tracks,
+    };
+  }
+
+  function normalizeDescriptionState({ descriptionText, descriptionHtml, tracks, hasBodyDescriptionSource }) {
+    const cleanDescription = cleanText(descriptionText || "");
+    const truncatedDescription = truncate(cleanDescription, CONFIG.maxDescriptionLength);
+    const normalizedHtml =
+      sanitizeDescriptionHtml(descriptionHtml || "") ||
+      plainTextToDescriptionHtml(truncatedDescription, CONFIG.maxDescriptionLength);
+    const shouldSuppress =
+      !hasBodyDescriptionSource ||
+      isLikelyTracklistText(cleanDescription, tracks) ||
+      isLikelyTracklistHtml(normalizedHtml, tracks);
+
+    return {
+      description: shouldSuppress ? "" : truncatedDescription,
+      descriptionHtml: shouldSuppress ? "" : normalizedHtml,
     };
   }
 

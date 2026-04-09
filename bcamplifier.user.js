@@ -1,15 +1,13 @@
 // ==UserScript==
 // @name         BC Amplifier
 // @namespace    https://github.com/local/bcamplifier
-// @version      0.1.121
-// @description  Enrich Bandcamp feed cards with release metadata, tags, descriptions, and track previews.
+// @version      0.1.122
+// @description  Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.
 // @author       chuan
 // @match        https://bandcamp.com/feed*
 // @match        https://bandcamp.com/*/feed*
 // @match        https://bandcamp.com/*
 // @match        https://*.bandcamp.com/*
-// @updateURL    http://127.0.0.1:8000/bcamplifier.user.js
-// @downloadURL  http://127.0.0.1:8000/bcamplifier.user.js
 // @connect      bandcamp.com
 // @connect      *.bandcamp.com
 // @grant        GM_xmlhttpRequest

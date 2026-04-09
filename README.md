@@ -1,63 +1,104 @@
 # BC Amplifier
 
-BC Amplifier is a Tampermonkey userscript that enriches Bandcamp feed cards with release details loaded from the linked album or track page.
+BC Amplifier is a Tampermonkey userscript that turns the Bandcamp fan feed into something much more usable: better release context, inline tracklists, feed playback, wishlist actions, and lighter purchase shortcuts.
 
-## Features
+## What It Does
 
-- Matches `https://bandcamp.com/feed*` and `https://bandcamp.com/*/feed*`.
-- Detects feed cards from album or track links, including cards added by infinite scroll.
-- Fetches release pages only when a card enters the viewport or when you click the details button.
-- Caches release metadata locally by URL to avoid repeated requests.
-- Shows title, artist, release date, location, tags, description, and a short track list when available.
-- Degrades safely with a retry button and an "Open release" link if parsing or network requests fail.
+- Enriches feed cards with release metadata loaded from linked album or track pages.
+- Replaces the `supported by` column with a readable tracklist on compatible cards.
+- Lets you play tracks from the feed and keeps a custom bottom player in sync.
+- Adds per-track `wish` actions in the inline tracklist.
+- Opens Bandcamp's native buy dialog for a track from the feed.
+- Merges adjacent duplicate `bought a track` cards for the same fan and release.
+
+## Public Release
+
+The Greasy Fork upload target is:
+
+- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js)
+
+The main script is now release-oriented:
+
+- it no longer points to a local `127.0.0.1` `@updateURL`
+- it keeps the full `@match` scope needed for helper flows on real Bandcamp release pages
+- it preserves `buy` support
+
+Why the broad `@match` is still needed:
+
+- the feed UI runs on `bandcamp.com`
+- track and album pages run on `*.bandcamp.com`
+- `wishlist` and `buy` helpers need to execute on the real release page context, not only on the feed page
+
+## Permissions And Behavior
+
+This script uses:
+
+- `GM_xmlhttpRequest`
+- `GM_getValue`
+- `GM_setValue`
+
+And it will:
+
+- fetch release HTML from Bandcamp pages to parse metadata
+- cache parsed release data locally
+- create hidden helper iframes for some authenticated per-track actions
+- open a new Bandcamp tab for `buy`, then auto-open the native purchase dialog there
+
+It can change Bandcamp account state when you use these controls:
+
+- per-track `wish`
+- bottom-player wishlist button
+
+It does not auto-buy anything. The `buy` shortcut opens Bandcamp's own purchase UI and leaves final confirmation to the user.
 
 ## Install
 
-1. Install Tampermonkey in your browser.
-2. Open `bcamplifier.user.js`.
-3. Copy the file into a new Tampermonkey script, or use Tampermonkey's local file import flow.
-4. Visit your Bandcamp feed while logged in.
+1. Install Tampermonkey.
+2. Install [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js).
+3. Open Bandcamp while logged in.
+4. Visit your fan feed.
 
 ## Local Development
 
-For day-to-day testing, the smoother workflow is to install `bcamplifier.user.js` from your local HTTP server and let Tampermonkey update it by version number.
+Use the dev loader for local work:
 
-Start a local static server from this directory:
+- [bcamplifier.dev.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.dev.user.js)
+
+Start a local server from this directory:
 
 ```sh
 python3 -m http.server 8000 --bind 127.0.0.1
 ```
 
-Then open this URL in your browser and install the script from Tampermonkey:
+Then install the dev loader in Tampermonkey. It will `@require` your local working copy.
 
-`http://127.0.0.1:8000/bcamplifier.user.js`
+Recommended workflow:
 
-This script now includes:
-
-- `@updateURL http://127.0.0.1:8000/bcamplifier.user.js`
-- `@downloadURL http://127.0.0.1:8000/bcamplifier.user.js`
-
-That means future updates can come from the same local URL without editing script headers. While developing:
-
-- edit `bcamplifier.user.js`
-- bump the `@version` when you want Tampermonkey to treat it as a new release
-- let Tampermonkey check for updates automatically, or trigger "Check for userscript updates" if you want it immediately
-
-Use only one of these Tampermonkey scripts at a time:
-
-- `bcamplifier.user.js` installed from `http://127.0.0.1:8000/bcamplifier.user.js` for local development with automatic updates.
-- `bcamplifier.dev.user.js` only if you specifically want the `@require`-based loader approach.
+- keep `bcamplifier.user.js` as the release-style script
+- use `bcamplifier.dev.user.js` during active development
+- bump `@version` in `bcamplifier.user.js` whenever you want Tampermonkey to see a new build
 
 ## Configuration
 
-Edit the `CONFIG` object near the top of `bcamplifier.user.js`:
+Edit the `CONFIG` object near the top of [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js):
 
-- `autoFetchOnVisible`: fetch details when cards approach the viewport.
-- `expandAfterAutoFetch`: show details automatically after a viewport-triggered fetch.
-- `cacheTtlMs`: local cache lifetime.
-- `maxTracks`: maximum number of track names shown.
-- `maxDescriptionLength`: maximum description length shown in the feed.
+- `autoFetchOnVisible`
+- `expandAfterAutoFetch`
+- `cacheTtlMs`
+- `maxTracks`
+- `maxDescriptionLength`
+- `autoExpandTracks`
+- `enableTrackRowActions`
 
-## Notes
+## Known Tradeoffs
 
-Bandcamp does not expose a public fan-feed API for this use case, so this script uses conservative DOM detection and parses linked release pages. If Bandcamp changes its page structure, selectors may need a small update.
+- The script relies on Bandcamp's current DOM and helper flows.
+- `buy` support depends on Bandcamp's native track page purchase dialog continuing to exist in roughly the same shape.
+- Some helper features require the broader `@match` scope and will not work if the script is limited to feed URLs only.
+- If Bandcamp changes feed or release markup, selectors may need maintenance.
+
+## Publishing Notes
+
+Before uploading to Greasy Fork, review:
+
+- [GREASYFORK_RELEASE.md](/Users/chuanpeng/Documents/bcamplifier/GREASYFORK_RELEASE.md)

@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a defect in the userscript, extension build, or release tooling.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the problem and what you expected to happen.
+      placeholder: Feed cards stop rendering tracklists after scrolling.
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: Affected target
+      options:
+        - Userscript
+        - Chrome extension
+        - Firefox extension
+        - Build or release tooling
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The Bandcamplifer version or commit you tested.
+      placeholder: 0.1.159
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the shortest reliable steps.
+      placeholder: |
+        1. Open https://bandcamp.com/feed
+        2. Scroll to a card with playable tracks
+        3. Click play
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, OS, userscript manager, and whether you were logged into Bandcamp.
+      placeholder: Chrome 135 on macOS, Tampermonkey, logged in
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Extra context
+      description: Screenshots, console output, or related observations.

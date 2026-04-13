@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Bandcamplifer
-// @namespace    https://github.com/local/bcamplifier
+// @namespace    https://github.com/chuan-p/bcamplifier
 // @version      0.1.159
 // @description  Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.
 // @author       chuan
@@ -140,27 +140,92 @@
         ".new_releases",
     ].join(",");
 
-    const FAVORITE_ICON_MARKUP = [
-        '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">',
-        '<path class="bcampx-player-favorite-outline" d="M10 16.4 3.7 10.5A3.9 3.9 0 0 1 9.2 4.9L10 5.7l.8-.8a3.9 3.9 0 0 1 5.5 5.6L10 16.4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
-        '<path class="bcampx-player-favorite-fill" d="M10 16.4 3.7 10.5A3.9 3.9 0 0 1 9.2 4.9L10 5.7l.8-.8a3.9 3.9 0 0 1 5.5 5.6L10 16.4Z" fill="currentColor"/>',
-        "</svg>",
-    ].join("");
-
-    const OPEN_ICON_MARKUP = [
-        '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">',
-        '<path d="M7 13 13 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
-        '<path d="M8.2 6.8H14v5.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
-        "</svg>",
-    ].join("");
-
-    const SETTINGS_ICON_MARKUP = [
-        '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">',
-        '<circle cx="10" cy="4.75" r="1.55" fill="currentColor"/>',
-        '<circle cx="10" cy="10" r="1.55" fill="currentColor"/>',
-        '<circle cx="10" cy="15.25" r="1.55" fill="currentColor"/>',
-        "</svg>",
-    ].join("");
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const PLAYER_ICON_DEFINITIONS = {
+        favorite: {
+            viewBox: "0 0 20 20",
+            children: [
+                {
+                    tagName: "path",
+                    attributes: {
+                        class: "bcampx-player-favorite-outline",
+                        d: "M10 16.4 3.7 10.5A3.9 3.9 0 0 1 9.2 4.9L10 5.7l.8-.8a3.9 3.9 0 0 1 5.5 5.6L10 16.4Z",
+                        fill: "none",
+                        stroke: "currentColor",
+                        "stroke-width": "1.7",
+                        "stroke-linecap": "round",
+                        "stroke-linejoin": "round",
+                    },
+                },
+                {
+                    tagName: "path",
+                    attributes: {
+                        class: "bcampx-player-favorite-fill",
+                        d: "M10 16.4 3.7 10.5A3.9 3.9 0 0 1 9.2 4.9L10 5.7l.8-.8a3.9 3.9 0 0 1 5.5 5.6L10 16.4Z",
+                        fill: "currentColor",
+                    },
+                },
+            ],
+        },
+        open: {
+            viewBox: "0 0 20 20",
+            children: [
+                {
+                    tagName: "path",
+                    attributes: {
+                        d: "M7 13 13 7",
+                        fill: "none",
+                        stroke: "currentColor",
+                        "stroke-width": "1.8",
+                        "stroke-linecap": "round",
+                    },
+                },
+                {
+                    tagName: "path",
+                    attributes: {
+                        d: "M8.2 6.8H14v5.8",
+                        fill: "none",
+                        stroke: "currentColor",
+                        "stroke-width": "1.8",
+                        "stroke-linecap": "round",
+                        "stroke-linejoin": "round",
+                    },
+                },
+            ],
+        },
+        settings: {
+            viewBox: "0 0 20 20",
+            children: [
+                {
+                    tagName: "circle",
+                    attributes: {
+                        cx: "10",
+                        cy: "4.75",
+                        r: "1.55",
+                        fill: "currentColor",
+                    },
+                },
+                {
+                    tagName: "circle",
+                    attributes: {
+                        cx: "10",
+                        cy: "10",
+                        r: "1.55",
+                        fill: "currentColor",
+                    },
+                },
+                {
+                    tagName: "circle",
+                    attributes: {
+                        cx: "10",
+                        cy: "15.25",
+                        r: "1.55",
+                        fill: "currentColor",
+                    },
+                },
+            ],
+        },
+    };
 
     init();
 
@@ -3997,7 +4062,7 @@
             data && data.descriptionHtml ? data.descriptionHtml : "",
         );
         if (html) {
-            container.innerHTML = html;
+            replaceElementChildrenFromHtml(container, html);
             return;
         }
 
@@ -4024,6 +4089,54 @@
                 node.remove();
             }
         });
+    }
+
+    function replaceElementChildrenFromHtml(container, html) {
+        if (!container) {
+            return;
+        }
+
+        const parsed = new DOMParser().parseFromString(
+            `<div>${html}</div>`,
+            "text/html",
+        );
+        const root = parsed.body.firstElementChild;
+        if (!root) {
+            container.replaceChildren();
+            return;
+        }
+
+        const nodes = Array.from(root.childNodes).map((node) =>
+            document.importNode(node, true),
+        );
+        container.replaceChildren(...nodes);
+    }
+
+    function createSvgNode(tagName, attributes) {
+        const node = document.createElementNS(SVG_NS, tagName);
+        Object.entries(attributes || {}).forEach(([name, value]) => {
+            node.setAttribute(name, value);
+        });
+        return node;
+    }
+
+    function createPlayerIcon(iconName) {
+        const definition = PLAYER_ICON_DEFINITIONS[iconName];
+        if (!definition) {
+            return document.createTextNode("");
+        }
+
+        const svg = createSvgNode("svg", {
+            viewBox: definition.viewBox,
+            "aria-hidden": "true",
+            focusable: "false",
+        });
+
+        definition.children.forEach((child) => {
+            svg.appendChild(createSvgNode(child.tagName, child.attributes));
+        });
+
+        return svg;
     }
 
     function playSharedTrack(button, track, data, releaseUrl) {
@@ -5085,7 +5198,7 @@
         releaseButton.type = "button";
         releaseButton.className =
             "bcampx-player-button bcampx-player-button--circle";
-        releaseButton.innerHTML = OPEN_ICON_MARKUP;
+        releaseButton.appendChild(createPlayerIcon("open"));
         releaseButton.setAttribute("aria-label", "Open release");
         releaseButton.addEventListener("click", openActiveRelease);
 
@@ -5093,7 +5206,7 @@
         favoriteButton.type = "button";
         favoriteButton.className =
             "bcampx-player-button bcampx-player-button--circle bcampx-player-favorite";
-        favoriteButton.innerHTML = FAVORITE_ICON_MARKUP;
+        favoriteButton.appendChild(createPlayerIcon("favorite"));
         favoriteButton.setAttribute("aria-label", "Add to wishlist");
         favoriteButton.setAttribute("aria-pressed", "false");
         favoriteButton.addEventListener("click", toggleActiveWishlist);
@@ -5105,7 +5218,7 @@
         settingsButton.type = "button";
         settingsButton.className =
             "bcampx-player-button bcampx-player-button--circle bcampx-player-settings-toggle";
-        settingsButton.innerHTML = SETTINGS_ICON_MARKUP;
+        settingsButton.appendChild(createPlayerIcon("settings"));
         settingsButton.setAttribute("aria-label", "Open settings");
         settingsButton.setAttribute("aria-haspopup", "menu");
         settingsButton.setAttribute("aria-expanded", "false");

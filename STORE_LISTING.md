@@ -42,10 +42,10 @@ Host permissions:
 
 Reason:
 
-- The feed runs on `bandcamp.com`
-- Release and track pages run on `*.bandcamp.com`
-- Metadata loading, wishlist helpers, and purchase shortcuts depend on those Bandcamp pages
-- Some user-initiated helper flows run in Bandcamp iframes or tabs, so the extension needs to load on the real Bandcamp page context where those actions happen
+- The feed runs on `bandcamp.com`.
+- Release and track pages run on `*.bandcamp.com`.
+- Metadata loading, wishlist helpers, and purchase shortcuts depend on those Bandcamp pages.
+- Some user-initiated helper flows run in Bandcamp iframes or tabs, so the extension needs to load on the real Bandcamp page context where those actions happen.
 
 ## Privacy Disclosure
 
@@ -54,11 +54,9 @@ Reason:
 ## Screenshot Assets
 
 - `assets/store/store-screenshot-real-02.png`
-- `assets/store/store-screenshot-real-02-cropped.png`
-- `assets/store/store-screenshot-real-01.png`
-- `assets/store/store-screenshot-real-01-cropped.png`
+- `assets/store/chrome-promo-tile-440x280.png`
 
 Recommended default:
 
 - use `assets/store/store-screenshot-real-02.png` first
-- keep the cropped images only as fallback variants
+- use `assets/store/chrome-promo-tile-440x280.png` for the Chrome promo slot

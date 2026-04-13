@@ -114,7 +114,7 @@ Suggested submission flow:
 
 Notes:
 
-- Firefox manifest is currently scoped to `140.0+` so it can use the built-in data collection disclosure path
+- Firefox manifest is currently scoped to desktop `140.0+` and Android `142.0+` so AMO can use the built-in data collection disclosure path without the Android compatibility warning
 - If you later minify, bundle, or otherwise reduce source readability, prepare a source-code package for AMO review
 - Keep the store description aligned with the actual extension behavior shown in the screenshot
 

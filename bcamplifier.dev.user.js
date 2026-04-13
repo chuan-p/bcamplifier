@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Bandcamplifer Dev Loader
-// @namespace    https://github.com/local/bcamplifier
+// @namespace    https://github.com/chuan-p/bcamplifier
 // @version      0.2.44
 // @description  Loads the local Bandcamplifer userscript through Tampermonkey @require for development.
 // @author       chuan

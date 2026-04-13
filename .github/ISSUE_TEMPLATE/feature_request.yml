@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest an improvement that stays within the Bandcamp feed enhancement scope.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What is difficult or missing today?
+      placeholder: I have to open every release in a new tab just to see...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the behavior you want.
+      placeholder: Add a compact release facts row directly in the feed card...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Mention any workaround or alternate approach you already tried.
+  - type: dropdown
+    id: target
+    attributes:
+      label: Intended target
+      options:
+        - Userscript
+        - Chrome extension
+        - Firefox extension
+        - Shared behavior across all targets
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Extra context
+      description: Mockups, examples, or links to relevant Bandcamp pages.

@@ -27,54 +27,62 @@ Scope check:
 ./scripts/check-extension-scope.sh
 ```
 
-Chrome review notes:
+Supporting docs:
 
-- `CHROME_REVIEW_NOTES.md`
+- [`CHROME_REVIEW_NOTES.md`](./CHROME_REVIEW_NOTES.md)
+- [`PRIVACY_POLICY.md`](./PRIVACY_POLICY.md)
+- [`STORE_LISTING.md`](./STORE_LISTING.md)
 
 ## Chrome Best Practices Alignment
 
-- `Manifest V3`: Chrome build uses an MV3 service worker
-- `minimum permissions`: only `storage` plus Bandcamp host access required for the feature
-- `single purpose`: focused on improving the Bandcamp fan feed, not general browsing
-- `narrowed injection scope`: content scripts are limited to Bandcamp feed, album, and track pages
-- `secure network handling`: extension background fetches now reject non-HTTPS or non-Bandcamp URLs and only allow `GET` or `POST`
-- `privacy disclosure`: no developer backend, no analytics, no ad tech, user-triggered account actions only
-- `testing`: keep both smoke and fixture checks in the release path, then do a logged-in Bandcamp manual pass
-- `configuration guardrail`: `check-extension-scope.sh` locks content-script injection to feed, album, and track pages
+- `Manifest V3`: Chrome build uses an MV3 service worker.
+- `minimum permissions`: only `storage` plus Bandcamp host access required for the feature.
+- `single purpose`: focused on improving the Bandcamp fan feed, not general browsing.
+- `narrowed injection scope`: content scripts are limited to Bandcamp feed, album, and track pages.
+- `secure network handling`: extension background fetches reject non-HTTPS or non-Bandcamp URLs and only allow `GET` or `POST`.
+- `privacy disclosure`: no developer backend, no analytics, no ad tech, user-triggered account actions only.
+- `testing`: keep both smoke and fixture checks in the release path, then do a logged-in Bandcamp manual pass.
+- `configuration guardrail`: `check-extension-scope.sh` locks content-script injection to feed, album, and track pages.
 
 ## Store Readiness Checklist
 
 1. Confirm the icon set is current:
-   - source: `assets/icon-source/icon-master.png`
-   - exported: `assets/icons/icon-16.png`, `icon-32.png`, `icon-48.png`, `icon-128.png`, `icon-1024.png`
-2. Rebuild packages with `./scripts/build-extension.sh`
-3. Run `./scripts/smoke-test-extension.sh`
+   - `assets/icons/icon-16.png`
+   - `assets/icons/icon-32.png`
+   - `assets/icons/icon-48.png`
+   - `assets/icons/icon-128.png`
+   - `assets/icons/icon-1024.png`
+2. Rebuild packages with `./scripts/build-extension.sh`.
+3. Run:
+
+```sh
+./scripts/check-extension-scope.sh
+./scripts/smoke-test-extension.sh
+./scripts/test-feed-fixture.sh
+```
+
 4. Manually test while logged into Bandcamp:
    - feed metadata enrichment
    - inline track playback
    - merged duplicate purchase cards
    - wishlist action
    - buy shortcut opening Bandcamp's native dialog
-5. Verify manifest version matches the release you want to ship
-6. Prepare at least one storefront screenshot
-7. Decide whether to keep a manual Firefox add-on ID or let AMO assign one during submission
+5. Verify manifest version matches the release you want to ship.
+6. Prepare at least one storefront screenshot.
+7. Decide whether to keep a manual Firefox add-on ID or let AMO assign one during submission.
 
 ## Screenshot Assets
 
-Use the real Bandcamp capture assets in:
+Use the current real Bandcamp capture assets in:
 
 - `assets/store/store-screenshot-real-02.png`
-- `assets/store/store-screenshot-real-02-cropped.png`
-- `assets/store/store-screenshot-real-01.png`
-- `assets/store/store-screenshot-real-01-cropped.png`
+- `assets/store/chrome-promo-tile-440x280.png`
 
 Notes:
 
-- `store-screenshot-real-02.png` is the current preferred storefront screenshot because it clearly shows both the enhanced feed card and the persistent player
-- `store-screenshot-real-02-cropped.png` is only a backup variant; use it only if a storefront field or layout makes the original image awkward
-- `store-screenshot-real-01.png` is the untouched full-page capture
-- `store-screenshot-real-01-cropped.png` is a backup crop from the earlier capture
-- do not use fixture or local test screenshots for storefront submission
+- `store-screenshot-real-02.png` is the current preferred storefront screenshot because it clearly shows both the enhanced feed card and the persistent player.
+- `chrome-promo-tile-440x280.png` is the Chrome Web Store promo tile asset.
+- Do not use fixture or local test screenshots for storefront submission.
 
 ## Draft Listing Copy
 
@@ -111,10 +119,10 @@ Host permissions:
 
 Why they are needed:
 
-- The feed lives on `bandcamp.com`
-- Release, track, and purchase flows live on `*.bandcamp.com`
-- Wishlist and buy helpers need access to the real Bandcamp release-page context
-- `all_frames` is intentional because user-initiated helper actions can run inside Bandcamp iframes
+- The feed lives on `bandcamp.com`.
+- Release, track, and purchase flows live on `*.bandcamp.com`.
+- Wishlist and buy helpers need access to the real Bandcamp release-page context.
+- `all_frames` is intentional because user-initiated helper actions can run inside Bandcamp iframes.
 
 ## Privacy And Behavior Notes
 
@@ -139,15 +147,15 @@ Suggested reviewer note:
   - current manifest value is `{6c7370e1-e763-4806-8659-3cc872a45ac4}`
   - a GUID is being used intentionally to avoid naming collisions and domain-ownership assumptions
 - Support URL:
-  - add a public support page or repository URL if you want storefront users to have a support destination
+  - GitHub repository URL is `https://github.com/chuan-p/bcamplifier`
 - Screenshots:
   - use `assets/store/store-screenshot-real-02.png` as the default listing screenshot
 - Privacy policy:
-  - use `PRIVACY_POLICY.md` as the draft source text for the listing form or hosted policy page
+  - use [`PRIVACY_POLICY.md`](./PRIVACY_POLICY.md) as the draft source text for the listing form or hosted policy page
 
 ## Firefox Manifest Notes
 
-The Firefox manifest now assumes AMO submission against Firefox `140.0+` and uses the built-in data-collection disclosure path.
+The Firefox manifest now assumes AMO submission against Firefox desktop `140.0+` and Firefox for Android `142.0+` so it can use the built-in data-collection disclosure path without Android compatibility warnings.
 
 Current `browser_specific_settings.gecko` values:
 
@@ -156,6 +164,10 @@ Current `browser_specific_settings.gecko` values:
 - `data_collection_permissions.required`:
   - `authenticationInfo`
   - `websiteContent`
+
+Current `browser_specific_settings.gecko_android` values:
+
+- `strict_min_version`: `142.0`
 
 Why these were chosen:
 

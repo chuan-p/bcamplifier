@@ -2,7 +2,7 @@
 
 This document turns the current userscript into a concrete migration checklist for Chrome and Firefox extensions.
 
-It is based on the current code in [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js).
+It is based on the current code in [bcamplifier.user.js](./bcamplifier.user.js).
 
 ## Bottom Line
 
@@ -40,15 +40,15 @@ The current script is about 6.8k lines and mixes Bandcamp logic with userscript 
 
 Key areas:
 
-- initialization and feed-only bootstrapping: [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:833)
-- global playback bridge and cross-tab coordination: [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:195), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:387)
-- shared audio and player shell: [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:257), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:4914), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:5491)
-- DOM discovery and card enhancement: [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:1289), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2219)
-- lazy fetch/render of release data: [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2570)
-- release parsing and normalization: [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2804), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2861)
-- track action helper messaging: [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:1111), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:4054)
-- buy-dialog and wishlist helper injection: [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:892), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:950), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:4102), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:4133)
-- userscript storage and network wrappers: [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2725), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2754), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:6458), [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:6470)
+- initialization and feed-only bootstrapping: [bcamplifier.user.js](./bcamplifier.user.js#L833)
+- global playback bridge and cross-tab coordination: [bcamplifier.user.js](./bcamplifier.user.js#L195), [bcamplifier.user.js](./bcamplifier.user.js#L387)
+- shared audio and player shell: [bcamplifier.user.js](./bcamplifier.user.js#L257), [bcamplifier.user.js](./bcamplifier.user.js#L4914), [bcamplifier.user.js](./bcamplifier.user.js#L5491)
+- DOM discovery and card enhancement: [bcamplifier.user.js](./bcamplifier.user.js#L1289), [bcamplifier.user.js](./bcamplifier.user.js#L2219)
+- lazy fetch/render of release data: [bcamplifier.user.js](./bcamplifier.user.js#L2570)
+- release parsing and normalization: [bcamplifier.user.js](./bcamplifier.user.js#L2804), [bcamplifier.user.js](./bcamplifier.user.js#L2861)
+- track action helper messaging: [bcamplifier.user.js](./bcamplifier.user.js#L1111), [bcamplifier.user.js](./bcamplifier.user.js#L4054)
+- buy-dialog and wishlist helper injection: [bcamplifier.user.js](./bcamplifier.user.js#L892), [bcamplifier.user.js](./bcamplifier.user.js#L950), [bcamplifier.user.js](./bcamplifier.user.js#L4102), [bcamplifier.user.js](./bcamplifier.user.js#L4133)
+- userscript storage and network wrappers: [bcamplifier.user.js](./bcamplifier.user.js#L2725), [bcamplifier.user.js](./bcamplifier.user.js#L2754), [bcamplifier.user.js](./bcamplifier.user.js#L6458), [bcamplifier.user.js](./bcamplifier.user.js#L6470)
 
 ## Migration Cost By Area
 
@@ -89,10 +89,10 @@ This includes scanning feed cards, injecting new UI, replacing the `supported by
 
 Relevant code:
 
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:1289)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2219)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2570)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:6042)
+- [bcamplifier.user.js](./bcamplifier.user.js#L1289)
+- [bcamplifier.user.js](./bcamplifier.user.js#L2219)
+- [bcamplifier.user.js](./bcamplifier.user.js#L2570)
+- [bcamplifier.user.js](./bcamplifier.user.js#L6042)
 
 Estimated cost:
 
@@ -118,11 +118,11 @@ This includes fetching Bandcamp album and track pages, parsing HTML, normalizing
 
 Relevant code:
 
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2570)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2725)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2754)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2804)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:2861)
+- [bcamplifier.user.js](./bcamplifier.user.js#L2570)
+- [bcamplifier.user.js](./bcamplifier.user.js#L2725)
+- [bcamplifier.user.js](./bcamplifier.user.js#L2754)
+- [bcamplifier.user.js](./bcamplifier.user.js#L2804)
+- [bcamplifier.user.js](./bcamplifier.user.js#L2861)
 
 Estimated cost:
 
@@ -156,12 +156,12 @@ Today the script:
 
 Relevant code:
 
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:892)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:950)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:1111)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:4054)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:4102)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:4133)
+- [bcamplifier.user.js](./bcamplifier.user.js#L892)
+- [bcamplifier.user.js](./bcamplifier.user.js#L950)
+- [bcamplifier.user.js](./bcamplifier.user.js#L1111)
+- [bcamplifier.user.js](./bcamplifier.user.js#L4054)
+- [bcamplifier.user.js](./bcamplifier.user.js#L4102)
+- [bcamplifier.user.js](./bcamplifier.user.js#L4133)
 
 Estimated cost:
 
@@ -195,12 +195,12 @@ This includes:
 
 Relevant code:
 
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:195)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:257)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:387)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:4712)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:4914)
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js:5307)
+- [bcamplifier.user.js](./bcamplifier.user.js#L195)
+- [bcamplifier.user.js](./bcamplifier.user.js#L257)
+- [bcamplifier.user.js](./bcamplifier.user.js#L387)
+- [bcamplifier.user.js](./bcamplifier.user.js#L4712)
+- [bcamplifier.user.js](./bcamplifier.user.js#L4914)
+- [bcamplifier.user.js](./bcamplifier.user.js#L5307)
 
 Estimated cost:
 

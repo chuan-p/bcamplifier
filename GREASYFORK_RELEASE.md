@@ -1,36 +1,31 @@
 # Greasy Fork Release Notes
 
-This project is maintained in two modes:
+This project is maintained in two userscript modes:
 
-- `bcamplifier.user.js`
-  Public release target
-- `bcamplifier.dev.user.js`
-  Local development loader
+- `bcamplifier.user.js`: public release target
+- `bcamplifier.dev.user.js`: local development loader
 
 ## Release File
 
-Upload this file:
+Upload:
 
-- `/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js`
+- [`bcamplifier.user.js`](./bcamplifier.user.js)
 
 Do not upload:
 
-- `/Users/chuanpeng/Documents/bcamplifier/bcamplifier.dev.user.js`
+- [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js)
 
 ## Why The Match Scope Is Broad
 
 The script matches both feed pages and real Bandcamp release pages because:
 
-- the feed itself lives on `bandcamp.com`
+- the feed lives on `bandcamp.com`
 - release pages live on `*.bandcamp.com`
-- authenticated helper flows such as per-track `wish`
-- and native `buy` dialog launching
-
-need to run in the actual release-page context
+- authenticated helper flows such as per-track `wish` and native `buy` dialog launch need the real release-page context
 
 ## What The Script Can Change
 
-Only when the user clicks the relevant controls:
+Only after the user clicks a Bandcamplifer control:
 
 - per-track wishlist state
 - player wishlist state
@@ -39,11 +34,11 @@ Only when the user clicks the relevant controls:
 
 ## Pre-Publish Checklist
 
-1. Bump `@version`
+1. Bump `@version`.
 2. Run:
 
 ```sh
-node --check /Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js
+node --check bcamplifier.user.js
 ```
 
 3. Confirm there are no local-only metadata fields such as:
@@ -54,8 +49,8 @@ node --check /Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js
    - bottom player
    - merged duplicate track-purchase cards
    - per-track `wish`
-   - `buy` opening the native dialog in a new tab
-5. Re-read the script description and README so the public behavior matches the public docs
+   - `buy` opening Bandcamp's native dialog in a new tab
+5. Re-read the public docs so the release behavior matches the published description.
 
 ## Recommended Public Description Themes
 

@@ -1,141 +1,135 @@
 # Bandcamplifer
 
-Bandcamplifer is a Tampermonkey userscript and browser extension that turns the Bandcamp fan feed into something much more usable: better release context, inline tracklists, feed playback, wishlist actions, and lighter purchase shortcuts.
+Bandcamplifer is an open source userscript and browser extension that makes the Bandcamp fan feed much more usable. It pulls release context into feed cards, shows inline tracklists, adds playback controls, and keeps Bandcamp-native wishlist and buy shortcuts close at hand.
 
-## What It Does
+![Bandcamplifer storefront screenshot](assets/store/store-screenshot-real-02.png)
 
-- Enriches feed cards with release metadata loaded from linked album or track pages.
-- Replaces the `supported by` column with a readable tracklist on compatible cards.
-- Lets you play tracks from the feed and keeps a custom bottom player in sync.
-- Adds per-track `wish` actions in the inline tracklist.
-- Opens Bandcamp's native buy dialog for a track from the feed.
-- Merges adjacent duplicate `bought a track` cards for the same fan and release.
+## Highlights
 
-## Public Release
+- Enriches feed cards with release metadata loaded from linked album or track pages
+- Replaces the `supported by` column with a readable inline tracklist on compatible cards
+- Lets you play tracks from the feed and keeps a persistent bottom player in sync
+- Adds per-track `wish` actions in the inline tracklist
+- Opens Bandcamp's native buy dialog from the feed without automating the final purchase step
+- Merges adjacent duplicate `bought a track` cards for the same fan and release
 
-The Greasy Fork upload target is:
+## Project Layout
 
-- [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js)
+- [`bcamplifier.user.js`](./bcamplifier.user.js): release userscript and shared core logic
+- [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js): local Tampermonkey dev loader
+- [`manifest.chrome.json`](./manifest.chrome.json): Chrome extension manifest
+- [`manifest.firefox.json`](./manifest.firefox.json): Firefox extension manifest
+- [`extension.content.js`](./extension.content.js): extension adapter for the shared core
+- [`extension.background.js`](./extension.background.js): extension background bridge
+- [`scripts/`](./scripts): build and verification helpers
 
-The main script is now release-oriented:
+## Installation
 
-- it no longer points to a local `127.0.0.1` `@updateURL`
-- it keeps the full `@match` scope needed for helper flows on real Bandcamp release pages
-- it preserves `buy` support
+### Userscript
+
+Bandcamplifer ships as a Tampermonkey userscript through the public Bandcamplifer release you distribute. For local testing or self-hosting, the repository release file is [`bcamplifier.user.js`](./bcamplifier.user.js).
+
+The release userscript:
+
+- keeps the full `@match` scope required by feed, album, and track helper flows
+- no longer points to local `127.0.0.1` update metadata
+- preserves Bandcamp-native `buy` support
 
 Why the broad `@match` is still needed:
 
 - the feed UI runs on `bandcamp.com`
-- track and album pages run on `*.bandcamp.com`
-- `wishlist` and `buy` helpers need to execute on the real release page context, not only on the feed page
+- release pages run on `*.bandcamp.com`
+- wishlist and buy helpers need to execute in the real Bandcamp release-page context
 
-## Permissions And Behavior
+### Browser Extension
 
-This script uses:
+The extension build is currently the secondary distribution target built from the same shared core.
 
-- `GM_xmlhttpRequest`
-- `GM_getValue`
-- `GM_setValue`
-
-And it will:
-
-- fetch release HTML from Bandcamp pages to parse metadata
-- cache parsed release data locally
-- create hidden helper iframes for some authenticated per-track actions
-- open a new Bandcamp tab for `buy`, then auto-open the native purchase dialog there
-
-It can change Bandcamp account state when you use these controls:
-
-- per-track `wish`
-- bottom-player wishlist button
-
-It does not auto-buy anything. The `buy` shortcut opens Bandcamp's own purchase UI and leaves final confirmation to the user.
-
-## Install
-
-1. Install Tampermonkey.
-2. Install [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js).
-3. Open Bandcamp while logged in.
-4. Visit your fan feed.
-
-## Local Development
-
-Use the dev loader for local work:
-
-- [bcamplifier.dev.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.dev.user.js)
-
-Start a local server from this directory:
-
-```sh
-python3 -m http.server 8000 --bind 127.0.0.1
-```
-
-Then install the dev loader in Tampermonkey. It will `@require` your local working copy.
-
-The dev loader now:
-
-- has its own local `@updateURL` and `@downloadURL`
-- points `@require` at `http://127.0.0.1:8000/bcamplifier.user.js`
-- matches the same Bandcamp page scope as the main script, so helper flows like `wish` and `buy` still work during development
-
-Recommended workflow:
-
-- keep `bcamplifier.user.js` as the release-style script
-- use `bcamplifier.dev.user.js` during active development
-- bump `@version` in `bcamplifier.user.js` whenever you want Tampermonkey to see a new build
-
-## Experimental Extension Mode
-
-This branch also includes a dual-target WebExtension scaffold for Chrome and Firefox:
-
-- [manifest.chrome.json](/Users/chuanpeng/Documents/bcamplifier/manifest.chrome.json)
-- [manifest.firefox.json](/Users/chuanpeng/Documents/bcamplifier/manifest.firefox.json)
-- [extension.content.js](/Users/chuanpeng/Documents/bcamplifier/extension.content.js)
-- [extension.background.js](/Users/chuanpeng/Documents/bcamplifier/extension.background.js)
-- [scripts/build-extension.sh](/Users/chuanpeng/Documents/bcamplifier/scripts/build-extension.sh)
-
-Current intent:
-
-- keep `bcamplifier.user.js` as the shared core entrypoint
-- let `extension.content.js` provide storage and network adapters
-- let `extension.background.js` handle extension-permission fetches
-
-Build the browser-specific extension directories first:
+Build the browser-specific packages:
 
 ```sh
 ./scripts/build-extension.sh
 ```
 
-Release prep notes for the extension targets:
+This produces:
 
-- [EXTENSION_RELEASE.md](/Users/chuanpeng/Documents/bcamplifier/EXTENSION_RELEASE.md)
+- `dist/bcamplifier-chrome.zip`
+- `dist/bcamplifier-firefox.xpi`
 
-Quick start:
+Load locally:
 
-- Chrome: open `chrome://extensions`, enable Developer mode, click Load unpacked, and select `dist/chrome`
-- Firefox: open `about:debugging#/runtime/this-firefox`, click Load Temporary Add-on, and select [dist/firefox/manifest.json](/Users/chuanpeng/Documents/bcamplifier/dist/firefox/manifest.json)
+- Chrome: open `chrome://extensions`, enable Developer mode, click `Load unpacked`, then select `dist/chrome`
+- Firefox: open `about:debugging#/runtime/this-firefox`, click `Load Temporary Add-on`, then select [`dist/firefox/manifest.json`](./dist/firefox/manifest.json)
 
-Current status of the scaffold:
+## Permissions And Behavior
 
-- the Chrome and Firefox manifests validate
-- the core script can run with extension-provided storage and request adapters
-- Chrome unpacked loading has been smoke-tested without manifest errors
-- full logged-in Bandcamp interaction still needs in-browser manual verification
-- the package build now emits storefront-ready archives for both targets
+The userscript uses:
 
-Browser-target specifics:
+- `GM_xmlhttpRequest`
+- `GM_getValue`
+- `GM_setValue`
 
-- Chrome build uses a Manifest V3 background service worker
-- Firefox build uses a Manifest V3 background script for better current compatibility
+It can:
 
-Validation helpers:
+- fetch Bandcamp release HTML to parse metadata
+- cache parsed release data locally
+- create hidden helper iframes for some authenticated per-track actions
+- open a Bandcamp tab for `buy` and trigger Bandcamp's native purchase dialog there
 
-- `./scripts/smoke-test-extension.sh` checks that the Chrome build loads without manifest-level errors
-- `./scripts/test-feed-fixture.sh` serves a local feed fixture and verifies that the shared core injects and renders enhancement UI
+It can affect Bandcamp account state only when the user explicitly clicks a control such as:
+
+- per-track `wish`
+- the bottom-player wishlist button
+
+It does not auto-buy anything. The `buy` shortcut opens Bandcamp's own UI and leaves final confirmation to the user.
+
+## Local Development
+
+Use the dev loader during active work:
+
+- [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js)
+
+Start a local server from the repository root:
+
+```sh
+python3 -m http.server 8000 --bind 127.0.0.1
+```
+
+Then install the dev loader in Tampermonkey. It uses `@require` to pull the local working copy.
+
+The dev loader:
+
+- keeps its own local `@updateURL` and `@downloadURL`
+- points `@require` at `http://127.0.0.1:8000/bcamplifier.user.js`
+- matches the same Bandcamp page scope as the release script so helper flows still work during development
+
+Recommended workflow:
+
+1. Keep `bcamplifier.user.js` as the release-style script.
+2. Use `bcamplifier.dev.user.js` while iterating locally.
+3. Bump `@version` in `bcamplifier.user.js` when you want Tampermonkey to detect a fresh release build.
+
+## Validation
+
+Run the core checks from the repository root:
+
+```sh
+node --check bcamplifier.user.js
+./scripts/check-extension-scope.sh
+./scripts/build-extension.sh
+./scripts/smoke-test-extension.sh
+./scripts/test-feed-fixture.sh
+```
+
+The verification helpers are:
+
+- [`scripts/check-extension-scope.sh`](./scripts/check-extension-scope.sh): locks extension scope to the intended Bandcamp URLs
+- [`scripts/smoke-test-extension.sh`](./scripts/smoke-test-extension.sh): checks that the Chrome build loads without manifest-level errors
+- [`scripts/test-feed-fixture.sh`](./scripts/test-feed-fixture.sh): serves a local fixture and verifies that the shared core injects enhancement UI
 
 ## Configuration
 
-Edit the `CONFIG` object near the top of [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js):
+Edit the `CONFIG` object near the top of [`bcamplifier.user.js`](./bcamplifier.user.js) to tune behavior:
 
 - `autoFetchOnVisible`
 - `expandAfterAutoFetch`
@@ -145,23 +139,26 @@ Edit the `CONFIG` object near the top of [bcamplifier.user.js](/Users/chuanpeng/
 - `autoExpandTracks`
 - `enableTrackRowActions`
 
-## Known Tradeoffs
+## Release Notes
 
-- The script relies on Bandcamp's current DOM and helper flows.
-- `buy` support depends on Bandcamp's native track page purchase dialog continuing to exist in roughly the same shape.
+- Userscript release checklist: [`GREASYFORK_RELEASE.md`](./GREASYFORK_RELEASE.md)
+- Extension release guide: [`EXTENSION_RELEASE.md`](./EXTENSION_RELEASE.md)
+- Store listing copy: [`STORE_LISTING.md`](./STORE_LISTING.md)
+- Privacy policy draft: [`PRIVACY_POLICY.md`](./PRIVACY_POLICY.md)
+- Reviewer notes: [`CHROME_REVIEW_NOTES.md`](./CHROME_REVIEW_NOTES.md)
+- Submission checklist: [`SUBMISSION_CHECKLIST.md`](./SUBMISSION_CHECKLIST.md)
+
+## Status And Tradeoffs
+
+- The project relies on Bandcamp's current DOM and helper flows.
+- `buy` support depends on Bandcamp keeping a native track-page purchase dialog in roughly the same shape.
 - Some helper features require the broader `@match` scope and will not work if the script is limited to feed URLs only.
-- If Bandcamp changes feed or release markup, selectors may need maintenance.
+- Full logged-in Bandcamp interaction still needs manual browser verification before each release.
 
-## Publishing Notes
+## Contributing
 
-Before uploading to Greasy Fork, review:
-
-- [GREASYFORK_RELEASE.md](/Users/chuanpeng/Documents/bcamplifier/GREASYFORK_RELEASE.md)
-
-Before submitting the extension builds, review:
-
-- [EXTENSION_RELEASE.md](/Users/chuanpeng/Documents/bcamplifier/EXTENSION_RELEASE.md)
+Contributions are welcome. Start with [`CONTRIBUTING.md`](./CONTRIBUTING.md) for development and pull request guidance.
 
 ## License
 
-MIT. See [LICENSE](/Users/chuanpeng/Documents/bcamplifier/LICENSE).
+MIT. See [`LICENSE`](./LICENSE).

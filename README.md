@@ -84,6 +84,55 @@ Recommended workflow:
 - use `bcamplifier.dev.user.js` during active development
 - bump `@version` in `bcamplifier.user.js` whenever you want Tampermonkey to see a new build
 
+## Experimental Extension Mode
+
+This branch also includes a dual-target WebExtension scaffold for Chrome and Firefox:
+
+- [manifest.chrome.json](/Users/chuanpeng/Documents/bcamplifier/manifest.chrome.json)
+- [manifest.firefox.json](/Users/chuanpeng/Documents/bcamplifier/manifest.firefox.json)
+- [extension.content.js](/Users/chuanpeng/Documents/bcamplifier/extension.content.js)
+- [extension.background.js](/Users/chuanpeng/Documents/bcamplifier/extension.background.js)
+- [scripts/build-extension.sh](/Users/chuanpeng/Documents/bcamplifier/scripts/build-extension.sh)
+
+Current intent:
+
+- keep `bcamplifier.user.js` as the shared core entrypoint
+- let `extension.content.js` provide storage and network adapters
+- let `extension.background.js` handle extension-permission fetches
+
+Build the browser-specific extension directories first:
+
+```sh
+./scripts/build-extension.sh
+```
+
+Release prep notes for the extension targets:
+
+- [EXTENSION_RELEASE.md](/Users/chuanpeng/Documents/bcamplifier/EXTENSION_RELEASE.md)
+
+Quick start:
+
+- Chrome: open `chrome://extensions`, enable Developer mode, click Load unpacked, and select `dist/chrome`
+- Firefox: open `about:debugging#/runtime/this-firefox`, click Load Temporary Add-on, and select [dist/firefox/manifest.json](/Users/chuanpeng/Documents/bcamplifier/dist/firefox/manifest.json)
+
+Current status of the scaffold:
+
+- the Chrome and Firefox manifests validate
+- the core script can run with extension-provided storage and request adapters
+- Chrome unpacked loading has been smoke-tested without manifest errors
+- full logged-in Bandcamp interaction still needs in-browser manual verification
+- the package build now emits storefront-ready archives for both targets
+
+Browser-target specifics:
+
+- Chrome build uses a Manifest V3 background service worker
+- Firefox build uses a Manifest V3 background script for better current compatibility
+
+Validation helpers:
+
+- `./scripts/smoke-test-extension.sh` checks that the Chrome build loads without manifest-level errors
+- `./scripts/test-feed-fixture.sh` serves a local feed fixture and verifies that the shared core injects and renders enhancement UI
+
 ## Configuration
 
 Edit the `CONFIG` object near the top of [bcamplifier.user.js](/Users/chuanpeng/Documents/bcamplifier/bcamplifier.user.js):
@@ -108,6 +157,10 @@ Edit the `CONFIG` object near the top of [bcamplifier.user.js](/Users/chuanpeng/
 Before uploading to Greasy Fork, review:
 
 - [GREASYFORK_RELEASE.md](/Users/chuanpeng/Documents/bcamplifier/GREASYFORK_RELEASE.md)
+
+Before submitting the extension builds, review:
+
+- [EXTENSION_RELEASE.md](/Users/chuanpeng/Documents/bcamplifier/EXTENSION_RELEASE.md)
 
 ## License
 

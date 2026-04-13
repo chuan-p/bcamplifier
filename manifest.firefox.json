@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Bandcamp Feed Enhancer",
+  "version": "0.1.159",
+  "description": "Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.",
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://bandcamp.com/*",
+    "https://*.bandcamp.com/*"
+  ],
+  "background": {
+    "scripts": [
+      "extension.background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://bandcamp.com/feed*",
+        "https://bandcamp.com/*/feed*",
+        "https://bandcamp.com/album/*",
+        "https://bandcamp.com/track/*",
+        "https://*.bandcamp.com/album/*",
+        "https://*.bandcamp.com/track/*"
+      ],
+      "js": [
+        "extension.content.js",
+        "bcamplifier.user.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{6c7370e1-e763-4806-8659-3cc872a45ac4}",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "authenticationInfo",
+          "websiteContent"
+        ]
+      }
+    }
+  }
+}

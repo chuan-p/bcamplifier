@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamp Feed Enhancer
 // @namespace    https://github.com/local/bcamplifier
-// @version      0.1.158
+// @version      0.1.159
 // @description  Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.
 // @author       chuan
 // @match        https://bandcamp.com/feed*
@@ -165,18 +165,40 @@
     init();
 
     function init() {
+        markDebugState("data-bcampx-script-loaded", "true");
+        markDebugState(
+            "data-bcampx-page-kind",
+            isFeedPage() ? "feed" : "other",
+        );
+
         if (tryHandleEmbeddedTrackActionHelper()) {
+            markDebugState("data-bcampx-init-state", "helper");
             return;
         }
 
         setupGlobalPlaybackBridge();
 
         if (STATE.initialized || !isFeedPage()) {
+            if (STATE.initialized) {
+                markDebugState("data-bcampx-init-state", "already-initialized");
+            }
             return;
         }
 
         STATE.initialized = true;
-        void initializeFeedEnhancer();
+        markDebugState("data-bcampx-init-state", "starting");
+        void initializeFeedEnhancer()
+            .then(() => markDebugState("data-bcampx-init-state", "ready"))
+            .catch((error) => {
+                markDebugState("data-bcampx-init-state", "error");
+                markDebugState(
+                    "data-bcampx-init-error",
+                    cleanText(error && error.message ? error.message : "Unknown error.").slice(
+                        0,
+                        160,
+                    ),
+                );
+            });
     }
 
     async function initializeFeedEnhancer() {
@@ -323,10 +345,6 @@
     }
 
     function handleSharedAudioEnded() {
-        if (!CONFIG.continuousMode) {
-            return;
-        }
-
         window.setTimeout(() => {
             void continuePlaybackAfterTrackEnd();
         }, 0);
@@ -844,7 +862,7 @@
         }
 
         if (helperParams.action === "buy-dialog") {
-            scheduleTrackActionHelperInit(injectTrackBuyDialogScript);
+            scheduleTrackActionHelperInit(runTrackBuyDialogHelper);
             return true;
         }
 
@@ -857,7 +875,7 @@
         }
 
         scheduleTrackActionHelperInit(() => {
-            injectTrackActionHelperScript(helperParams);
+            runTrackActionHelper(helperParams);
         });
         return true;
     }
@@ -889,223 +907,271 @@
         }, 250);
     }
 
-    function injectTrackBuyDialogScript() {
-        const script = document.createElement("script");
-        script.textContent = `(() => {
-      try {
-        if (window.history && typeof window.history.replaceState === "function") {
-          window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
-        }
-      } catch (_error) {}
-
-      const openBuyDialog = () => {
-        const buyButton = Array.from(document.querySelectorAll("button.download-link.buy-link")).find((node) => /buy digital track/i.test((node.textContent || "").trim()));
-        if (!buyButton) {
-          return false;
-        }
-
-        buyButton.click();
-        return true;
-      };
-
-      const focusPriceInput = () => {
-        const priceInput = document.querySelector("#userPrice");
-        if (!priceInput) {
-          return false;
-        }
-
+    function runTrackBuyDialogHelper() {
         try {
-          priceInput.focus();
-          if (typeof priceInput.select === "function") {
-            priceInput.select();
-          }
+            if (
+                window.history &&
+                typeof window.history.replaceState === "function"
+            ) {
+                window.history.replaceState(
+                    null,
+                    document.title,
+                    window.location.pathname + window.location.search,
+                );
+            }
         } catch (_error) {}
 
-        return true;
-      };
+        const openBuyDialog = () => {
+            const buyButton = Array.from(
+                document.querySelectorAll("button.download-link.buy-link"),
+            ).find((node) =>
+                /buy digital track/i.test((node.textContent || "").trim()),
+            );
+            if (!buyButton) {
+                return false;
+            }
 
-      let attempts = 0;
-      const maxAttempts = 40;
-      const tick = () => {
-        attempts += 1;
-        if (document.querySelector(".ui-dialog #userPrice")) {
-          focusPriceInput();
-          return;
-        }
+            buyButton.click();
+            return true;
+        };
 
-        openBuyDialog();
-        if (attempts >= maxAttempts) {
-          return;
-        }
-        window.setTimeout(tick, 250);
-      };
+        const focusPriceInput = () => {
+            const priceInput = document.querySelector("#userPrice");
+            if (!priceInput) {
+                return false;
+            }
 
-      tick();
-    })();`;
+            try {
+                priceInput.focus();
+                if (typeof priceInput.select === "function") {
+                    priceInput.select();
+                }
+            } catch (_error) {}
 
-        (document.head || document.documentElement).appendChild(script);
-        script.remove();
+            return true;
+        };
+
+        let attempts = 0;
+        const maxAttempts = 40;
+        const tick = () => {
+            attempts += 1;
+            if (document.querySelector(".ui-dialog #userPrice")) {
+                focusPriceInput();
+                return;
+            }
+
+            openBuyDialog();
+            if (attempts >= maxAttempts) {
+                return;
+            }
+            window.setTimeout(tick, 250);
+        };
+
+        tick();
     }
 
-    function injectTrackActionHelperScript({
+    function runTrackActionHelper({
         action,
         requestId,
         parentOrigin,
     }) {
-        const script = document.createElement("script");
-        script.textContent = `(() => {
-      const action = ${JSON.stringify(action)};
-      const requestId = ${JSON.stringify(requestId)};
-      const parentOrigin = ${JSON.stringify(parentOrigin)};
-      const send = (payload) => {
-        try {
-          window.parent.postMessage(Object.assign({
-            type: "bcampx-track-action-result",
-            action,
-            requestId
-          }, payload || {}), parentOrigin || "*");
-        } catch (_error) {
-          window.parent.postMessage(Object.assign({
-            type: "bcampx-track-action-result",
-            action,
-            requestId,
-            ok: false,
-            error: "Could not reach parent window."
-          }, payload || {}), "*");
-        }
-      };
-
-      const readJsonAttr = (selector, attr) => {
-        const node = document.querySelector(selector);
-        if (!node) {
-          return null;
-        }
-
-        try {
-          return JSON.parse(node.getAttribute(attr) || "null");
-        } catch (_error) {
-          return null;
-        }
-      };
-
-      const collectInfo = readJsonAttr("[data-tralbum-collect-info]", "data-tralbum-collect-info") || {};
-      const tralbumData = window.TralbumData || readJsonAttr("[data-tralbum]", "data-tralbum") || {};
-      const crumbs = readJsonAttr("#js-crumbs-data", "data-crumbs") || {};
-      const pagedataBlob = (() => {
-        try {
-          return JSON.parse(document.querySelector("#pagedata")?.dataset?.blob || "{}");
-        } catch (_error) {
-          return {};
-        }
-      })();
-
-      const finishAfterTimeout = (() => {
-        let timer = null;
-        return {
-          start(callback, ms) {
-            timer = window.setTimeout(callback, ms);
-          },
-          clear() {
-            if (timer) {
-              window.clearTimeout(timer);
-              timer = null;
-            }
-          }
-        };
-      })();
-
-      if (action === "wishlist") {
-        const fanTralbumData = pagedataBlob.fan_tralbum_data || {};
-        const isWishlisted = !!fanTralbumData.is_wishlisted || !!collectInfo.is_collected;
-        const crumbKey = isWishlisted ? "uncollect_item_cb" : "collect_item_cb";
-        const crumb = typeof crumbs[crumbKey] === "string" ? crumbs[crumbKey] : "";
-        if (!crumb) {
-          send({ ok: false, error: "Wishlist crumb is missing." });
-          return;
-        }
-        const endpoint = isWishlisted ? "/uncollect_item_cb" : "/collect_item_cb";
-        const payload = new URLSearchParams();
-        payload.set("fan_id", String(pagedataBlob.identities?.fan?.id || collectInfo.fan_id || ""));
-        payload.set("item_id", String(tralbumData.current?.id || collectInfo.collect_item_id || ""));
-        payload.set("item_type", String((tralbumData.current?.type || collectInfo.collect_item_type || "track")).replace(/^t$/i, "track").replace(/^a$/i, "album").replace(/^b$/i, "bundle"));
-        payload.set("band_id", String(tralbumData.current?.band_id || collectInfo.collect_band_id || ""));
-        payload.set("crumb", crumb);
-
-        const onSuccess = (body) => {
-          if (!body || body.ok !== true) {
-            throw new Error(body && body.error_message ? body.error_message : "Wishlist request failed.");
-          }
-
-          send({
-            ok: true,
-            active: !isWishlisted,
-            statusText: !isWishlisted ? "Saved" : "Removed"
-          });
-        };
-
-        if (window.jQuery && typeof window.jQuery.ajax === "function") {
-          window.jQuery.ajax({
-            url: location.origin + endpoint,
-            type: "POST",
-            dataType: "json",
-            data: payload.toString(),
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-              "X-Requested-With": "XMLHttpRequest"
-            }
-          })
-            .done((body) => {
-              try {
-                onSuccess(body);
-              } catch (error) {
-                send({ ok: false, error: error && error.message ? error.message : "Wishlist request failed." });
-              }
-            })
-            .fail((_xhr, _status, error) => {
-              send({ ok: false, error: error || "Wishlist request failed." });
-            });
-          return;
-        }
-
-        fetch(location.origin + endpoint, {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "X-Requested-With": "XMLHttpRequest"
-          },
-          body: payload.toString()
-        })
-          .then(async (response) => {
-            let body = null;
+        const send = (payload) => {
             try {
-              body = await response.json();
+                window.parent.postMessage(
+                    Object.assign(
+                        {
+                            type: "bcampx-track-action-result",
+                            action,
+                            requestId,
+                        },
+                        payload || {},
+                    ),
+                    parentOrigin || "*",
+                );
             } catch (_error) {
-              body = null;
+                window.parent.postMessage(
+                    Object.assign(
+                        {
+                            type: "bcampx-track-action-result",
+                            action,
+                            requestId,
+                            ok: false,
+                            error: "Could not reach parent window.",
+                        },
+                        payload || {},
+                    ),
+                    "*",
+                );
+            }
+        };
+
+        const readJsonAttr = (selector, attr) => {
+            const node = document.querySelector(selector);
+            if (!node) {
+                return null;
             }
 
-            if (!response.ok) {
-              throw new Error((body && body.error_message) || "Wishlist request failed.");
+            try {
+                return JSON.parse(node.getAttribute(attr) || "null");
+            } catch (_error) {
+                return null;
+            }
+        };
+
+        const collectInfo =
+            readJsonAttr(
+                "[data-tralbum-collect-info]",
+                "data-tralbum-collect-info",
+            ) || {};
+        const tralbumData =
+            readJsonAttr("[data-tralbum]", "data-tralbum") || {};
+        const crumbs = readJsonAttr("#js-crumbs-data", "data-crumbs") || {};
+        const pagedataBlob = (() => {
+            try {
+                return JSON.parse(
+                    document.querySelector("#pagedata")?.dataset?.blob || "{}",
+                );
+            } catch (_error) {
+                return {};
+            }
+        })();
+
+        if (action === "wishlist") {
+            const fanTralbumData = pagedataBlob.fan_tralbum_data || {};
+            const isWishlisted =
+                !!fanTralbumData.is_wishlisted || !!collectInfo.is_collected;
+            const crumbKey = isWishlisted
+                ? "uncollect_item_cb"
+                : "collect_item_cb";
+            const crumb =
+                typeof crumbs[crumbKey] === "string" ? crumbs[crumbKey] : "";
+            if (!crumb) {
+                send({ ok: false, error: "Wishlist crumb is missing." });
+                return;
             }
 
-            onSuccess(body);
-          })
-          .catch((error) => {
-            send({ ok: false, error: error && error.message ? error.message : "Wishlist request failed." });
-          });
-        return;
-      }
+            const endpoint = isWishlisted
+                ? "/uncollect_item_cb"
+                : "/collect_item_cb";
+            const payload = new URLSearchParams();
+            payload.set(
+                "fan_id",
+                String(pagedataBlob.identities?.fan?.id || collectInfo.fan_id || ""),
+            );
+            payload.set(
+                "item_id",
+                String(
+                    tralbumData.current?.id || collectInfo.collect_item_id || "",
+                ),
+            );
+            payload.set(
+                "item_type",
+                String(
+                    (
+                        tralbumData.current?.type ||
+                        collectInfo.collect_item_type ||
+                        "track"
+                    )
+                        .replace(/^t$/i, "track")
+                        .replace(/^a$/i, "album")
+                        .replace(/^b$/i, "bundle"),
+                ),
+            );
+            payload.set(
+                "band_id",
+                String(
+                    tralbumData.current?.band_id ||
+                        collectInfo.collect_band_id ||
+                        "",
+                ),
+            );
+            payload.set("crumb", crumb);
 
-      if (action !== "basket") {
-        send({ ok: false, error: "Unknown track action." });
-        return;
-      }
-      send({ ok: false, error: "Basket helper is disabled." });
-    })();`;
+            const onSuccess = (body) => {
+                if (!body || body.ok !== true) {
+                    throw new Error(
+                        body && body.error_message
+                            ? body.error_message
+                            : "Wishlist request failed.",
+                    );
+                }
 
-        (document.head || document.documentElement).appendChild(script);
-        script.remove();
+                send({
+                    ok: true,
+                    active: !isWishlisted,
+                    statusText: !isWishlisted ? "Saved" : "Removed",
+                });
+            };
+
+            fetch(location.origin + endpoint, {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    Accept: "application/json, text/javascript, */*; q=0.01",
+                    "Content-Type":
+                        "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                body: payload.toString(),
+            })
+                .then(async (response) => {
+                    let body = null;
+                    try {
+                        body = await response.json();
+                    } catch (_error) {
+                        body = null;
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(
+                            (body && body.error_message) ||
+                                "Wishlist request failed.",
+                        );
+                    }
+
+                    onSuccess(body);
+                })
+                .catch((error) => {
+                    send({
+                        ok: false,
+                        error:
+                            error && error.message
+                                ? error.message
+                                : "Wishlist request failed.",
+                    });
+                });
+            return;
+        }
+
+        if (action !== "basket") {
+            send({ ok: false, error: "Unknown track action." });
+            return;
+        }
+
+        send({ ok: false, error: "Basket helper is disabled." });
+    }
+
+    function getExternalHostApi() {
+        const host = globalThis.__BCAMPX_HOST__;
+        if (!host || typeof host !== "object") {
+            return null;
+        }
+
+        return host;
+    }
+
+    function canUseExternalHostMethod(methodName) {
+        const host = getExternalHostApi();
+        return !!(host && typeof host[methodName] === "function");
+    }
+
+    function getHostRequestOptions(baseOptions = {}) {
+        return {
+            method: baseOptions.method || "GET",
+            data: baseOptions.data,
+            headers: baseOptions.headers,
+            timeoutMs: CONFIG.fetchTimeoutMs,
+        };
     }
 
     function setupTrackActionMessageBridge() {
@@ -1287,6 +1353,7 @@
     }
 
     function scanForCards() {
+        incrementDebugCounter("data-bcampx-scan-count");
         const roots = getScanRoots();
         roots.forEach((root) => markMalformedCardsInRoot(root));
         roots.forEach((root) => cleanupSkippedRecommendationCards(root));
@@ -1347,13 +1414,26 @@
     function scanReleaseLinksInRoot(root) {
         getMatchingRootOrDescendants(root, RELEASE_LINK_SELECTOR).forEach(
             (link) => {
+                incrementDebugCounter("data-bcampx-release-link-count");
                 const releaseUrl = normalizeReleaseUrl(link.href);
-                if (!releaseUrl || !isFanActivityLink(link)) {
+                if (!releaseUrl) {
                     return;
                 }
 
+                if (!isFanActivityLink(link)) {
+                    markDebugState("data-bcampx-last-skip", "not-fan-activity-link");
+                    return;
+                }
+                incrementDebugCounter("data-bcampx-fan-activity-link-count");
+
                 const card = findCardRoot(link);
-                if (!card || card.hasAttribute(ENHANCED_ATTR)) {
+                if (!card) {
+                    markDebugState("data-bcampx-last-skip", "missing-card-root");
+                    return;
+                }
+                incrementDebugCounter("data-bcampx-card-root-count");
+
+                if (card.hasAttribute(ENHANCED_ATTR)) {
                     return;
                 }
 
@@ -1363,6 +1443,7 @@
                     isAlsoBoughtRecommendationCard(card) ||
                     isMalformedFeedCard(card)
                 ) {
+                    markDebugState("data-bcampx-last-skip", "skipped-card");
                     card.setAttribute(ENHANCED_ATTR, "skipped");
                     return;
                 }
@@ -2051,28 +2132,37 @@
 
     function isFanActivityLink(link) {
         if (!(link instanceof Element)) {
+            markDebugState("data-bcampx-last-skip", "link-not-element");
             return false;
         }
 
         if (link.closest(EXCLUDED_SECTION_SELECTOR)) {
+            markDebugState("data-bcampx-last-skip", "link-in-excluded-section");
             return false;
         }
 
         if (hasSidebarLikeAncestor(link)) {
+            markDebugState("data-bcampx-last-skip", "link-in-sidebar");
             return false;
         }
 
         const story = link.closest("li.story, .story");
         if (story) {
             if (isAlsoBoughtRecommendationCard(story)) {
+                markDebugState("data-bcampx-last-skip", "also-bought-story");
                 return false;
             }
-            return isLikelyFanActivityCard(story);
+            const accepted = isLikelyFanActivityCard(story);
+            if (!accepted) {
+                markDebugState("data-bcampx-last-skip", "story-not-likely-card");
+            }
+            return accepted;
         }
 
         const card =
             link.closest(CARD_SELECTOR) || link.closest("article, li, div");
         if (card && !isLikelyFanActivityCard(card)) {
+            markDebugState("data-bcampx-last-skip", "card-not-likely");
             return false;
         }
 
@@ -2217,10 +2307,12 @@
     }
 
     function enhanceCard(card, releaseUrl) {
+        incrementDebugCounter("data-bcampx-enhance-attempt-count");
         if (
             isFullDiscographyCard(card) ||
             isAlsoBoughtRecommendationCard(card)
         ) {
+            markDebugState("data-bcampx-last-skip", "enhance-guard");
             card.setAttribute(ENHANCED_ATTR, "skipped");
             return;
         }
@@ -2271,6 +2363,7 @@
         };
 
         setCardController(card, controller);
+        incrementDebugCounter("data-bcampx-enhanced-count");
 
         toggle.addEventListener("click", () => {
             if (controller.loading) {
@@ -2723,6 +2816,19 @@
     }
 
     function requestHtml(url) {
+        if (canUseExternalHostMethod("requestHtml")) {
+            return Promise.resolve(
+                getExternalHostApi().requestHtml(
+                    url,
+                    getHostRequestOptions({
+                        headers: {
+                            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        },
+                    }),
+                ),
+            );
+        }
+
         return new Promise((resolve, reject) => {
             if (typeof GM_xmlhttpRequest !== "function") {
                 reject(new Error("GM_xmlhttpRequest is not available."));
@@ -2752,6 +2858,15 @@
     }
 
     function requestJson(url, options = {}) {
+        if (canUseExternalHostMethod("requestJson")) {
+            return Promise.resolve(
+                getExternalHostApi().requestJson(
+                    url,
+                    getHostRequestOptions(options),
+                ),
+            );
+        }
+
         return new Promise((resolve, reject) => {
             if (typeof GM_xmlhttpRequest !== "function") {
                 reject(new Error("GM_xmlhttpRequest is not available."));
@@ -3582,6 +3697,7 @@
         purchasedTrackTitles,
     ) {
         const item = document.createElement("li");
+        item.classList.add("bcampx__track-item");
         if (index >= initiallyVisible) {
             item.classList.add("bcampx__track-item--extra");
         }
@@ -4101,6 +4217,15 @@
 
     function openTrackBuyWindow(trackUrl) {
         const helperUrl = buildTrackActionHelperUrl(trackUrl, "buy-dialog");
+        const openedWindow = window.open(
+            helperUrl,
+            "_blank",
+            "noopener,noreferrer",
+        );
+        if (openedWindow && !openedWindow.closed) {
+            return;
+        }
+
         const link = document.createElement("a");
         link.href = helperUrl;
         link.target = "_blank";
@@ -5306,11 +5431,19 @@
 
     async function continuePlaybackAfterTrackEnd() {
         const audio = ensureSharedAudio();
-        if (!audio || !CONFIG.continuousMode || !audio.ended) {
+        if (!audio || !audio.ended) {
             return false;
         }
 
-        return playAdjacentTrackOrNeighbor(1);
+        if (playAdjacentTrack(1)) {
+            return true;
+        }
+
+        if (!CONFIG.continuousMode) {
+            return false;
+        }
+
+        return playNeighborPlayableRelease(1);
     }
 
     async function playNeighborPlayableRelease(offset) {
@@ -6456,6 +6589,12 @@
     }
 
     function storageGet(key, fallback) {
+        if (canUseExternalHostMethod("storageGet")) {
+            return Promise.resolve(
+                getExternalHostApi().storageGet(key, fallback),
+            );
+        }
+
         try {
             if (typeof GM_getValue === "function") {
                 return Promise.resolve(GM_getValue(key, fallback));
@@ -6468,6 +6607,10 @@
     }
 
     function storageSet(key, value) {
+        if (canUseExternalHostMethod("storageSet")) {
+            return Promise.resolve(getExternalHostApi().storageSet(key, value));
+        }
+
         try {
             if (typeof GM_setValue === "function") {
                 return Promise.resolve(GM_setValue(key, value));
@@ -6477,6 +6620,28 @@
         }
 
         return Promise.resolve();
+    }
+
+    function markDebugState(name, value) {
+        if (!document.documentElement || !name) {
+            return;
+        }
+
+        document.documentElement.setAttribute(name, cleanText(value));
+    }
+
+    function incrementDebugCounter(name) {
+        if (!document.documentElement || !name) {
+            return;
+        }
+
+        const current = Number(
+            document.documentElement.getAttribute(name) || "0",
+        );
+        document.documentElement.setAttribute(
+            name,
+            String(Number.isFinite(current) ? current + 1 : 1),
+        );
     }
 
     function metaContent(doc, selector) {

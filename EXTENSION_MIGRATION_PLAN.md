@@ -1,4 +1,4 @@
-# BC Amplifier WebExtension Migration Plan
+# Bandcamplifer WebExtension Migration Plan
 
 This document turns the current userscript into a concrete migration checklist for Chrome and Firefox extensions.
 

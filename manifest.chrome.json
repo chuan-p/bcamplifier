@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Bandcamp Feed Enhancer",
+  "name": "Bandcamplifer",
   "version": "0.1.159",
   "description": "Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.",
   "icons": {

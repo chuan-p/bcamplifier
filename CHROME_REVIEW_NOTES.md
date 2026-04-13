@@ -4,7 +4,7 @@ This file is written for Chrome Web Store reviewers and for release prep.
 
 ## Single Purpose
 
-Bandcamp Feed Enhancer has one purpose: improve the Bandcamp fan feed with richer release context and faster Bandcamp-native actions. It only runs on Bandcamp pages needed for that workflow.
+Bandcamplifer has one purpose: improve the Bandcamp fan feed with richer release context and faster Bandcamp-native actions. It only runs on Bandcamp pages needed for that workflow.
 
 ## Permissions
 

@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         BC Amplifier Dev Loader
+// @name         Bandcamplifer Dev Loader
 // @namespace    https://github.com/local/bcamplifier
 // @version      0.2.44
-// @description  Loads the local BC Amplifier userscript through Tampermonkey @require for development.
+// @description  Loads the local Bandcamplifer userscript through Tampermonkey @require for development.
 // @author       chuan
 // @match        https://bandcamp.com/feed*
 // @match        https://bandcamp.com/*/feed*
@@ -23,5 +23,5 @@
 
 (function () {
   "use strict";
-  console.debug("[BC Amplifier Dev] Loaded local script via @require.");
+  console.debug("[Bandcamplifer Dev] Loaded local script via @require.");
 })();

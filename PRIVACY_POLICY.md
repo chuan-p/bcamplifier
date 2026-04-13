@@ -1,6 +1,6 @@
 # Privacy Policy
 
-BC Amplifier is a browser extension and userscript that enhances the Bandcamp feed.
+Bandcamplifer is a browser extension and userscript that enhances the Bandcamp feed.
 
 ## Single purpose
 

@@ -1,6 +1,6 @@
 # Extension Release Guide
 
-This document is the release checklist and submission prep for the WebExtension builds of BC Amplifier.
+This document is the release checklist and submission prep for the WebExtension builds of Bandcamplifer.
 
 ## Current Artifacts
 
@@ -80,7 +80,7 @@ Notes:
 
 Name:
 
-- `Bandcamp Feed Enhancer`
+- `Bandcamplifer`
 
 Short summary:
 
@@ -88,7 +88,7 @@ Short summary:
 
 Long description:
 
-`Bandcamp Feed Enhancer improves the Bandcamp fan feed with richer release metadata, inline tracklists, playback controls, wishlist shortcuts, and quicker access to Bandcamp's native purchase flow. It is designed for people who spend time browsing their feed and want more context without opening every release in a new tab.`
+`Bandcamplifer improves the Bandcamp fan feed with richer release metadata, inline tracklists, playback controls, wishlist shortcuts, and quicker access to Bandcamp's native purchase flow. It is designed for people who spend time browsing their feed and want more context without opening every release in a new tab.`
 
 Highlights:
 

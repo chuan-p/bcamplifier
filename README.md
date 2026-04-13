@@ -1,6 +1,6 @@
-# BC Amplifier
+# Bandcamplifer
 
-BC Amplifier is a Tampermonkey userscript that turns the Bandcamp fan feed into something much more usable: better release context, inline tracklists, feed playback, wishlist actions, and lighter purchase shortcuts.
+Bandcamplifer is a Tampermonkey userscript and browser extension that turns the Bandcamp fan feed into something much more usable: better release context, inline tracklists, feed playback, wishlist actions, and lighter purchase shortcuts.
 
 ## What It Does
 

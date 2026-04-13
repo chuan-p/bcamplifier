@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Bandcamp Feed Enhancer
+// @name         Bandcamplifer
 // @namespace    https://github.com/local/bcamplifier
 // @version      0.1.159
 // @description  Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.

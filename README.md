@@ -72,6 +72,12 @@ python3 -m http.server 8000 --bind 127.0.0.1
 
 Then install the dev loader in Tampermonkey. It will `@require` your local working copy.
 
+The dev loader now:
+
+- has its own local `@updateURL` and `@downloadURL`
+- points `@require` at `http://127.0.0.1:8000/bcamplifier.user.js`
+- matches the same Bandcamp page scope as the main script, so helper flows like `wish` and `buy` still work during development
+
 Recommended workflow:
 
 - keep `bcamplifier.user.js` as the release-style script
@@ -102,3 +108,7 @@ Edit the `CONFIG` object near the top of [bcamplifier.user.js](/Users/chuanpeng/
 Before uploading to Greasy Fork, review:
 
 - [GREASYFORK_RELEASE.md](/Users/chuanpeng/Documents/bcamplifier/GREASYFORK_RELEASE.md)
+
+## License
+
+MIT. See [LICENSE](/Users/chuanpeng/Documents/bcamplifier/LICENSE).

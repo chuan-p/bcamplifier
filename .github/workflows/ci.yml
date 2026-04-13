@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+
+      - name: Export Chromium path
+        run: echo "CHROME_BIN=$(node -e \"const { chromium } = require('playwright'); console.log(chromium.executablePath())\")" >> "$GITHUB_ENV"
+
+      - name: Syntax check userscript
+        run: node --check bcamplifier.user.js
+
+      - name: Validate extension scope
+        run: ./scripts/check-extension-scope.sh
+
+      - name: Build extension packages
+        run: ./scripts/build-extension.sh
+
+      - name: Smoke test extension build
+        run: xvfb-run -a ./scripts/smoke-test-extension.sh
+
+      - name: Run feed fixture test
+        run: ./scripts/test-feed-fixture.sh

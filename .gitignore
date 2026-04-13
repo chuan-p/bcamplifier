@@ -1,5 +1,6 @@
 .codex/
 dist/
+node_modules/
 .DS_Store
 .codex-temp-*
 attached-image-bg-*.png

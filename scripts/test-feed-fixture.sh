@@ -4,7 +4,7 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 PORT=${PORT:-8765}
-CHROME_BIN=${CHROME_BIN:-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome}
+CHROME_BIN=$("$ROOT_DIR/scripts/find-chrome.sh")
 SERVER_LOG=${SERVER_LOG:-/tmp/bcampx-fixture-server.log}
 
 cd "$ROOT_DIR"
@@ -36,6 +36,14 @@ cmd = [
 
 result = subprocess.run(cmd, capture_output=True, timeout=12)
 stdout = result.stdout.decode("utf-8", "ignore")
+stderr = result.stderr.decode("utf-8", "ignore")
+
+if result.returncode != 0:
+    print("fixture_test=failed")
+    print("chrome_exit_code=" + str(result.returncode))
+    if stderr:
+        print(stderr)
+    sys.exit(1)
 
 checks = {
     'data-bcampx-script-loaded="true"': "core script booted",

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bandcamplifer Extension Fixture</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 32px;
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f3f4f6;
+        color: #111827;
+      }
+
+      .fixture-shell {
+        max-width: 860px;
+        margin: 0 auto;
+      }
+
+      .story {
+        list-style: none;
+        margin: 0;
+        padding: 20px;
+        min-height: 220px;
+        border: 1px solid #d1d5db;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      }
+
+      .story-title {
+        margin-bottom: 14px;
+        font-size: 16px;
+      }
+
+      .story-title a,
+      .item-link,
+      .buy-link {
+        color: #1d4ed8;
+      }
+
+      .tralbum-wrapper {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        gap: 18px;
+      }
+
+      .art img {
+        display: block;
+        width: 160px;
+        height: 160px;
+        object-fit: cover;
+        border-radius: 12px;
+      }
+
+      .tralbum-wrapper-col1 > * + * {
+        margin-top: 8px;
+      }
+
+      .tag-line {
+        color: #4b5563;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="fixture-shell">
+      <ol>
+        <li class="story">
+          <div class="story-title">
+            <a class="fan-name" href="https://bandcamp.com:__PORT__/testfan"
+              >Test Fan</a
+            >
+            bought
+            <a
+              class="item-link"
+              href="https://fixture.bandcamp.com:__PORT__/album/synthetic-release"
+              >Synthetic Release</a
+            >
+          </div>
+
+          <div class="story-innards">
+            <div class="story-body">
+              <div class="tralbum-wrapper">
+                <div class="art">
+                  <img
+                    src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+                    alt="Fixture art"
+                  />
+                </div>
+
+                <div class="tralbum-wrapper-col1">
+                  <a
+                    class="item-link"
+                    href="https://fixture.bandcamp.com:__PORT__/album/synthetic-release"
+                    >Synthetic Release</a
+                  >
+                  <div>featured track: Track One</div>
+                  <div class="tag-line">tags: synthwave, fixture-pop</div>
+                  <a
+                    class="buy-link"
+                    href="https://fixture.bandcamp.com:__PORT__/album/synthetic-release"
+                    >buy now</a
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </body>
+</html>

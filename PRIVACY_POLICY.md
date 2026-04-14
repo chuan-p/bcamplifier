@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Bandcamplifer is a browser extension and userscript that enhances the Bandcamp feed.
+Bandcamplifier is a browser extension and userscript that enhances the Bandcamp feed.
 
 ## Single Purpose
 

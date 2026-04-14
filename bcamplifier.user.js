@@ -1,15 +1,18 @@
 // ==UserScript==
-// @name         Bandcamplifer
+// @name         Bandcamplifier
 // @namespace    https://github.com/chuan-p/bcamplifier
-// @version      0.1.159
+// @version      0.1.175
 // @description  Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.
 // @author       chuan
 // @match        https://bandcamp.com/feed*
 // @match        https://bandcamp.com/*/feed*
 // @match        https://bandcamp.com/*
 // @match        https://*.bandcamp.com/*
+// @match        https://*/album/*
+// @match        https://*/track/*
 // @connect      bandcamp.com
 // @connect      *.bandcamp.com
+// @connect      *
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -101,6 +104,18 @@
         ".tralbum-wrapper-col1",
     ].join(",");
 
+    const FEED_CARD_ROOT_SELECTOR = [
+        "li.story",
+        ".story",
+        ".feed-item",
+        ".feedItem",
+        ".feed_item",
+        ".feed-story",
+        ".feedStory",
+        ".activity-item",
+        ".fan-feed-item",
+    ].join(",");
+
     const CARD_SELECTOR = [
         "article",
         "li",
@@ -122,6 +137,8 @@
     const HIDDEN_SUPPORTED_ATTR = "data-bcampx-supported-hidden";
     const MERGED_PARENT_ATTR = "data-bcampx-merged-parent";
     const MERGED_CHILD_ATTR = "data-bcampx-merged-child";
+    const SKIP_REASON_ATTR = "data-bcampx-skip-reason";
+    const RETRYABLE_SKIP_ATTR = "data-bcampx-retryable-skip";
     const FAN_ACTIVITY_TEXT_PATTERN =
         /\b(bought|purchased|wishlisted|supported|recommended|following|followed|listening|played|posted|added)\b/i;
     const EXCLUDED_SECTION_SELECTOR = [
@@ -238,6 +255,11 @@
 
         if (tryHandleEmbeddedTrackActionHelper()) {
             markDebugState("data-bcampx-init-state", "helper");
+            return;
+        }
+
+        if (!isLikelyBandcampDocument()) {
+            markDebugState("data-bcampx-init-state", "unsupported-page");
             return;
         }
 
@@ -360,27 +382,45 @@
         STATE.sharedAudio = document.createElement("audio");
         STATE.sharedAudio.preload = "metadata";
         STATE.sharedAudio.controls = true;
-        STATE.sharedAudio.addEventListener("pause", syncActiveTrackButton);
-        STATE.sharedAudio.addEventListener("play", syncActiveTrackButton);
-        STATE.sharedAudio.addEventListener("ended", syncActiveTrackButton);
+        addAudioEventListeners(STATE.sharedAudio, [
+            "pause",
+            "play",
+            "ended",
+        ], syncActiveTrackButton);
         STATE.sharedAudio.addEventListener("ended", handleSharedAudioEnded);
-        STATE.sharedAudio.addEventListener("timeupdate", syncPlayerShell);
-        STATE.sharedAudio.addEventListener("loadedmetadata", syncPlayerShell);
-        STATE.sharedAudio.addEventListener("durationchange", syncPlayerShell);
-        STATE.sharedAudio.addEventListener("volumechange", syncPlayerShell);
+        addAudioEventListeners(STATE.sharedAudio, [
+            "timeupdate",
+            "loadedmetadata",
+            "durationchange",
+            "volumechange",
+        ], syncPlayerShell);
         STATE.sharedAudio.addEventListener("play", () =>
             claimPlaybackOwnership("feed-preview", STATE.sharedAudio),
         );
-        STATE.sharedAudio.addEventListener("pause", () =>
-            releasePlaybackOwnershipIfCurrent(STATE.sharedAudio),
-        );
-        STATE.sharedAudio.addEventListener("ended", () =>
-            releasePlaybackOwnershipIfCurrent(STATE.sharedAudio),
-        );
-        STATE.sharedAudio.addEventListener("play", syncMediaSessionState);
-        STATE.sharedAudio.addEventListener("pause", syncMediaSessionState);
-        STATE.sharedAudio.addEventListener("ended", syncMediaSessionState);
+        addAudioEventListeners(STATE.sharedAudio, [
+            "pause",
+            "ended",
+        ], () => releasePlaybackOwnershipIfCurrent(STATE.sharedAudio));
+        addAudioEventListeners(STATE.sharedAudio, [
+            "play",
+            "pause",
+            "ended",
+        ], syncMediaSessionState);
         setupMediaSession();
+    }
+
+    function addAudioEventListeners(audio, eventNames, handler) {
+        if (
+            !(audio instanceof HTMLAudioElement) ||
+            !Array.isArray(eventNames) ||
+            typeof handler !== "function"
+        ) {
+            return;
+        }
+
+        eventNames.forEach((eventName) => {
+            audio.addEventListener(eventName, handler);
+        });
     }
 
     function handleDocumentAudioPlay(event) {
@@ -530,17 +570,35 @@
     }
 
     function handleDocumentPlayerUiClick(event) {
-        if (!STATE.playerSettingsOpen || !STATE.playerHost) {
+        if (!STATE.playerSettingsOpen) {
+            return;
+        }
+
+        if (!STATE.playerHost || !document.contains(STATE.playerHost)) {
+            closePlayerSettingsMenu();
             return;
         }
 
         const path =
             typeof event.composedPath === "function" ? event.composedPath() : [];
-        if (path.includes(STATE.playerHost)) {
+        if (isPlayerSettingsInteraction(path)) {
             return;
         }
 
         closePlayerSettingsMenu();
+    }
+
+    function isPlayerSettingsInteraction(path) {
+        const ui = STATE.playerUi;
+        if (!ui) {
+            return false;
+        }
+
+        return Boolean(
+            (ui.settingsWrap && path.includes(ui.settingsWrap)) ||
+                (ui.settingsButton && path.includes(ui.settingsButton)) ||
+                (ui.settingsMenu && path.includes(ui.settingsMenu)),
+        );
     }
 
     function handleDocumentPlayerUiKeydown(event) {
@@ -674,7 +732,7 @@
             return getCardController(card);
         }
 
-        enhanceCard(card, releaseUrl);
+        enhanceCard(card, releaseUrl, getCardReleaseRequestContext(card, releaseUrl));
         return getCardController(card);
     }
 
@@ -688,21 +746,104 @@
         }
     }
 
-    function getCardPrimaryReleaseUrl(card) {
-        const albumLink = Array.from(
+    function getCardAlbumReleaseUrl(card) {
+        if (!(card instanceof Element)) {
+            return "";
+        }
+
+        const memo = getNodeMemo(card);
+        if (memo && Object.prototype.hasOwnProperty.call(memo, "cardAlbumReleaseUrl")) {
+            return memo.cardAlbumReleaseUrl || "";
+        }
+
+        const albumLinks = Array.from(
             card.querySelectorAll('a[href*="/album/"]'),
         )
             .map((link) => normalizeReleaseUrl(link.href))
-            .find(Boolean);
+            .filter(Boolean);
+        const albumLink = preferBandcampReleaseUrl(albumLinks) || albumLinks[0] || "";
+
+        if (memo) {
+            memo.cardAlbumReleaseUrl = albumLink;
+        }
+
+        return albumLink;
+    }
+
+    function getCardRawReleaseUrl(card) {
+        if (!(card instanceof Element)) {
+            return "";
+        }
+
+        const memo = getNodeMemo(card);
+        if (memo && Object.prototype.hasOwnProperty.call(memo, "cardRawReleaseUrl")) {
+            return memo.cardRawReleaseUrl || "";
+        }
+
+        const releaseLinks = Array.from(card.querySelectorAll(RELEASE_LINK_SELECTOR))
+            .map((link) => normalizeReleaseUrl(link.href))
+            .filter(Boolean);
+        const itemJsonReleaseUrl = getItemJsonReleaseUrl(card);
+        const rawReleaseUrl =
+            preferBandcampReleaseUrl([
+                ...releaseLinks,
+                itemJsonReleaseUrl,
+            ].filter(Boolean)) ||
+            releaseLinks[0] ||
+            itemJsonReleaseUrl ||
+            "";
+
+        if (memo) {
+            memo.cardRawReleaseUrl = rawReleaseUrl;
+        }
+
+        return rawReleaseUrl;
+    }
+
+    function getCardReleaseRequestContext(card, releaseUrl = "") {
+        const normalizedReleaseUrl = normalizeReleaseUrl(
+            releaseUrl || getCardPrimaryReleaseUrl(card),
+        );
+        const parsed = getParsedItemJson(card);
+        return {
+            releaseUrl: normalizedReleaseUrl,
+            itemId: extractParsedItemId(parsed),
+            itemType: normalizeReleaseItemType(
+                parsed &&
+                    (parsed.item_type ||
+                        parsed.tralbum_type ||
+                        parsed.type ||
+                        parsed.collect_item_type),
+                normalizedReleaseUrl,
+            ),
+        };
+    }
+
+    function getCardPrimaryReleaseUrl(card) {
+        if (!(card instanceof Element)) {
+            return "";
+        }
+
+        const memo = getNodeMemo(card);
+        if (memo && Object.prototype.hasOwnProperty.call(memo, "cardPrimaryReleaseUrl")) {
+            return memo.cardPrimaryReleaseUrl || "";
+        }
+
+        const albumLink = getCardAlbumReleaseUrl(card);
         if (albumLink) {
+            if (memo) {
+                memo.cardPrimaryReleaseUrl = albumLink;
+            }
             return albumLink;
         }
 
-        return (
-            Array.from(card.querySelectorAll(RELEASE_LINK_SELECTOR))
-                .map((link) => normalizeReleaseUrl(link.href))
-                .find(Boolean) || ""
-        );
+        const primaryReleaseUrl = getCardRawReleaseUrl(card);
+
+        if (memo) {
+            memo.cardPrimaryReleaseUrl = primaryReleaseUrl;
+        }
+
+        return primaryReleaseUrl;
     }
 
     function getStoryRoot(node) {
@@ -710,9 +851,9 @@
             return null;
         }
 
-        const story = node.matches("li.story, .story")
+        const story = node.matches(FEED_CARD_ROOT_SELECTOR)
             ? node
-            : node.closest("li.story, .story");
+            : node.closest(FEED_CARD_ROOT_SELECTOR);
         return story instanceof Element ? story : null;
     }
 
@@ -728,34 +869,88 @@
 
     function extractFeedHeadlineActor(headlineText) {
         const match = cleanText(headlineText).match(
-            /^(.+?)\s+(?:bought|wishlisted|supported|recommended|listening|played)\b/i,
+            /^(.+?)\s+(?:bought|purchased|wishlisted|supported|recommended|listening|played)\b/i,
         );
         return match && match[1] ? cleanText(match[1]) : "";
     }
 
-    function getItemJsonReleaseUrl(node) {
+    function getParsedItemJson(node) {
         if (!(node instanceof Element)) {
-            return "";
+            return null;
         }
 
         const holder = node.matches("[data-item-json]")
             ? node
             : node.querySelector("[data-item-json]");
         if (!(holder instanceof Element)) {
-            return "";
+            return null;
         }
 
-        const raw = holder.getAttribute("data-item-json");
-        if (!raw) {
-            return "";
+        const memo = getNodeMemo(holder);
+        if (memo && Object.prototype.hasOwnProperty.call(memo, "parsedItemJson")) {
+            return memo.parsedItemJson;
         }
 
-        try {
-            const parsed = JSON.parse(raw);
-            return normalizeReleaseUrl(parsed && parsed.item_url ? parsed.item_url : "");
-        } catch (_error) {
-            return "";
+        const parsed = parseJsonAttribute(holder, "data-item-json") || null;
+        if (memo) {
+            memo.parsedItemJson = parsed;
         }
+
+        return parsed;
+    }
+
+    function getItemJsonReleaseUrl(node) {
+        const parsed = getParsedItemJson(node);
+        return normalizeReleaseUrl(parsed && parsed.item_url ? parsed.item_url : "");
+    }
+
+    function preferBandcampReleaseUrl(urls) {
+        return (urls || []).find((url) => isBandcampReleaseUrl(url)) || "";
+    }
+
+    function extractParsedItemId(parsed) {
+        if (!parsed || typeof parsed !== "object") {
+            return 0;
+        }
+
+        return firstPositiveNumber(
+            parsed.item_id,
+            parsed.album_id,
+            parsed.track_id,
+            parsed.tralbum_id,
+            parsed.collect_item_id,
+        );
+    }
+
+    function firstPositiveNumber(...values) {
+        for (const value of values) {
+            const number = Number(value);
+            if (Number.isFinite(number) && number > 0) {
+                return number;
+            }
+        }
+
+        return 0;
+    }
+
+    function normalizeReleaseItemType(rawType, releaseUrl = "") {
+        const type = cleanText(rawType).toLowerCase();
+        if (type === "album" || type === "a") {
+            return "album";
+        }
+        if (type === "track" || type === "t") {
+            return "track";
+        }
+
+        const normalizedReleaseUrl = normalizeReleaseUrl(releaseUrl);
+        if (/\/album\//.test(normalizedReleaseUrl)) {
+            return "album";
+        }
+        if (/\/track\//.test(normalizedReleaseUrl)) {
+            return "track";
+        }
+
+        return "";
     }
 
     function isMalformedFeedCard(card) {
@@ -920,6 +1115,26 @@
         );
     }
 
+    function isLikelyBandcampDocument() {
+        const hostname = String(window.location.hostname || "").toLowerCase();
+        if (hostname === "bandcamp.com" || hostname.endsWith(".bandcamp.com")) {
+            return true;
+        }
+
+        return Boolean(
+            document.querySelector(
+                [
+                    "[data-tralbum]",
+                    "[data-band]",
+                    "#pagedata",
+                    "#js-crumbs-data",
+                    "meta[property='og:site_name'][content*='Bandcamp']",
+                    "meta[property='og:url'][content*='.bandcamp.com/']",
+                ].join(", "),
+            ),
+        );
+    }
+
     function tryHandleEmbeddedTrackActionHelper() {
         const helperParams = parseTrackActionHelperParams(window.location.hash);
         if (!helperParams) {
@@ -929,10 +1144,6 @@
         if (helperParams.action === "buy-dialog") {
             scheduleTrackActionHelperInit(runTrackBuyDialogHelper);
             return true;
-        }
-
-        if (window.top === window) {
-            return false;
         }
 
         if (!helperParams.requestId || !helperParams.parentOrigin) {
@@ -972,7 +1183,52 @@
         }, 250);
     }
 
-    function runTrackBuyDialogHelper() {
+    function getDocumentInsertionRoot() {
+        return (
+            document.body ||
+            document.documentElement ||
+            document.head ||
+            null
+        );
+    }
+
+    function appendToDocument(node) {
+        const root = getDocumentInsertionRoot();
+        if (!root || !node) {
+            return false;
+        }
+
+        root.appendChild(node);
+        return true;
+    }
+
+    function prependToContainer(container, node) {
+        if (!container || !node) {
+            return false;
+        }
+
+        if (typeof container.prepend === "function") {
+            container.prepend(node);
+            return true;
+        }
+
+        container.insertBefore(node, container.firstChild || null);
+        return true;
+    }
+
+    function scheduleNextFrame(callback) {
+        if (typeof callback !== "function") {
+            return 0;
+        }
+
+        if (typeof window.requestAnimationFrame === "function") {
+            return window.requestAnimationFrame(callback);
+        }
+
+        return window.setTimeout(callback, 16);
+    }
+
+    function clearTrackActionHelperHash() {
         try {
             if (
                 window.history &&
@@ -985,6 +1241,10 @@
                 );
             }
         } catch (_error) {}
+    }
+
+    function runTrackBuyDialogHelper() {
+        clearTrackActionHelperHash();
 
         const openBuyDialog = () => {
             const buyButton = Array.from(
@@ -1040,9 +1300,22 @@
         requestId,
         parentOrigin,
     }) {
+        clearTrackActionHelperHash();
+        const helperTarget =
+            window.parent && window.parent !== window
+                ? window.parent
+                : window.opener && !window.opener.closed
+                  ? window.opener
+                  : null;
+        const isTopLevelHelper = window.top === window;
+
         const send = (payload) => {
+            if (!helperTarget) {
+                return;
+            }
+
             try {
-                window.parent.postMessage(
+                helperTarget.postMessage(
                     Object.assign(
                         {
                             type: "bcampx-track-action-result",
@@ -1054,19 +1327,61 @@
                     parentOrigin || "*",
                 );
             } catch (_error) {
-                window.parent.postMessage(
-                    Object.assign(
-                        {
-                            type: "bcampx-track-action-result",
-                            action,
-                            requestId,
-                            ok: false,
-                            error: "Could not reach parent window.",
-                        },
-                        payload || {},
-                    ),
-                    "*",
-                );
+                try {
+                    helperTarget.postMessage(
+                        Object.assign(
+                            {
+                                type: "bcampx-track-action-result",
+                                action,
+                                requestId,
+                                ok: false,
+                                error: "Could not reach parent window.",
+                            },
+                            payload || {},
+                        ),
+                        "*",
+                    );
+                } catch (_nestedError) {}
+            }
+        };
+
+        const renderHelperStatus = (message, tone = "info") => {
+            if (!isTopLevelHelper || !document.body) {
+                return;
+            }
+
+            const existing = document.querySelector(".bcampx__helper-status");
+            if (existing) {
+                existing.remove();
+            }
+
+            const banner = document.createElement("div");
+            banner.className = "bcampx__helper-status";
+            banner.setAttribute("data-tone", tone);
+            banner.textContent = message;
+            banner.style.position = "sticky";
+            banner.style.top = "0";
+            banner.style.zIndex = "2147483647";
+            banner.style.padding = "12px 16px";
+            banner.style.font = "600 14px/1.4 system-ui, -apple-system, sans-serif";
+            banner.style.color = tone === "error" ? "#7f1d1d" : "#0f5132";
+            banner.style.background = tone === "error" ? "#fee2e2" : "#dcfce7";
+            banner.style.borderBottom = `1px solid ${tone === "error" ? "#fecaca" : "#86efac"}`;
+            prependToContainer(document.body || document.documentElement, banner);
+        };
+
+        const finishTopLevelHelper = (message, tone = "info") => {
+            if (!isTopLevelHelper) {
+                return;
+            }
+
+            renderHelperStatus(message, tone);
+            if (window.opener && !window.opener.closed && tone !== "error") {
+                window.setTimeout(() => {
+                    try {
+                        window.close();
+                    } catch (_error) {}
+                }, 900);
             }
         };
 
@@ -1105,13 +1420,25 @@
             const fanTralbumData = pagedataBlob.fan_tralbum_data || {};
             const isWishlisted =
                 !!fanTralbumData.is_wishlisted || !!collectInfo.is_collected;
+            const fanId = resolveFanIdFromPageState(pagedataBlob, collectInfo);
             const crumbKey = isWishlisted
                 ? "uncollect_item_cb"
                 : "collect_item_cb";
             const crumb =
                 typeof crumbs[crumbKey] === "string" ? crumbs[crumbKey] : "";
+            if (!fanId) {
+                send({
+                    ok: false,
+                    error: "Sign in to Bandcamp before using wishlist actions.",
+                });
+                return;
+            }
             if (!crumb) {
-                send({ ok: false, error: "Wishlist crumb is missing." });
+                send({
+                    ok: false,
+                    error:
+                        "This Bandcamp tab looks out of date. Refresh the release page and try again.",
+                });
                 return;
             }
 
@@ -1119,10 +1446,7 @@
                 ? "/uncollect_item_cb"
                 : "/collect_item_cb";
             const payload = new URLSearchParams();
-            payload.set(
-                "fan_id",
-                String(pagedataBlob.identities?.fan?.id || collectInfo.fan_id || ""),
-            );
+            payload.set("fan_id", String(fanId));
             payload.set(
                 "item_id",
                 String(
@@ -1166,6 +1490,11 @@
                     active: !isWishlisted,
                     statusText: !isWishlisted ? "Saved" : "Removed",
                 });
+                finishTopLevelHelper(
+                    !isWishlisted
+                        ? "Saved to your Bandcamp wishlist."
+                        : "Removed from your Bandcamp wishlist.",
+                );
             };
 
             fetch(location.origin + endpoint, {
@@ -1204,6 +1533,12 @@
                                 ? error.message
                                 : "Wishlist request failed.",
                     });
+                    finishTopLevelHelper(
+                        error && error.message
+                            ? error.message
+                            : "Wishlist request failed.",
+                        "error",
+                    );
                 });
             return;
         }
@@ -1230,11 +1565,22 @@
         return !!(host && typeof host[methodName] === "function");
     }
 
+    function isWebExtensionHost() {
+        const host = getExternalHostApi();
+        return !!(host && host.kind === "webextension");
+    }
+
+    function isCustomDomainReleaseUrl(rawUrl) {
+        const releaseUrl = normalizeReleaseUrl(rawUrl || "");
+        return !!(releaseUrl && !isBandcampReleaseUrl(releaseUrl));
+    }
+
     function getHostRequestOptions(baseOptions = {}) {
         return {
             method: baseOptions.method || "GET",
             data: baseOptions.data,
             headers: baseOptions.headers,
+            credentials: baseOptions.credentials,
             timeoutMs: CONFIG.fetchTimeoutMs,
         };
     }
@@ -1272,14 +1618,8 @@
             return;
         }
 
-        finalizePendingTrackActionRequest(data.requestId);
-        setTrackActionButtonPending(pending.button, false);
-        flashTrackActionButton(
-            pending.button,
-            data.ok ? data.statusText || "Done" : "Error",
-        );
         if (data.ok) {
-            pending.resolve(data);
+            completeTrackActionRequest(pending, data.requestId, data);
             return;
         }
 
@@ -1288,7 +1628,11 @@
             origin: pending.origin,
             error: data.error || "Track action failed.",
         });
-        pending.reject(new Error(data.error || "Track action failed."));
+        failTrackActionRequest(
+            pending,
+            data.requestId,
+            new Error(data.error || "Track action failed."),
+        );
     }
 
     function finalizePendingTrackActionRequest(requestId) {
@@ -1311,6 +1655,23 @@
             details,
             at: Date.now(),
         };
+    }
+
+    function completeTrackActionRequest(pending, requestId, result) {
+        finalizePendingTrackActionRequest(requestId);
+        setTrackActionButtonPending(pending.button, false);
+        flashTrackActionButton(
+            pending.button,
+            result && result.statusText ? result.statusText : "Done",
+        );
+        pending.resolve(result);
+    }
+
+    function failTrackActionRequest(pending, requestId, error, flashLabel = "Error") {
+        finalizePendingTrackActionRequest(requestId);
+        setTrackActionButtonPending(pending.button, false);
+        flashTrackActionButton(pending.button, flashLabel);
+        pending.reject(error);
     }
 
     function setupIntersectionObserver() {
@@ -1350,31 +1711,44 @@
             let shouldFullScan = false;
 
             mutations.forEach((mutation) => {
+                if (mutation.type === "attributes") {
+                    const target = mutation.target;
+                    if (!(target instanceof Element)) {
+                        return;
+                    }
+
+                    if (hasPotentialReleaseSignal(target)) {
+                        const story = getStoryRoot(target);
+                        if (story) {
+                            scheduleScan(story);
+                            return;
+                        }
+                    }
+
+                    shouldFullScan = true;
+                    return;
+                }
+
                 Array.from(mutation.addedNodes || []).forEach((node) => {
                     if (!(node instanceof Element)) {
                         return;
                     }
 
-                    if (node.matches("li.story, .story")) {
+                    if (node.matches(FEED_CARD_ROOT_SELECTOR)) {
                         scheduleScan(node);
                         return;
                     }
 
                     const nestedStories = node.querySelectorAll
-                        ? node.querySelectorAll("li.story, .story")
+                        ? node.querySelectorAll(FEED_CARD_ROOT_SELECTOR)
                         : [];
                     if (nestedStories.length) {
                         nestedStories.forEach((story) => scheduleScan(story));
                         return;
                     }
 
-                    if (
-                        node.querySelector &&
-                        node.querySelector(
-                            '[data-item-json], a[href*="/album/"], a[href*="/track/"]',
-                        )
-                    ) {
-                        const story = node.closest("li.story, .story");
+                    if (hasPotentialReleaseSignal(node)) {
+                        const story = getStoryRoot(node);
                         if (story) {
                             scheduleScan(story);
                             return;
@@ -1391,6 +1765,8 @@
         });
 
         STATE.mutationObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ["data-item-json", "href"],
             childList: true,
             subtree: true,
         });
@@ -1398,9 +1774,7 @@
 
     function scheduleScan(root = null) {
         if (root instanceof Element) {
-            const story = root.matches("li.story, .story")
-                ? root
-                : root.closest("li.story, .story");
+            const story = getStoryRoot(root);
             if (story instanceof Element) {
                 STATE.pendingScanRoots.add(story);
             } else {
@@ -1420,22 +1794,119 @@
     function scanForCards() {
         incrementDebugCounter("data-bcampx-scan-count");
         const roots = getScanRoots();
-        roots.forEach((root) => markMalformedCardsInRoot(root));
-        roots.forEach((root) => cleanupSkippedRecommendationCards(root));
-        roots.forEach((root) => scanReleaseLinksInRoot(root));
+        const scannableCards = [];
 
-        mergeAdjacentTrackPurchaseCards(roots);
+        getStoryCardsFromRoots(roots).forEach((card) => {
+            const classification = classifyStoryCard(card);
+            if (classification === "enhance") {
+                scannableCards.push(card);
+            }
+        });
+
+        enhanceScannableCards(scannableCards);
+        mergeAdjacentTrackPurchaseCards(scannableCards);
     }
 
-    function cleanupSkippedRecommendationCards(root) {
-        getMatchingRootOrDescendants(root, "li.story, .story").forEach((card) => {
-            if (!isAlsoBoughtRecommendationCard(card)) {
-                return;
-            }
+    function classifyStoryCard(card) {
+        if (!(card instanceof Element)) {
+            return "ignore";
+        }
 
+        maybeResetRetryableSkippedCard(card);
+
+        if (isAlsoBoughtRecommendationCard(card)) {
+            markStoryCardSkipped(card, {
+                cleanup: true,
+                reason: "also-bought",
+            });
+            return "skip";
+        }
+
+        if (card.closest(EXCLUDED_SECTION_SELECTOR) || !looksLikeFeedCard(card)) {
+            return "ignore";
+        }
+
+        if (isMalformedFeedCard(card)) {
+            markStoryCardSkipped(card, {
+                reason: "malformed",
+                retryable: true,
+            });
+            return "skip";
+        }
+
+        if (isFullDiscographyCard(card)) {
+            markStoryCardSkipped(card, {
+                reason: "full-discography",
+            });
+            return "skip";
+        }
+
+        return "enhance";
+    }
+
+    function markStoryCardSkipped(card, options = {}) {
+        if (!(card instanceof Element)) {
+            return;
+        }
+
+        if (options.cleanup) {
             cleanupEnhancedCard(card);
-            card.setAttribute(ENHANCED_ATTR, "skipped");
-        });
+        }
+
+        card.setAttribute(ENHANCED_ATTR, "skipped");
+        if (options.reason) {
+            card.setAttribute(SKIP_REASON_ATTR, cleanText(options.reason));
+        } else {
+            card.removeAttribute(SKIP_REASON_ATTR);
+        }
+        if (options.retryable) {
+            card.setAttribute(RETRYABLE_SKIP_ATTR, "true");
+        } else {
+            card.removeAttribute(RETRYABLE_SKIP_ATTR);
+        }
+    }
+
+    function maybeResetRetryableSkippedCard(card) {
+        if (!isRetryableSkippedCard(card)) {
+            return false;
+        }
+
+        if (cleanText(card.getAttribute(SKIP_REASON_ATTR)) !== "malformed") {
+            return false;
+        }
+
+        if (
+            isMalformedFeedCard(card) ||
+            isFullDiscographyCard(card) ||
+            isAlsoBoughtRecommendationCard(card)
+        ) {
+            return false;
+        }
+
+        clearStoryCardSkipState(card);
+        clearNodeMemoDeep(card);
+        markDebugState("data-bcampx-last-retry", "malformed-card-recovered");
+        return true;
+    }
+
+    function isRetryableSkippedCard(card) {
+        return Boolean(
+            card instanceof Element &&
+                card.getAttribute(ENHANCED_ATTR) === "skipped" &&
+                card.getAttribute(RETRYABLE_SKIP_ATTR) === "true",
+        );
+    }
+
+    function clearStoryCardSkipState(card) {
+        if (!(card instanceof Element)) {
+            return;
+        }
+
+        if (card.getAttribute(ENHANCED_ATTR) === "skipped") {
+            card.removeAttribute(ENHANCED_ATTR);
+        }
+        card.removeAttribute(SKIP_REASON_ATTR);
+        card.removeAttribute(RETRYABLE_SKIP_ATTR);
     }
 
     function cleanupEnhancedCard(card) {
@@ -1458,6 +1929,40 @@
         setCardController(card, null);
     }
 
+    function clearNodeMemo(node) {
+        if (node && node.__bcampxMemo) {
+            delete node.__bcampxMemo;
+        }
+    }
+
+    function clearNodeMemoDeep(root) {
+        if (!(root instanceof Element)) {
+            return;
+        }
+
+        clearNodeMemo(root);
+        root.querySelectorAll("*").forEach((node) => {
+            clearNodeMemo(node);
+        });
+    }
+
+    function hasPotentialReleaseSignal(node) {
+        if (!(node instanceof Element)) {
+            return false;
+        }
+
+        if (node.matches('[data-item-json], a[href*="/album/"], a[href*="/track/"]')) {
+            return true;
+        }
+
+        return Boolean(
+            node.querySelector &&
+                node.querySelector(
+                    '[data-item-json], a[href*="/album/"], a[href*="/track/"]',
+                ),
+        );
+    }
+
     function getScanRoots() {
         const roots = [];
 
@@ -1476,57 +1981,52 @@
         return roots.length ? roots : [document];
     }
 
-    function scanReleaseLinksInRoot(root) {
-        getMatchingRootOrDescendants(root, RELEASE_LINK_SELECTOR).forEach(
-            (link) => {
-                incrementDebugCounter("data-bcampx-release-link-count");
-                const releaseUrl = normalizeReleaseUrl(link.href);
-                if (!releaseUrl) {
+    function getStoryCardsFromRoots(roots) {
+        const seen = new Set();
+        const cards = [];
+
+        roots
+            .flatMap((root) =>
+                getMatchingRootOrDescendants(root, FEED_CARD_ROOT_SELECTOR),
+            )
+            .forEach((candidate) => {
+                const card = getStoryRoot(candidate);
+                if (!(card instanceof Element) || seen.has(card)) {
                     return;
                 }
 
-                if (!isFanActivityLink(link)) {
-                    markDebugState("data-bcampx-last-skip", "not-fan-activity-link");
-                    return;
-                }
-                incrementDebugCounter("data-bcampx-fan-activity-link-count");
-
-                const card = findCardRoot(link);
-                if (!card) {
-                    markDebugState("data-bcampx-last-skip", "missing-card-root");
-                    return;
-                }
-                incrementDebugCounter("data-bcampx-card-root-count");
-
-                if (card.hasAttribute(ENHANCED_ATTR)) {
+                const parentCard = card.parentElement
+                    ? card.parentElement.closest(FEED_CARD_ROOT_SELECTOR)
+                    : null;
+                if (parentCard && seen.has(parentCard)) {
                     return;
                 }
 
-                if (
-                    card.closest("#sidebar") ||
-                    isFullDiscographyCard(card) ||
-                    isAlsoBoughtRecommendationCard(card) ||
-                    isMalformedFeedCard(card)
-                ) {
-                    markDebugState("data-bcampx-last-skip", "skipped-card");
-                    card.setAttribute(ENHANCED_ATTR, "skipped");
-                    return;
-                }
+                seen.add(card);
+                cards.push(card);
+            });
 
-                enhanceCard(card, releaseUrl);
-            },
-        );
+        return cards;
     }
 
-    function markMalformedCardsInRoot(root) {
-        getMatchingRootOrDescendants(root, "li.story, .story").forEach((card) => {
-            if (
-                card instanceof Element &&
-                !card.hasAttribute(ENHANCED_ATTR) &&
-                isMalformedFeedCard(card)
-            ) {
-                card.setAttribute(ENHANCED_ATTR, "skipped");
+    function enhanceScannableCards(cards) {
+        cards.forEach((card) => {
+            incrementDebugCounter("data-bcampx-card-root-count");
+
+            if (card.hasAttribute(ENHANCED_ATTR)) {
+                return;
             }
+
+            const releaseContext = getCardReleaseRequestContext(card);
+            const releaseUrl = releaseContext.releaseUrl;
+            incrementDebugCounter("data-bcampx-release-link-count");
+            if (!releaseUrl) {
+                markDebugState("data-bcampx-last-skip", "missing-release-url");
+                return;
+            }
+
+            incrementDebugCounter("data-bcampx-fan-activity-link-count");
+            enhanceCard(card, releaseUrl, releaseContext);
         });
     }
 
@@ -1580,18 +2080,7 @@
         );
     }
 
-    function mergeAdjacentTrackPurchaseCards(roots = [document]) {
-        const cards = roots
-            .flatMap((root) => getMatchingRootOrDescendants(root, "li.story, .story"))
-            .filter((card, index, allCards) => {
-                return (
-                    allCards.indexOf(card) === index &&
-                    looksLikeFeedCard(card) &&
-                    !isMalformedFeedCard(card) &&
-                    !card.closest(EXCLUDED_SECTION_SELECTOR)
-                );
-            });
-
+    function mergeAdjacentTrackPurchaseCards(cards = []) {
         cards.forEach((card) => {
             if (card.getAttribute(MERGED_CHILD_ATTR) === "true") {
                 return;
@@ -1615,7 +2104,6 @@
 
     function getTrackPurchaseMergeKey(candidate) {
         return [
-            candidate.parentElement ? "same-parent" : "no-parent",
             candidate.fanKey,
             candidate.activityType,
             candidate.releaseGroupKey,
@@ -1623,13 +2111,16 @@
     }
 
     function findPreviousAdjacentMergeCandidate(candidate) {
-        let previous = candidate.card.previousElementSibling;
-        while (previous) {
-            if (previous.matches && previous.matches("li.story, .story")) {
-                break;
-            }
-            previous = previous.previousElementSibling;
+        const cards = getStoryCardsFromRoots([document]);
+        const currentIndex = cards.indexOf(candidate.card);
+        if (currentIndex <= 0) {
+            return null;
         }
+
+        const previous = cards
+            .slice(0, currentIndex)
+            .reverse()
+            .find((card) => card.getAttribute(MERGED_CHILD_ATTR) !== "true");
 
         if (
             !previous ||
@@ -1654,8 +2145,23 @@
     }
 
     function getTrackPurchaseMergeCandidate(card) {
+        if (!(card instanceof Element)) {
+            return null;
+        }
+
+        const memo = getNodeMemo(card);
+        if (
+            memo &&
+            Object.prototype.hasOwnProperty.call(memo, "trackPurchaseMergeCandidate")
+        ) {
+            return memo.trackPurchaseMergeCandidate;
+        }
+
         const activityType = extractActivityType(card);
         if (activityType !== "bought-track") {
+            if (memo) {
+                memo.trackPurchaseMergeCandidate = null;
+            }
             return null;
         }
 
@@ -1664,26 +2170,41 @@
         const trackTitle = extractTrackTitleFromCard(card);
 
         if (!fanKey || !releaseGroupKey || !trackTitle) {
+            if (memo) {
+                memo.trackPurchaseMergeCandidate = null;
+            }
             return null;
         }
 
-        return {
+        const candidate = {
             card,
-            parentElement: card.parentElement,
             fanKey,
             activityType,
             releaseGroupKey,
             trackTitle,
         };
+
+        if (memo) {
+            memo.trackPurchaseMergeCandidate = candidate;
+        }
+
+        return candidate;
     }
 
     function extractActivityType(card) {
-        const text = normalizedText(card).toLowerCase();
-        if (/bought a track\b/.test(text) || /bought track\b/.test(text)) {
+        const headline = findActivityHeadline(card) || getStoryTitleNode(card) || card;
+        const text = normalizedText(headline).toLowerCase();
+        if (
+            /(?:bought|purchased)\s+a\s+track\b/.test(text) ||
+            /(?:bought|purchased)\s+track\b/.test(text)
+        ) {
             return "bought-track";
         }
 
-        if (/bought an album\b/.test(text) || /bought album\b/.test(text)) {
+        if (
+            /(?:bought|purchased)\s+an\s+album\b/.test(text) ||
+            /(?:bought|purchased)\s+album\b/.test(text)
+        ) {
             return "bought-album";
         }
 
@@ -1695,15 +2216,28 @@
     }
 
     function extractFanKey(card) {
+        if (!(card instanceof Element)) {
+            return "";
+        }
+
+        const memo = getNodeMemo(card);
+        if (memo && Object.prototype.hasOwnProperty.call(memo, "fanKey")) {
+            return memo.fanKey || "";
+        }
+
         const explicitFanLink = card.querySelector(
             ".story-title .fan-name a[href], .story-title a.fan-name[href], .story-title .fan-name[href]",
         );
         if (explicitFanLink && explicitFanLink.href) {
             try {
                 const url = new URL(explicitFanLink.href, window.location.href);
-                return cleanText(
+                const fanKey = cleanText(
                     url.pathname.replace(/^\/+|\/+$/g, ""),
                 ).toLowerCase();
+                if (memo) {
+                    memo.fanKey = fanKey;
+                }
+                return fanKey;
             } catch (_error) {
                 // Fall through to broader extraction.
             }
@@ -1715,9 +2249,13 @@
         if (profileLink && profileLink.href) {
             try {
                 const url = new URL(profileLink.href, window.location.href);
-                return cleanText(
+                const fanKey = cleanText(
                     url.pathname.replace(/^\/+|\/+$/g, ""),
                 ).toLowerCase();
+                if (memo) {
+                    memo.fanKey = fanKey;
+                }
+                return fanKey;
             } catch (_error) {
                 // Fall through to text extraction.
             }
@@ -1727,16 +2265,32 @@
         const actor = extractFeedHeadlineActor(
             headline ? normalizedText(headline) : normalizedText(card),
         );
-        return actor ? actor.toLowerCase() : "";
+        const fanKey = actor ? actor.toLowerCase() : "";
+        if (memo) {
+            memo.fanKey = fanKey;
+        }
+        return fanKey;
     }
 
     function extractFanDisplayName(card) {
+        if (!(card instanceof Element)) {
+            return "This fan";
+        }
+
+        const memo = getNodeMemo(card);
+        if (memo && Object.prototype.hasOwnProperty.call(memo, "fanDisplayName")) {
+            return memo.fanDisplayName || "This fan";
+        }
+
         const explicitFanName = card.querySelector(
             ".story-title .fan-name, .story-title a.fan-name, .story-title .artist-name",
         );
         if (explicitFanName) {
             const text = normalizedText(explicitFanName);
             if (text) {
+                if (memo) {
+                    memo.fanDisplayName = text;
+                }
                 return text;
             }
         }
@@ -1745,17 +2299,51 @@
         const actor = extractFeedHeadlineActor(
             headline ? normalizedText(headline) : normalizedText(card),
         );
-        return actor || "This fan";
+        const displayName = actor || "This fan";
+        if (memo) {
+            memo.fanDisplayName = displayName;
+        }
+        return displayName;
+    }
+
+    function getItemJsonTrackTitle(node) {
+        const parsed = getParsedItemJson(node);
+        return cleanText(
+            (parsed && parsed.item_title) ||
+                (parsed && parsed.track_title) ||
+                (parsed && parsed.title) ||
+                (parsed && parsed.item_name) ||
+                (parsed && parsed.name) ||
+                "",
+        );
     }
 
     function getCardReleaseGroupKey(card) {
-        const albumLink = Array.from(
-            card.querySelectorAll('a[href*="/album/"]'),
-        )
-            .map((link) => normalizeReleaseUrl(link.href))
-            .find(Boolean);
+        if (!(card instanceof Element)) {
+            return "";
+        }
+
+        const memo = getNodeMemo(card);
+        if (memo && Object.prototype.hasOwnProperty.call(memo, "cardReleaseGroupKey")) {
+            return memo.cardReleaseGroupKey || "";
+        }
+
+        const albumLink = getCardAlbumReleaseUrl(card);
         if (albumLink) {
-            return `album:${albumLink}`;
+            const releaseGroupKey = `album:${albumLink}`;
+            if (memo) {
+                memo.cardReleaseGroupKey = releaseGroupKey;
+            }
+            return releaseGroupKey;
+        }
+
+        const itemJsonReleaseUrl = getItemJsonReleaseUrl(card);
+        if (itemJsonReleaseUrl && /(^|\/)album\//.test(itemJsonReleaseUrl)) {
+            const releaseGroupKey = `album:${itemJsonReleaseUrl}`;
+            if (memo) {
+                memo.cardReleaseGroupKey = releaseGroupKey;
+            }
+            return releaseGroupKey;
         }
 
         const releaseLink = Array.from(
@@ -1764,6 +2352,9 @@
             .map((link) => normalizeReleaseUrl(link.href))
             .find(Boolean);
         if (!releaseLink) {
+            if (memo) {
+                memo.cardReleaseGroupKey = "";
+            }
             return "";
         }
 
@@ -1776,7 +2367,11 @@
 
         const artist = extractArtistNameFromCard(card).toLowerCase();
         const artUrl = normalizeMediaUrl(getCardArtUrl(card));
-        return `heuristic:${origin}|${artist}|${artUrl}`;
+        const releaseGroupKey = `heuristic:${origin}|${artist}|${artUrl}`;
+        if (memo) {
+            memo.cardReleaseGroupKey = releaseGroupKey;
+        }
+        return releaseGroupKey;
     }
 
     function extractArtistNameFromCard(card) {
@@ -1812,12 +2407,32 @@
     }
 
     function extractTrackTitleFromCard(card) {
+        if (!(card instanceof Element)) {
+            return "";
+        }
+
+        const memo = getNodeMemo(card);
+        if (memo && Object.prototype.hasOwnProperty.call(memo, "trackTitleFromCard")) {
+            return memo.trackTitleFromCard || "";
+        }
+
         const contentColumn = findContentColumn(card);
         const trackScope = contentColumn || card;
 
         const featuredTrackText = extractFeaturedTrackTitle(trackScope);
         if (featuredTrackText) {
+            if (memo) {
+                memo.trackTitleFromCard = featuredTrackText;
+            }
             return featuredTrackText;
+        }
+
+        const itemJsonTrackTitle = getItemJsonTrackTitle(trackScope);
+        if (itemJsonTrackTitle) {
+            if (memo) {
+                memo.trackTitleFromCard = itemJsonTrackTitle;
+            }
+            return itemJsonTrackTitle;
         }
 
         const explicitTrackLink = Array.from(
@@ -1832,7 +2447,11 @@
             );
         });
         if (explicitTrackLink) {
-            return normalizedText(explicitTrackLink);
+            const trackTitle = normalizedText(explicitTrackLink);
+            if (memo) {
+                memo.trackTitleFromCard = trackTitle;
+            }
+            return trackTitle;
         }
 
         const explicitTitle = trackScope.querySelector(
@@ -1849,6 +2468,9 @@
                     explicitText,
                 )
             ) {
+                if (memo) {
+                    memo.trackTitleFromCard = explicitText;
+                }
                 return explicitText;
             }
         }
@@ -1885,7 +2507,11 @@
             return true;
         });
 
-        return titleCandidate ? normalizedText(titleCandidate) : "";
+        const trackTitle = titleCandidate ? normalizedText(titleCandidate) : "";
+        if (memo) {
+            memo.trackTitleFromCard = trackTitle;
+        }
+        return trackTitle;
     }
 
     function normalizeMediaUrl(value) {
@@ -2114,10 +2740,7 @@
     function normalizeReleaseUrl(rawUrl) {
         try {
             const url = new URL(rawUrl, window.location.href);
-            if (
-                url.hostname !== "bandcamp.com" &&
-                !url.hostname.endsWith(".bandcamp.com")
-            ) {
+            if (url.protocol !== "https:") {
                 return "";
             }
 
@@ -2131,40 +2754,6 @@
         } catch (_error) {
             return "";
         }
-    }
-
-    function findCardRoot(link) {
-        const explicitStory = link.closest("li.story, .story");
-        if (explicitStory) {
-            return explicitStory;
-        }
-
-        let node = link;
-        let fallback = null;
-
-        for (
-            let depth = 0;
-            node && node !== document.body && depth < 10;
-            depth += 1
-        ) {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-                if (!fallback && node.matches("article, li")) {
-                    fallback = node;
-                }
-
-                if (
-                    node.tagName !== "A" &&
-                    node.matches(CARD_SELECTOR) &&
-                    looksLikeFeedCard(node)
-                ) {
-                    return node;
-                }
-            }
-
-            node = node.parentElement;
-        }
-
-        return fallback || link.closest("article, li") || link.parentElement;
     }
 
     function looksLikeFeedCard(node) {
@@ -2193,45 +2782,6 @@
             Boolean(node.querySelector("img")) ||
             normalizedText(node).length > 20;
         return hasUsefulSize && hasCoverOrText;
-    }
-
-    function isFanActivityLink(link) {
-        if (!(link instanceof Element)) {
-            markDebugState("data-bcampx-last-skip", "link-not-element");
-            return false;
-        }
-
-        if (link.closest(EXCLUDED_SECTION_SELECTOR)) {
-            markDebugState("data-bcampx-last-skip", "link-in-excluded-section");
-            return false;
-        }
-
-        if (hasSidebarLikeAncestor(link)) {
-            markDebugState("data-bcampx-last-skip", "link-in-sidebar");
-            return false;
-        }
-
-        const story = link.closest("li.story, .story");
-        if (story) {
-            if (isAlsoBoughtRecommendationCard(story)) {
-                markDebugState("data-bcampx-last-skip", "also-bought-story");
-                return false;
-            }
-            const accepted = isLikelyFanActivityCard(story);
-            if (!accepted) {
-                markDebugState("data-bcampx-last-skip", "story-not-likely-card");
-            }
-            return accepted;
-        }
-
-        const card =
-            link.closest(CARD_SELECTOR) || link.closest("article, li, div");
-        if (card && !isLikelyFanActivityCard(card)) {
-            markDebugState("data-bcampx-last-skip", "card-not-likely");
-            return false;
-        }
-
-        return true;
     }
 
     function hasFanActivitySignals(node) {
@@ -2315,9 +2865,7 @@
     }
 
     function hasExplicitFeedStoryStructure(node) {
-        const story = node.matches("li.story, .story")
-            ? node
-            : node.closest("li.story, .story");
+        const story = getStoryRoot(node);
 
         if (!(story instanceof Element)) {
             return false;
@@ -2371,18 +2919,21 @@
         return false;
     }
 
-    function enhanceCard(card, releaseUrl) {
+    function enhanceCard(card, releaseUrl, releaseRequestContext = null) {
         incrementDebugCounter("data-bcampx-enhance-attempt-count");
-        if (
-            isFullDiscographyCard(card) ||
-            isAlsoBoughtRecommendationCard(card)
-        ) {
+        const fullDiscography = isFullDiscographyCard(card);
+        const alsoBought = isAlsoBoughtRecommendationCard(card);
+        if (fullDiscography || alsoBought) {
             markDebugState("data-bcampx-last-skip", "enhance-guard");
-            card.setAttribute(ENHANCED_ATTR, "skipped");
+            markStoryCardSkipped(card, {
+                reason: fullDiscography ? "full-discography" : "also-bought",
+            });
             return;
         }
 
         card.setAttribute(ENHANCED_ATTR, "true");
+        card.removeAttribute(SKIP_REASON_ATTR);
+        card.removeAttribute(RETRYABLE_SKIP_ATTR);
 
         const shell = document.createElement("section");
         shell.className = "bcampx";
@@ -2414,6 +2965,9 @@
             expanded: false,
             data: null,
             releaseUrl,
+            releaseRequestContext:
+                releaseRequestContext ||
+                getCardReleaseRequestContext(card, releaseUrl),
             fetchAndRender: (options = {}) =>
                 fetchAndRender(
                     controller,
@@ -2740,32 +3294,50 @@
         toggle.disabled = true;
 
         try {
-            const result = await getReleaseData(releaseUrl);
+            const result = await getReleaseData(
+                controller.releaseRequestContext || releaseUrl,
+            );
+            const normalizedData = normalizeReleaseData(result.data);
             controller.loaded = true;
-            controller.data = result.data;
+            controller.data = normalizedData;
 
             renderReleaseData(
                 shell,
                 meta,
                 text,
                 toggle,
-                result.data,
+                normalizedData,
                 releaseUrl,
             );
 
             const shouldExpand =
                 (!options.auto || CONFIG.expandAfterAutoFetch) &&
-                hasExpandableContent(result.data);
+                hasExpandableContent(normalizedData);
             controller.expanded = shouldExpand;
             shell.classList.toggle("bcampx--expanded", shouldExpand);
             updateToggle(toggle, shouldExpand);
-            text.textContent = result.fromCache
-                ? "Extra context loaded from cache"
-                : "Extra context loaded";
+            text.textContent = buildLoadedSummaryText(normalizedData, result);
         } catch (error) {
-            controller.loaded = false;
-            controller.data = null;
-            renderError(meta, text, releaseUrl, error);
+            if (isExtensionCustomDomainReleaseUnsupportedError(error)) {
+                controller.loaded = true;
+                controller.data = createEmptyReleaseData();
+                renderEmpty(meta, text, releaseUrl, {
+                    message:
+                        "This release uses a Bandcamp custom domain. The extension stays limited to bandcamp.com pages, so extra metadata is skipped here.",
+                    summary: "Custom-domain release skipped",
+                });
+            } else if (shouldAbandonReleaseEnhancement(error)) {
+                controller.loaded = true;
+                controller.data = createEmptyReleaseData();
+                renderEmpty(meta, text, releaseUrl, {
+                    message: "Extra metadata is unavailable for this release.",
+                    summary: "No extra context available",
+                });
+            } else {
+                controller.loaded = false;
+                controller.data = null;
+                renderError(controller, meta, text, releaseUrl, error);
+            }
             shell.classList.remove("bcampx--expanded");
             toggle.hidden = true;
         } finally {
@@ -2785,14 +3357,18 @@
         toggle.textContent = expanded ? "Less" : "More";
     }
 
-    async function getReleaseData(releaseUrl) {
-        const cacheKey = getReleaseCacheKey(releaseUrl);
+    async function getReleaseData(releaseInput) {
+        const requestContext = normalizeReleaseRequestContext(releaseInput);
+        const cacheKey = getReleaseCacheKey(requestContext.releaseUrl);
         const cached = await storageGet(cacheKey, null);
+        const normalizedCached =
+            cached && typeof cached === "object"
+                ? normalizeReleaseData(cached)
+                : null;
 
         if (isFreshReleaseCache(cached)) {
-            const normalizedCached = normalizeReleaseData(cached);
             if (!shouldRefreshCachedRelease(cached, normalizedCached)) {
-                return { data: normalizedCached, fromCache: true };
+                return { data: normalizedCached, fromCache: true, stale: false };
             }
         }
 
@@ -2802,14 +3378,32 @@
         }
 
         const request = enqueueReleaseFetch(async () => {
-            const html = await requestHtml(releaseUrl);
-            const data = normalizeReleaseData(
-                parseReleasePage(html, releaseUrl),
-            );
-            const cacheValue = buildReleaseCacheValue(data);
+            try {
+                const resolvedRequest = await resolveReleaseRequestContext(
+                    requestContext,
+                );
+                const html =
+                    typeof resolvedRequest.html === "string"
+                        ? resolvedRequest.html
+                        : await requestHtml(resolvedRequest.fetchUrl);
+                const data = normalizeReleaseData(
+                    parseReleasePage(html, resolvedRequest.releaseUrl),
+                );
+                const cacheValue = buildReleaseCacheValue(data);
 
-            await storageSet(cacheKey, cacheValue);
-            return { data: cacheValue, fromCache: false };
+                await storageSet(cacheKey, cacheValue);
+                return { data: cacheValue, fromCache: false, stale: false };
+            } catch (error) {
+                if (hasVisibleEnhancements(normalizedCached)) {
+                    return {
+                        data: normalizedCached,
+                        fromCache: true,
+                        stale: true,
+                        fallbackError: error,
+                    };
+                }
+                throw error;
+            }
         });
 
         STATE.pendingReleaseRequests.set(cacheKey, request);
@@ -2857,6 +3451,173 @@
         return `${RELEASE_CACHE_PREFIX}${releaseUrl}`;
     }
 
+    function normalizeReleaseRequestContext(releaseInput) {
+        if (releaseInput && typeof releaseInput === "object") {
+            return {
+                releaseUrl: normalizeReleaseUrl(releaseInput.releaseUrl || ""),
+                itemId: firstPositiveNumber(releaseInput.itemId),
+                itemType: normalizeReleaseItemType(
+                    releaseInput.itemType,
+                    releaseInput.releaseUrl || "",
+                ),
+            };
+        }
+
+        return {
+            releaseUrl: normalizeReleaseUrl(releaseInput || ""),
+            itemId: 0,
+            itemType: normalizeReleaseItemType("", releaseInput || ""),
+        };
+    }
+
+    async function resolveReleaseRequestContext(requestContext) {
+        const normalizedContext = normalizeReleaseRequestContext(requestContext);
+        if (isBandcampReleaseUrl(normalizedContext.releaseUrl)) {
+            return {
+                releaseUrl: normalizedContext.releaseUrl,
+                fetchUrl: normalizedContext.releaseUrl,
+            };
+        }
+
+        if (
+            isWebExtensionHost() &&
+            isCustomDomainReleaseUrl(normalizedContext.releaseUrl)
+        ) {
+            throw new Error(
+                "Custom-domain Bandcamp releases are not supported in the extension build.",
+            );
+        }
+
+        let directFetchError = null;
+        try {
+            const directFetchResult =
+                await tryResolveCustomDomainReleaseRequestContext(
+                    normalizedContext,
+                );
+            if (directFetchResult) {
+                return directFetchResult;
+            }
+        } catch (error) {
+            directFetchError = error;
+        }
+
+        const embeddedPlayerUrl = getEmbeddedPlayerRequestUrl(normalizedContext);
+        if (!embeddedPlayerUrl) {
+            if (directFetchError) {
+                throw directFetchError;
+            }
+            throw new Error(
+                "Custom-domain Bandcamp release could not be resolved.",
+            );
+        }
+
+        const embeddedHtml = await requestHtml(embeddedPlayerUrl);
+        const canonicalUrl = extractEmbeddedPlayerCanonicalUrl(embeddedHtml);
+        if (!canonicalUrl) {
+            throw new Error(
+                "Custom-domain Bandcamp release could not be resolved.",
+            );
+        }
+
+        return {
+            releaseUrl: canonicalUrl,
+            fetchUrl: canonicalUrl,
+        };
+    }
+
+    async function tryResolveCustomDomainReleaseRequestContext(requestContext) {
+        const releaseUrl = normalizeReleaseUrl(
+            requestContext && requestContext.releaseUrl,
+        );
+        if (!releaseUrl || isBandcampReleaseUrl(releaseUrl)) {
+            return null;
+        }
+
+        const html = await requestHtml(releaseUrl);
+        return {
+            releaseUrl: extractReleaseCanonicalUrl(html, releaseUrl),
+            fetchUrl: releaseUrl,
+            html,
+        };
+    }
+
+    function getEmbeddedPlayerRequestUrl(requestContext) {
+        const itemId = firstPositiveNumber(requestContext && requestContext.itemId);
+        const itemType = normalizeReleaseItemType(
+            requestContext && requestContext.itemType,
+            requestContext && requestContext.releaseUrl,
+        );
+        if (!itemId || !itemType) {
+            return "";
+        }
+
+        return `https://bandcamp.com/EmbeddedPlayer/v=2/${itemType}=${itemId}/size=large/tracklist=false/artwork=small/`;
+    }
+
+    function extractEmbeddedPlayerCanonicalUrl(html) {
+        const doc = htmlToDocument(html);
+        const shareInput = doc.querySelector("#shareurl");
+        const shareUrl =
+            shareInput && typeof shareInput.getAttribute === "function"
+                ? normalizeReleaseUrl(
+                      shareInput.getAttribute("value") || shareInput.value || "",
+                  )
+                : "";
+        if (isBandcampReleaseUrl(shareUrl)) {
+            return shareUrl;
+        }
+
+        const playerData = parseJsonAttribute(
+            doc.querySelector("script[data-player-data]"),
+            "data-player-data",
+        );
+        const linkback = normalizeReleaseUrl(
+            playerData && playerData.linkback ? playerData.linkback : "",
+        );
+        if (isBandcampReleaseUrl(linkback)) {
+            return linkback;
+        }
+
+        const ogUrl = normalizeReleaseUrl(metaContent(doc, 'meta[property="og:url"]'));
+        if (isBandcampReleaseUrl(ogUrl)) {
+            return ogUrl;
+        }
+
+        return "";
+    }
+
+    function isBandcampReleaseUrl(rawUrl) {
+        try {
+            const url = new URL(rawUrl, window.location.href);
+            return Boolean(
+                url.protocol === "https:" &&
+                    (url.hostname === "bandcamp.com" ||
+                        url.hostname.endsWith(".bandcamp.com")) &&
+                    /(^|\/)(album|track)\//.test(url.pathname),
+            );
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    function extractReleaseCanonicalUrl(html, fallbackUrl = "") {
+        const doc = htmlToDocument(html);
+        const candidates = [
+            attrContent(doc, 'link[rel="canonical"]', "href"),
+            metaContent(doc, 'meta[property="og:url"]'),
+            metaContent(doc, 'meta[name="twitter:url"]'),
+        ];
+
+        for (const candidate of candidates) {
+            const normalized = normalizeReleaseUrl(candidate);
+            if (normalized) {
+                return normalized;
+            }
+        }
+
+        return normalizeReleaseUrl(fallbackUrl);
+    }
+
     function buildReleaseCacheValue(data) {
         return {
             ...data,
@@ -2886,6 +3647,7 @@
                 getExternalHostApi().requestHtml(
                     url,
                     getHostRequestOptions({
+                        credentials: "omit",
                         headers: {
                             Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                         },
@@ -3620,12 +4382,15 @@
     }
 
     function appendReleaseDescription(meta, data) {
-        if (!(data.descriptionHtml || data.description)) {
+        const description = createDescriptionElement(
+            data,
+            "bcampx__description",
+            "div",
+        );
+        if (!description) {
             return;
         }
 
-        const description = createClassedElement("p", "bcampx__description");
-        renderDescriptionContent(description, data);
         meta.append(description);
     }
 
@@ -3634,12 +4399,15 @@
             return;
         }
 
-        const tracks = createClassedElement("ol", "bcampx__tracks");
-        data.tracks.forEach((track) => {
+        const tracks = createTrackListElement(
+            data.tracks,
+            "bcampx__tracks",
+            (track) => {
             const item = document.createElement("li");
             item.textContent = track.title;
-            tracks.append(item);
-        });
+                return item;
+            },
+        );
         meta.append(tracks);
     }
 
@@ -3708,17 +4476,14 @@
             return;
         }
 
-        const tracks = createClassedElement(
-            "ol",
-            "bcampx__tracks bcampx__tracks--slot",
-        );
         const initiallyVisible = Math.min(
             CONFIG.initialVisibleTracks,
             data.tracks.length,
         );
-
-        data.tracks.forEach((track, index) => {
-            tracks.append(
+        const tracks = createTrackListElement(
+            data.tracks,
+            "bcampx__tracks bcampx__tracks--slot",
+            (track, index) =>
                 createSupportedSlotTrackItem(
                     track,
                     index,
@@ -3727,8 +4492,7 @@
                     releaseUrl,
                     purchasedTrackTitles,
                 ),
-            );
-        });
+        );
 
         panel.append(tracks);
 
@@ -3736,18 +4500,14 @@
             return;
         }
 
-        tracks.classList.add("bcampx__tracks--collapsed");
-        const tracksController = createExpandController({
-            className: "bcampx__slot-expand",
+        attachExpandableSection({
+            parent: panel,
+            target: tracks,
+            collapsedClassName: "bcampx__tracks--collapsed",
+            controllerClassName: "bcampx__slot-expand",
             collapsedLabel: `Show all ${data.tracks.length} tracks`,
             expandedLabel: "Show less",
-            onToggle: (expanded) => {
-                tracks.classList.toggle("bcampx__tracks--collapsed", !expanded);
-            },
-        });
-        panel.append(tracksController.button);
-        autoExpandState.steps.push({
-            controller: tracksController,
+            autoExpandState,
             shouldAutoExpand:
                 data.tracks.length <= CONFIG.initialVisibleTracks + 3,
         });
@@ -3878,7 +4638,11 @@
     }
 
     function renderSupportedSlotDescription(panel, data, autoExpandState) {
-        if (!(data.descriptionHtml || data.description)) {
+        const description = createDescriptionElement(
+            data,
+            "bcampx__description bcampx__description--slot",
+        );
+        if (!description) {
             return;
         }
 
@@ -3886,15 +4650,10 @@
             "div",
             "bcampx__description-block",
         );
-        const description = createClassedElement(
-            "div",
-            "bcampx__description bcampx__description--slot",
-        );
-        renderDescriptionContent(description, data);
         descriptionBlock.append(description);
         panel.append(descriptionBlock);
 
-        window.requestAnimationFrame(() => {
+        scheduleNextFrame(() => {
             if (!description.isConnected) {
                 return;
             }
@@ -3902,21 +4661,15 @@
             normalizeDescriptionContent(description);
             description.classList.add("bcampx__description--collapsed");
             if (description.scrollHeight > description.clientHeight + 6) {
-                const descriptionController = createExpandController({
-                    className:
+                attachExpandableSection({
+                    parent: descriptionBlock,
+                    target: description,
+                    collapsedClassName: "bcampx__description--collapsed",
+                    controllerClassName:
                         "bcampx__slot-expand bcampx__slot-expand--description",
                     collapsedLabel: "Show more",
                     expandedLabel: "Show less",
-                    onToggle: (expanded) => {
-                        description.classList.toggle(
-                            "bcampx__description--collapsed",
-                            !expanded,
-                        );
-                    },
-                });
-                descriptionBlock.append(descriptionController.button);
-                autoExpandState.steps.push({
-                    controller: descriptionController,
+                    autoExpandState,
                     shouldAutoExpand:
                         cleanText(description.textContent || "").length <=
                         CONFIG.maxDescriptionLength * 0.5,
@@ -3938,6 +4691,50 @@
         const facts = createClassedElement("div", "bcampx__slot-subhead");
         facts.textContent = subhead;
         panel.append(facts);
+    }
+
+    function attachExpandableSection({
+        parent,
+        target,
+        collapsedClassName,
+        controllerClassName,
+        collapsedLabel,
+        expandedLabel,
+        autoExpandState,
+        shouldAutoExpand,
+    }) {
+        if (!parent || !target || !collapsedClassName) {
+            return null;
+        }
+
+        target.classList.add(collapsedClassName);
+        const controller = createExpandController({
+            className: controllerClassName,
+            collapsedLabel,
+            expandedLabel,
+            onToggle: (expanded) => {
+                target.classList.toggle(collapsedClassName, !expanded);
+            },
+        });
+        parent.append(controller.button);
+        registerAutoExpandStep(autoExpandState, controller, shouldAutoExpand);
+        return controller;
+    }
+
+    function registerAutoExpandStep(state, controller, shouldAutoExpand) {
+        if (
+            !state ||
+            !Array.isArray(state.steps) ||
+            !controller ||
+            typeof controller.expand !== "function"
+        ) {
+            return;
+        }
+
+        state.steps.push({
+            controller,
+            shouldAutoExpand: Boolean(shouldAutoExpand),
+        });
     }
 
     function createExpandController({
@@ -3989,7 +4786,7 @@
     }
 
     function scheduleSupportedSlotAutoExpand(panel, state) {
-        window.requestAnimationFrame(() =>
+        scheduleNextFrame(() =>
             maybeAutoExpandSupportedSlot(panel, state),
         );
     }
@@ -4020,24 +4817,74 @@
         }
     }
 
-    function renderError(meta, text, releaseUrl, error) {
+    function renderError(controller, meta, text, releaseUrl, error) {
         meta.textContent = "";
         meta.hidden = false;
+        const errorMessage = normalizeDisplayErrorMessage(error);
         const message = createClassedElement("p", "bcampx__error");
-        message.textContent = `Could not load release details: ${error && error.message ? error.message : "unknown error"}`;
+        message.textContent = `Could not load release details: ${errorMessage}`;
 
-        meta.append(message, createOpenReleaseLink(releaseUrl));
+        meta.append(message);
+        if (controller && typeof controller.fetchAndRender === "function") {
+            meta.append(createRetryReleaseButton(controller));
+        }
+        if (shouldOfferReleasePageRefresh(errorMessage)) {
+            meta.append(createRefreshReleasePageButton());
+        }
+        meta.append(createOpenReleaseLink(releaseUrl));
         text.textContent = "Extra context failed to load";
     }
 
-    function renderEmpty(meta, text, releaseUrl) {
+    function shouldAbandonReleaseEnhancement(error) {
+        const message =
+            error && error.message ? String(error.message) : "";
+        return /Custom-domain Bandcamp release could not be resolved\./i.test(
+            message,
+        );
+    }
+
+    function isExtensionCustomDomainReleaseUnsupportedError(error) {
+        const message =
+            error && error.message ? String(error.message) : "";
+        return /Custom-domain Bandcamp releases are not supported in the extension build\./i.test(
+            message,
+        );
+    }
+
+    function normalizeDisplayErrorMessage(error) {
+        const rawMessage =
+            error && error.message ? String(error.message) : "unknown error";
+
+        if (
+            /Extension context invalidated/i.test(rawMessage) ||
+            /Receiving end does not exist/i.test(rawMessage) ||
+            /Could not establish connection/i.test(rawMessage) ||
+            /message port closed/i.test(rawMessage)
+        ) {
+            return "Extension was updated or reloaded. Refresh this Bandcamp tab and try again.";
+        }
+
+        if (/storage\.local\./i.test(rawMessage)) {
+            return "Extension storage is unavailable. Refresh the tab or restart the browser and try again.";
+        }
+
+        return rawMessage;
+    }
+
+    function renderEmpty(meta, text, releaseUrl, options = {}) {
         meta.textContent = "";
         meta.hidden = false;
         const message = createClassedElement("p", "bcampx__empty");
-        message.textContent = "No extra metadata found for this release.";
+        message.textContent =
+            options && options.message
+                ? String(options.message)
+                : "No extra metadata found for this release.";
 
         meta.append(message, createOpenReleaseLink(releaseUrl));
-        text.textContent = "No extra context available";
+        text.textContent =
+            options && options.summary
+                ? String(options.summary)
+                : "No extra context available";
     }
 
     function createClassedElement(tagName, className) {
@@ -4055,6 +4902,77 @@
         link.rel = "noopener noreferrer";
         link.textContent = "Open release";
         return link;
+    }
+
+    function createRetryReleaseButton(controller) {
+        return createActionButton("Retry", async (button) => {
+            if (!controller || controller.loading) {
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = "Retrying...";
+            try {
+                await controller.fetchAndRender({ auto: false });
+            } finally {
+                button.disabled = false;
+                button.textContent = "Retry";
+            }
+        });
+    }
+
+    function createRefreshReleasePageButton() {
+        return createActionButton("Refresh page", (button) => {
+            button.disabled = true;
+            button.textContent = "Refreshing...";
+            window.location.reload();
+        });
+    }
+
+    function createActionButton(label, onClick) {
+        const button = createClassedElement("button", "bcampx__action");
+        button.type = "button";
+        button.textContent = label;
+        button.addEventListener("click", () => {
+            if (typeof onClick === "function") {
+                onClick(button);
+            }
+        });
+        return button;
+    }
+
+    function shouldOfferReleasePageRefresh(errorMessage) {
+        const message = cleanText(errorMessage).toLowerCase();
+        return Boolean(
+            message &&
+                (/refresh this bandcamp tab/.test(message) ||
+                    /extension was updated or reloaded/.test(message) ||
+                    /storage is unavailable/.test(message)),
+        );
+    }
+
+    function createDescriptionElement(data, className, tagName = "div") {
+        if (!(data && (data.descriptionHtml || data.description))) {
+            return null;
+        }
+
+        const description = createClassedElement(tagName, className);
+        renderDescriptionContent(description, data);
+        return description;
+    }
+
+    function createTrackListElement(tracks, className, renderItem) {
+        const list = createClassedElement("ol", className);
+        (tracks || []).forEach((track, index) => {
+            const item =
+                typeof renderItem === "function"
+                    ? renderItem(track, index)
+                    : null;
+            if (item instanceof Node) {
+                list.append(item);
+            }
+        });
+        return list;
     }
 
     function renderDescriptionContent(container, data) {
@@ -4102,14 +5020,35 @@
         );
         const root = parsed.body.firstElementChild;
         if (!root) {
-            container.replaceChildren();
+            replaceElementChildren(container);
             return;
         }
 
         const nodes = Array.from(root.childNodes).map((node) =>
             document.importNode(node, true),
         );
-        container.replaceChildren(...nodes);
+        replaceElementChildren(container, nodes);
+    }
+
+    function replaceElementChildren(container, nodes = []) {
+        if (!container) {
+            return;
+        }
+
+        if (typeof container.replaceChildren === "function") {
+            container.replaceChildren(...nodes);
+            return;
+        }
+
+        while (container.firstChild) {
+            container.removeChild(container.firstChild);
+        }
+
+        nodes.forEach((node) => {
+            if (node) {
+                container.appendChild(node);
+            }
+        });
     }
 
     function createSvgNode(tagName, attributes) {
@@ -4139,6 +5078,41 @@
         return svg;
     }
 
+    function createPlayerButton({
+        text = "",
+        className = "",
+        iconName = "",
+        ariaLabel = "",
+        ariaPressed = "",
+        ariaHaspopup = "",
+        onClick = null,
+    }) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = className || "bcampx-player-button";
+
+        if (iconName) {
+            button.appendChild(createPlayerIcon(iconName));
+        } else {
+            button.textContent = text;
+        }
+
+        if (ariaLabel) {
+            button.setAttribute("aria-label", ariaLabel);
+        }
+        if (ariaPressed) {
+            button.setAttribute("aria-pressed", ariaPressed);
+        }
+        if (ariaHaspopup) {
+            button.setAttribute("aria-haspopup", ariaHaspopup);
+        }
+        if (typeof onClick === "function") {
+            button.addEventListener("click", onClick);
+        }
+
+        return button;
+    }
+
     function playSharedTrack(button, track, data, releaseUrl) {
         playTrackForCard(
             findPlaybackCard(button),
@@ -4166,7 +5140,10 @@
                 releaseUrl,
             );
             const data =
-                availableData || (await getReleaseData(releaseUrl)).data;
+                availableData ||
+                (await getReleaseData(
+                    getCardReleaseRequestContext(card, releaseUrl),
+                )).data;
             const track = findPlayableTrackByTitle(data, trackTitle);
             if (!track || !track.streamUrl) {
                 return;
@@ -4263,17 +5240,19 @@
 
         setTrackActionButtonPending(button, true);
         try {
-            if (action === "wishlist" || action === "basket") {
-                if (action === "wishlist") {
-                    await requestTrackActionViaHelper(action, trackUrl, button);
-                } else {
-                    openTrackBuyWindow(trackUrl);
-                    setTrackActionButtonPending(button, false);
-                    flashTrackActionButton(button, "Opened");
-                }
-            } else {
-                throw new Error("Track action is disabled.");
+            if (action === "wishlist") {
+                await requestTrackActionViaHelper(action, trackUrl, button);
+                return;
             }
+
+            if (action === "basket") {
+                openTrackBuyWindow(trackUrl);
+                setTrackActionButtonPending(button, false);
+                flashTrackActionButton(button, "Opened");
+                return;
+            }
+
+            throw new Error("Track action is disabled.");
         } catch (_error) {
             setTrackActionButtonPending(button, false);
             flashTrackActionButton(button, "Error");
@@ -4284,67 +5263,47 @@
         setupTrackActionMessageBridge();
 
         return new Promise((resolve, reject) => {
-            const origin = getTrackActionOrigin(trackUrl);
-            if (!origin) {
+            const request = createTrackActionRequestContext({
+                action,
+                trackUrl,
+                button,
+                resolve,
+                reject,
+            });
+            if (!request) {
                 reject(new Error("Invalid track URL."));
                 return;
             }
 
-            const requestId = createTrackActionRequestId();
-            const iframe = createTrackActionIframe();
-            const helperUrl = buildTrackActionHelperUrl(
-                trackUrl,
-                action,
-                requestId,
-            );
-            const timeoutId = scheduleTrackActionTimeout({
-                action,
-                trackUrl,
-                origin,
-                requestId,
-                reject,
-            });
-
-            attachTrackActionIframeErrorHandler(iframe, {
-                action,
-                trackUrl,
-                origin,
-                requestId,
-                reject,
-            });
-            registerPendingTrackActionRequest({
-                requestId,
-                action,
-                button,
-                iframe,
-                origin,
-                timeoutId,
-                resolve,
-                reject,
-            });
-
-            iframe.src = helperUrl;
-            document.body.appendChild(iframe);
+            request.timeoutId = scheduleTrackActionTimeout(request);
+            attachTrackActionIframeErrorHandler(request.iframe, request);
+            registerPendingTrackActionRequest(request);
+            request.iframe.src = request.helperUrl;
+            appendToDocument(request.iframe);
         });
     }
 
     function openTrackBuyWindow(trackUrl) {
         const helperUrl = buildTrackActionHelperUrl(trackUrl, "buy-dialog");
-        const openedWindow = window.open(
-            helperUrl,
-            "_blank",
-            "noopener,noreferrer",
-        );
+        const openedWindow = openTrackActionWindow(helperUrl);
         if (openedWindow && !openedWindow.closed) {
             return;
         }
 
+        openTrackActionWindowWithLink(helperUrl);
+    }
+
+    function openTrackActionWindow(helperUrl) {
+        return window.open(helperUrl, "_blank", "noopener,noreferrer");
+    }
+
+    function openTrackActionWindowWithLink(helperUrl) {
         const link = document.createElement("a");
         link.href = helperUrl;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.style.display = "none";
-        document.body.appendChild(link);
+        appendToDocument(link);
         link.click();
         link.remove();
     }
@@ -4368,6 +5327,35 @@
         return iframe;
     }
 
+    function createTrackActionRequestContext({
+        action,
+        trackUrl,
+        button,
+        resolve,
+        reject,
+    }) {
+        const origin = getTrackActionOrigin(trackUrl);
+        if (!origin) {
+            return null;
+        }
+
+        const requestId = createTrackActionRequestId();
+        const iframe = createTrackActionIframe();
+        return {
+            requestId,
+            action,
+            button,
+            iframe,
+            origin,
+            trackUrl,
+            helperUrl: buildTrackActionHelperUrl(trackUrl, action, requestId),
+            timeoutId: 0,
+            fallbackAttempted: false,
+            resolve,
+            reject,
+        };
+    }
+
     function buildTrackActionHelperUrl(
         trackUrl,
         action,
@@ -4388,47 +5376,106 @@
         }
     }
 
-    function scheduleTrackActionTimeout({
-        action,
-        trackUrl,
-        origin,
-        requestId,
-        reject,
-    }) {
+    function scheduleTrackActionTimeout(pending, timeoutMs = 12000) {
         return window.setTimeout(() => {
-            const pending = finalizePendingTrackActionRequest(requestId);
-            if (!pending) {
+            const activePending = STATE.pendingTrackActionRequests.get(
+                pending.requestId,
+            );
+            if (!activePending) {
                 return;
             }
+
+            if (attemptTrackActionWindowFallback(activePending, "timeout")) {
+                return;
+            }
+
             recordTrackActionDiagnostic("action-timeout", {
-                action,
-                trackUrl,
-                origin,
+                action: activePending.action,
+                trackUrl: activePending.trackUrl,
+                origin: activePending.origin,
             });
-            reject(new Error(`${action} request timed out.`));
-        }, 12000);
+            failTrackActionRequest(
+                activePending,
+                activePending.requestId,
+                new Error(`${activePending.action} request timed out.`),
+            );
+        }, timeoutMs);
+    }
+
+    function attemptTrackActionWindowFallback(pending, reason) {
+        if (
+            !pending ||
+            pending.action !== "wishlist" ||
+            pending.fallbackAttempted
+        ) {
+            return false;
+        }
+
+        const attemptedOpen = openTrackActionHelperWindow(pending.helperUrl);
+        if (!attemptedOpen) {
+            return false;
+        }
+
+        pending.fallbackAttempted = true;
+        window.clearTimeout(pending.timeoutId);
+        pending.timeoutId = scheduleTrackActionTimeout(pending, 15000);
+        if (pending.iframe && pending.iframe.parentNode) {
+            pending.iframe.remove();
+        }
+        recordTrackActionDiagnostic("window-fallback-opened", {
+            action: pending.action,
+            trackUrl: pending.trackUrl,
+            origin: pending.origin,
+            reason,
+        });
+        return true;
     }
 
     function attachTrackActionIframeErrorHandler(
         iframe,
-        { action, trackUrl, origin, requestId, reject },
+        pending,
     ) {
         iframe.addEventListener(
             "error",
             () => {
-                const pending = finalizePendingTrackActionRequest(requestId);
-                if (!pending) {
+                const activePending = STATE.pendingTrackActionRequests.get(
+                    pending.requestId,
+                );
+                if (!activePending) {
                     return;
                 }
                 recordTrackActionDiagnostic("iframe-load-error", {
-                    action,
-                    trackUrl,
-                    origin,
+                    action: pending.action,
+                    trackUrl: pending.trackUrl,
+                    origin: pending.origin,
                 });
-                reject(new Error(`${action} helper could not load.`));
+                if (attemptTrackActionWindowFallback(activePending, "iframe-load-error")) {
+                    return;
+                }
+                failTrackActionRequest(
+                    activePending,
+                    activePending.requestId,
+                    new Error(`${pending.action} helper could not load.`),
+                );
             },
             { once: true },
         );
+    }
+
+    function openTrackActionHelperWindow(helperUrl) {
+        const openedWindow = window.open(helperUrl, "_blank");
+        if (openedWindow && !openedWindow.closed) {
+            return true;
+        }
+
+        const link = document.createElement("a");
+        link.href = helperUrl;
+        link.target = "_blank";
+        link.style.display = "none";
+        appendToDocument(link);
+        link.click();
+        link.remove();
+        return true;
     }
 
     function registerPendingTrackActionRequest(pending) {
@@ -4479,18 +5526,23 @@
         const endpoint = context.isWishlisted
             ? "/uncollect_item_cb"
             : "/collect_item_cb";
+        const fanId = Number(context.fanId || context.collectInfo.fan_id || 0) || 0;
+        if (!fanId) {
+            throw new Error(
+                "Sign in to Bandcamp before using wishlist actions.",
+            );
+        }
         const crumb =
             resolveCrumbValue(context && context.crumbs, crumbKey) ||
             resolveCrumbValue(getCurrentPageCrumbs(), crumbKey);
         if (!crumb) {
-            throw new Error("Wishlist crumb is missing.");
+            throw new Error(
+                "This Bandcamp tab looks out of date. Refresh the release page and try again.",
+            );
         }
 
         const payload = new URLSearchParams();
-        payload.set(
-            "fan_id",
-            String(context.fanId || context.collectInfo.fan_id || ""),
-        );
+        payload.set("fan_id", String(fanId));
         payload.set(
             "item_id",
             String(
@@ -4559,6 +5611,20 @@
         }
 
         return "";
+    }
+
+    function resolveFanIdFromPageState(pagedataBlob, collectInfo = {}) {
+        return Number(
+            (pagedataBlob &&
+                pagedataBlob.identities &&
+                pagedataBlob.identities.fan &&
+                pagedataBlob.identities.fan.id) ||
+                (pagedataBlob &&
+                    pagedataBlob.fan_info &&
+                    pagedataBlob.fan_info.fan_id) ||
+                collectInfo.fan_id ||
+                0,
+        ) || 0;
     }
 
     function getCollectItemType(value) {
@@ -4819,16 +5885,14 @@
             return;
         }
 
-        if (
-            !STATE.activeTrackCard ||
-            !document.contains(STATE.activeTrackCard)
-        ) {
+        const activeCard = getConnectedActiveTrackCard();
+        if (!activeCard) {
             return;
         }
 
         event.preventDefault();
         event.stopPropagation();
-        scrollCardIntoView(STATE.activeTrackCard, STATE.activeTrack);
+        scrollCardIntoView(activeCard, STATE.activeTrack);
     }
 
     function setActiveTrackCard(card) {
@@ -4850,16 +5914,19 @@
         scheduleUiSync(cardArtUrl);
     }
 
+    function getConnectedActiveTrackCard() {
+        return STATE.activeTrackCard && document.contains(STATE.activeTrackCard)
+            ? STATE.activeTrackCard
+            : null;
+    }
+
     function syncCoverPlaybackState() {
         if (STATE.coverPlaybackStateNode) {
             STATE.coverPlaybackStateNode.classList.remove("playing", "paused");
             STATE.coverPlaybackStateNode = null;
         }
 
-        const card =
-            STATE.activeTrackCard && document.contains(STATE.activeTrackCard)
-                ? STATE.activeTrackCard
-                : null;
+        const card = getConnectedActiveTrackCard();
         if (!card) {
             return;
         }
@@ -4927,7 +5994,7 @@
             return;
         }
 
-        STATE.uiSyncFrame = window.requestAnimationFrame(() => {
+        STATE.uiSyncFrame = scheduleNextFrame(() => {
             STATE.uiSyncFrame = 0;
             const queuedArtUrl = STATE.pendingUiSyncCardArtUrl || "";
             STATE.pendingUiSyncCardArtUrl = "";
@@ -5025,13 +6092,17 @@
 
         const audio = STATE.sharedAudio;
         if (!audio || !STATE.activeTrack || !STATE.activeReleaseData) {
-            navigator.mediaSession.playbackState = "none";
+            try {
+                navigator.mediaSession.playbackState = "none";
+            } catch (_error) {}
             return;
         }
 
-        navigator.mediaSession.playbackState = audio.paused
-            ? "paused"
-            : "playing";
+        try {
+            navigator.mediaSession.playbackState = audio.paused
+                ? "paused"
+                : "playing";
+        } catch (_error) {}
     }
 
     function findTrackIndex(tracks, track) {
@@ -5162,6 +6233,8 @@
             STATE.playerHost.remove();
         }
 
+        STATE.playerSettingsOpen = false;
+
         const host = document.createElement("div");
         host.id = "bcampx-player-host";
         host.style.all = "initial";
@@ -5182,47 +6255,46 @@
         const controls = document.createElement("div");
         controls.className = "bcampx-player-controls";
 
-        const prevButton = document.createElement("button");
-        prevButton.type = "button";
-        prevButton.className = "bcampx-player-button";
-        prevButton.textContent = "Previous";
-        prevButton.addEventListener("click", playPreviousTrack);
+        const prevButton = createPlayerButton({
+            text: "Previous",
+            className: "bcampx-player-button",
+            onClick: playPreviousTrack,
+        });
 
-        const nextButton = document.createElement("button");
-        nextButton.type = "button";
-        nextButton.className = "bcampx-player-button";
-        nextButton.textContent = "Next";
-        nextButton.addEventListener("click", playNextTrack);
+        const nextButton = createPlayerButton({
+            text: "Next",
+            className: "bcampx-player-button",
+            onClick: playNextTrack,
+        });
 
-        const releaseButton = document.createElement("button");
-        releaseButton.type = "button";
-        releaseButton.className =
-            "bcampx-player-button bcampx-player-button--circle";
-        releaseButton.appendChild(createPlayerIcon("open"));
-        releaseButton.setAttribute("aria-label", "Open release");
-        releaseButton.addEventListener("click", openActiveRelease);
+        const releaseButton = createPlayerButton({
+            className: "bcampx-player-button bcampx-player-button--circle",
+            iconName: "open",
+            ariaLabel: "Open release",
+            onClick: openActiveRelease,
+        });
 
-        const favoriteButton = document.createElement("button");
-        favoriteButton.type = "button";
-        favoriteButton.className =
-            "bcampx-player-button bcampx-player-button--circle bcampx-player-favorite";
-        favoriteButton.appendChild(createPlayerIcon("favorite"));
-        favoriteButton.setAttribute("aria-label", "Add to wishlist");
-        favoriteButton.setAttribute("aria-pressed", "false");
-        favoriteButton.addEventListener("click", toggleActiveWishlist);
+        const favoriteButton = createPlayerButton({
+            className:
+                "bcampx-player-button bcampx-player-button--circle bcampx-player-favorite",
+            iconName: "favorite",
+            ariaLabel: "Add to wishlist",
+            ariaPressed: "false",
+            onClick: toggleActiveWishlist,
+        });
 
         const settingsWrap = document.createElement("div");
         settingsWrap.className = "bcampx-player-settings";
 
-        const settingsButton = document.createElement("button");
-        settingsButton.type = "button";
-        settingsButton.className =
-            "bcampx-player-button bcampx-player-button--circle bcampx-player-settings-toggle";
-        settingsButton.appendChild(createPlayerIcon("settings"));
-        settingsButton.setAttribute("aria-label", "Open settings");
-        settingsButton.setAttribute("aria-haspopup", "menu");
+        const settingsButton = createPlayerButton({
+            className:
+                "bcampx-player-button bcampx-player-button--circle bcampx-player-settings-toggle",
+            iconName: "settings",
+            ariaLabel: "Open settings",
+            ariaHaspopup: "menu",
+            onClick: togglePlayerSettingsMenu,
+        });
         settingsButton.setAttribute("aria-expanded", "false");
-        settingsButton.addEventListener("click", togglePlayerSettingsMenu);
 
         const settingsMenu = document.createElement("div");
         settingsMenu.className = "bcampx-player-settings-menu";
@@ -5302,7 +6374,7 @@
 
         shell.append(controls, meta, nativeAudio);
         shadowRoot.append(shell);
-        document.body.append(host);
+        appendToDocument(host);
 
         STATE.playerUi = {
             host,
@@ -5312,6 +6384,7 @@
             nextButton,
             favoriteButton,
             releaseButton,
+            settingsWrap,
             settingsButton,
             settingsMenu,
             trackRowActionsSettingInput: trackRowActionsSetting.input,
@@ -5375,6 +6448,19 @@
         attachSharedAudioToPlayer(ui.nativeAudio, audio);
         syncFavoriteButtonState();
         syncPlayerSettingsMenu();
+    }
+
+    function setFavoriteButtonState(button, active) {
+        if (!button) {
+            return;
+        }
+
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+        button.setAttribute(
+            "aria-label",
+            active ? "Remove from wishlist" : "Add to wishlist",
+        );
     }
 
     function togglePlayerSettingsMenu(event) {
@@ -5601,7 +6687,7 @@
             return null;
         }
 
-        const cards = Array.from(document.querySelectorAll("li.story, .story"));
+        const cards = getStoryCardsFromRoots([document]);
         const currentIndex = cards.indexOf(currentCard);
         if (currentIndex < 0) {
             return null;
@@ -5660,7 +6746,9 @@
             return available;
         }
 
-        const result = await getReleaseData(releaseUrl);
+        const result = await getReleaseData(
+            getCardReleaseRequestContext(card, releaseUrl),
+        );
         const controller = getCardController(card);
         if (controller) {
             controller.loaded = true;
@@ -5724,14 +6812,12 @@
     }
 
     function scrollToActiveTrackCard() {
-        if (
-            !STATE.activeTrackCard ||
-            !document.contains(STATE.activeTrackCard)
-        ) {
+        const activeCard = getConnectedActiveTrackCard();
+        if (!activeCard) {
             return;
         }
 
-        scrollCardIntoView(STATE.activeTrackCard, STATE.activeTrack);
+        scrollCardIntoView(activeCard, STATE.activeTrack);
     }
 
     function attachSharedAudioToPlayer(container, audio) {
@@ -6105,16 +7191,17 @@
     }
 
     function findActiveWishlistControl() {
-        if (!STATE.activeTrackCard) {
+        const activeCard = getConnectedActiveTrackCard();
+        if (!activeCard) {
             return null;
         }
 
         const collectRoot =
-            STATE.activeTrackCard.querySelector(".collect-item") ||
-            STATE.activeTrackCard.querySelector(
+            activeCard.querySelector(".collect-item") ||
+            activeCard.querySelector(
                 ".tralbum-wrapper-collect-controls",
             ) ||
-            STATE.activeTrackCard;
+            activeCard;
 
         if (!collectRoot) {
             return null;
@@ -6192,15 +7279,7 @@
 
         const wishlistControl = findActiveWishlistControl();
         const active = isWishlistActive(wishlistControl);
-        ui.favoriteButton.classList.toggle("active", active);
-        ui.favoriteButton.setAttribute(
-            "aria-pressed",
-            active ? "true" : "false",
-        );
-        ui.favoriteButton.setAttribute(
-            "aria-label",
-            active ? "Remove from wishlist" : "Add to wishlist",
-        );
+        setFavoriteButtonState(ui.favoriteButton, active);
     }
 
     function toggleActiveWishlist() {
@@ -6213,15 +7292,7 @@
         if (ui && ui.favoriteButton) {
             const nextActive =
                 ui.favoriteButton.getAttribute("aria-pressed") !== "true";
-            ui.favoriteButton.classList.toggle("active", nextActive);
-            ui.favoriteButton.setAttribute(
-                "aria-pressed",
-                nextActive ? "true" : "false",
-            );
-            ui.favoriteButton.setAttribute(
-                "aria-label",
-                nextActive ? "Remove from wishlist" : "Add to wishlist",
-            );
+            setFavoriteButtonState(ui.favoriteButton, nextActive);
         }
 
         wishlistControl.click();
@@ -6688,6 +7759,28 @@
         text-decoration: underline;
       }
 
+      .bcampx__action {
+        display: inline-block;
+        margin: 8px 10px 0 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #4085b6;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .bcampx__action:hover {
+        text-decoration: underline;
+      }
+
+      .bcampx__action:disabled {
+        cursor: default;
+        opacity: 0.6;
+        text-decoration: none;
+      }
+
       .bcampx__error,
       .bcampx__empty {
         margin: 0 0 6px;
@@ -6705,7 +7798,7 @@
         if (canUseExternalHostMethod("storageGet")) {
             return Promise.resolve(
                 getExternalHostApi().storageGet(key, fallback),
-            );
+            ).catch(() => fallback);
         }
 
         try {
@@ -6721,7 +7814,9 @@
 
     function storageSet(key, value) {
         if (canUseExternalHostMethod("storageSet")) {
-            return Promise.resolve(getExternalHostApi().storageSet(key, value));
+            return Promise.resolve(
+                getExternalHostApi().storageSet(key, value),
+            ).catch(() => {});
         }
 
         try {
@@ -7036,21 +8131,43 @@
     }
 
     function buildSummaryText(data) {
+        const normalizedData = normalizeReleaseData(data);
         const parts = [];
-        if (data.description) {
+        if (normalizedData.description) {
             parts.push("Description");
         }
-        if (data.tracks && data.tracks.length) {
-            parts.push(`${data.tracks.length} tracks`);
+        if (normalizedData.tracks && normalizedData.tracks.length) {
+            parts.push(`${normalizedData.tracks.length} tracks`);
         }
         return parts.length ? parts.join(" · ") : "Extra context loaded";
     }
 
+    function buildLoadedSummaryText(data, result) {
+        const summary = buildSummaryText(data);
+        if (!(result && result.fromCache)) {
+            return summary;
+        }
+
+        if (result.stale) {
+            return summary === "Extra context loaded"
+                ? "Extra context loaded from cached fallback"
+                : `${summary} · cached fallback`;
+        }
+
+        return summary === "Extra context loaded"
+            ? "Extra context loaded from cache"
+            : `${summary} · cached`;
+    }
+
     function hasExpandableContent(data) {
-        return Boolean(data.tracks && data.tracks.length);
+        return Boolean(data && data.tracks && data.tracks.length);
     }
 
     function hasVisibleEnhancements(data) {
+        if (!data || typeof data !== "object") {
+            return false;
+        }
+
         return Boolean(
             formatReleaseDate(data.releaseDate) ||
             data.location ||

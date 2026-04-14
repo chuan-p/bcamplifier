@@ -1,6 +1,6 @@
 # Extension Release Guide
 
-This document is the release checklist and submission prep for the WebExtension builds of Bandcamplifer.
+This document is the release checklist and submission prep for the WebExtension builds of Bandcamplifier.
 
 ## Current Artifacts
 
@@ -88,7 +88,7 @@ Notes:
 
 Name:
 
-- `Bandcamplifer`
+- `Bandcamplifier`
 
 Short summary:
 
@@ -96,7 +96,7 @@ Short summary:
 
 Long description:
 
-`Bandcamplifer improves the Bandcamp fan feed with richer release metadata, inline tracklists, playback controls, wishlist shortcuts, and quicker access to Bandcamp's native purchase flow. It is designed for people who spend time browsing their feed and want more context without opening every release in a new tab.`
+`Bandcamplifier improves the Bandcamp fan feed with richer release metadata, inline tracklists, playback controls, wishlist shortcuts, and quicker access to Bandcamp's native purchase flow. It is designed for people who spend time browsing their feed and want more context without opening every release in a new tab.`
 
 Highlights:
 
@@ -123,6 +123,7 @@ Why they are needed:
 - Release, track, and purchase flows live on `*.bandcamp.com`.
 - Wishlist and buy helpers need access to the real Bandcamp release-page context.
 - `all_frames` is intentional because user-initiated helper actions can run inside Bandcamp iframes.
+- Bandcamp label custom domains are intentionally unsupported in the extension build so host access can stay limited to Bandcamp-owned domains.
 
 ## Privacy And Behavior Notes
 
@@ -144,7 +145,7 @@ Suggested reviewer note:
 ## Remaining Decisions
 
 - Firefox add-on ID:
-  - current manifest value is `{6c7370e1-e763-4806-8659-3cc872a45ac4}`
+  - current manifest value is `{87e7e243-a29e-4f97-9315-1cfd4c115a00}`
   - a GUID is being used intentionally to avoid naming collisions and domain-ownership assumptions
 - Support URL:
   - GitHub repository URL is `https://github.com/chuan-p/bcamplifier`
@@ -159,7 +160,7 @@ The Firefox manifest now assumes AMO submission against Firefox desktop `140.0+`
 
 Current `browser_specific_settings.gecko` values:
 
-- `id`: `{6c7370e1-e763-4806-8659-3cc872a45ac4}`
+- `id`: `{87e7e243-a29e-4f97-9315-1cfd4c115a00}`
 - `strict_min_version`: `140.0`
 - `data_collection_permissions.required`:
   - `authenticationInfo`

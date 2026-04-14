@@ -4,7 +4,7 @@ This file contains copy you can paste into Chrome Web Store and AMO listing form
 
 ## Name
 
-`Bandcamplifer`
+`Bandcamplifier`
 
 ## Short Summary
 
@@ -12,7 +12,7 @@ This file contains copy you can paste into Chrome Web Store and AMO listing form
 
 ## Long Description
 
-`Bandcamplifer improves the Bandcamp fan feed with richer release metadata, readable inline tracklists, persistent playback controls, wishlist shortcuts, and quicker access to Bandcamp's native purchase flow. It is built for people who browse their feed often and want more context without opening every release in a separate tab.`
+`Bandcamplifier improves the Bandcamp fan feed with richer release metadata, readable inline tracklists, persistent playback controls, wishlist shortcuts, and quicker access to Bandcamp's native purchase flow. It is built for people who browse their feed often and want more context without opening every release in a separate tab.`
 
 `The extension loads release information directly into feed cards, keeps a player visible while you browse, and makes common actions easier to reach. It stays focused on the Bandcamp experience rather than replacing it.`
 

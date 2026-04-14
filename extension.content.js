@@ -28,6 +28,7 @@
             method: options.method || "GET",
             headers: options.headers,
             body: options.data,
+            credentials: options.credentials,
             timeoutMs: options.timeoutMs,
         }).then((payload) => {
             const response = getSuccessfulFetchResponse(payload);
@@ -42,6 +43,7 @@
             method: options.method || "GET",
             headers: options.headers,
             body: options.data,
+            credentials: options.credentials,
             timeoutMs: options.timeoutMs,
         }).then((payload) => {
             const response = getSuccessfulFetchResponse(payload);
@@ -56,10 +58,12 @@
 
     function getSuccessfulFetchResponse(payload) {
         if (!payload || payload.ok !== true || !payload.response) {
-            throw new Error(
-                payload && payload.error
-                    ? payload.error
-                    : "Network request failed.",
+            throw normalizeExtensionError(
+                new Error(
+                    payload && payload.error
+                        ? payload.error
+                        : "Network request failed.",
+                ),
             );
         }
 
@@ -88,12 +92,18 @@
     function sendRuntimeMessage(message) {
         if (typeof runtimeApi.runtime.sendMessage !== "function") {
             return Promise.reject(
-                new Error("Extension runtime messaging is unavailable."),
+                normalizeExtensionError(
+                    new Error("Extension runtime messaging is unavailable."),
+                ),
             );
         }
 
         if (runtimeApi.kind === "browser") {
-            return Promise.resolve(runtimeApi.runtime.sendMessage(message));
+            return Promise.resolve(runtimeApi.runtime.sendMessage(message)).catch(
+                (error) => {
+                    throw normalizeExtensionError(error);
+                },
+            );
         }
 
         return new Promise((resolve, reject) => {
@@ -101,7 +111,7 @@
                 const error =
                     runtimeApi.runtime && runtimeApi.runtime.lastError;
                 if (error) {
-                    reject(new Error(error.message));
+                    reject(normalizeExtensionError(error));
                     return;
                 }
 
@@ -114,12 +124,16 @@
         const storage = runtimeApi.storage && runtimeApi.storage.local;
         if (!storage || typeof storage[methodName] !== "function") {
             return Promise.reject(
-                new Error(`storage.local.${methodName} is unavailable.`),
+                normalizeExtensionError(
+                    new Error(`storage.local.${methodName} is unavailable.`),
+                ),
             );
         }
 
         if (runtimeApi.kind === "browser") {
-            return Promise.resolve(storage[methodName](payload));
+            return Promise.resolve(storage[methodName](payload)).catch((error) => {
+                throw normalizeExtensionError(error);
+            });
         }
 
         return new Promise((resolve, reject) => {
@@ -127,13 +141,37 @@
                 const error =
                     runtimeApi.runtime && runtimeApi.runtime.lastError;
                 if (error) {
-                    reject(new Error(error.message));
+                    reject(normalizeExtensionError(error));
                     return;
                 }
 
                 resolve(result);
             });
         });
+    }
+
+    function normalizeExtensionError(error) {
+        const message =
+            error && error.message ? String(error.message) : String(error || "");
+
+        if (
+            /Extension context invalidated/i.test(message) ||
+            /Receiving end does not exist/i.test(message) ||
+            /Could not establish connection/i.test(message) ||
+            /message port closed/i.test(message)
+        ) {
+            return new Error(
+                "Extension was updated or reloaded. Refresh this Bandcamp tab and try again.",
+            );
+        }
+
+        if (/storage\.local\./i.test(message)) {
+            return new Error(
+                "Extension storage is unavailable. Refresh the tab or restart the browser and try again.",
+            );
+        }
+
+        return error instanceof Error ? error : new Error(message || "Extension error.");
     }
 
     function getExtensionApi() {

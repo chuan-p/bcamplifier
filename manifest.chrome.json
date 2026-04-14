@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Bandcamplifer",
-  "version": "0.1.159",
+  "name": "Bandcamplifier",
+  "version": "0.1.175",
   "description": "Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.",
   "homepage_url": "https://github.com/chuan-p/bcamplifier",
   "icons": {

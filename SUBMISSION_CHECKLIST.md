@@ -97,7 +97,7 @@ Suggested submission flow:
 3. Create a new add-on submission
 4. Upload `dist/bcamplifier-firefox.xpi`
 5. Keep the current Firefox ID unless AMO review asks for a change:
-   - `{6c7370e1-e763-4806-8659-3cc872a45ac4}`
+   - `{87e7e243-a29e-4f97-9315-1cfd4c115a00}`
 6. Fill the listing using `STORE_LISTING.md`
 7. Upload `assets/store/store-screenshot-real-02.png`
 8. Paste or host the privacy policy from `PRIVACY_POLICY.md`

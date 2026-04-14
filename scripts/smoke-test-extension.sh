@@ -35,59 +35,12 @@ openssl req \
     -nodes \
     -subj "/CN=bandcamp.com" >/dev/null 2>&1
 
-python3 - "$ROOT_DIR" "$PORT" "$CERT_DIR/cert.pem" "$CERT_DIR/key.pem" >"$SERVER_LOG" 2>&1 <<'PY' &
-import ssl
-import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-
-root_dir, port, cert_path, key_path = sys.argv[1:5]
-fixtures_dir = Path(root_dir) / "fixtures" / "extension"
-feed_html = (fixtures_dir / "feed.html").read_text(encoding="utf-8").replace(
-    "__PORT__", port
-)
-release_html = (fixtures_dir / "release.html").read_text(encoding="utf-8").replace(
-    "__PORT__", port
-)
-
-
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        host = (self.headers.get("Host") or "").split(":", 1)[0]
-
-        if host == "bandcamp.com" and self.path == "/feed":
-            self.respond(feed_html)
-            return
-
-        if host == "fixture.bandcamp.com" and self.path == "/album/synthetic-release":
-            self.respond(release_html)
-            return
-
-        if host == "fixture.bandcamp.com" and self.path.startswith("/audio/"):
-            self.respond("", content_type="audio/mpeg")
-            return
-
-        self.send_response(404)
-        self.end_headers()
-
-    def log_message(self, format, *args):
-        return
-
-    def respond(self, body, content_type="text/html; charset=utf-8"):
-        payload = body.encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
-
-
-httpd = ThreadingHTTPServer(("127.0.0.1", int(port)), Handler)
-context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-context.load_cert_chain(certfile=cert_path, keyfile=key_path)
-httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
-httpd.serve_forever()
-PY
+python3 "$ROOT_DIR/scripts/serve-smoke-fixture.py" \
+    "$ROOT_DIR" \
+    extension \
+    "$PORT" \
+    "$CERT_DIR/cert.pem" \
+    "$CERT_DIR/key.pem" >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
 cleanup() {
@@ -107,13 +60,17 @@ const { chromium } = require("playwright");
 
 const [extensionDir, testUrl] = process.argv.slice(2);
 const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), "bcampx-smoke-"));
+const releaseUrl = (() => {
+  const parsed = new URL(testUrl);
+  return `https://fixture.bandcamp.com:${parsed.port}/album/synthetic-release`;
+})();
 
 const checks = [
   ["data-bcampx-host", "webextension", "extension content host bridge initialized"],
   ["data-bcampx-script-loaded", "true", "shared core booted"],
   ["data-bcampx-page-kind", "feed", "page recognized as feed"],
   ["data-bcampx-init-state", "ready", "feed initializer finished"],
-  ["data-bcampx-enhanced-count", "1", "one card enhanced"],
+  ["data-bcampx-enhanced-count", "2", "two cards enhanced"],
 ];
 
 (async () => {
@@ -124,7 +81,7 @@ const checks = [
       ignoreHTTPSErrors: true,
       args: [
         "--ignore-certificate-errors",
-        `--host-resolver-rules=MAP bandcamp.com 127.0.0.1, MAP fixture.bandcamp.com 127.0.0.1, EXCLUDE localhost`,
+        `--host-resolver-rules=MAP bandcamp.com 127.0.0.1, MAP fixture.bandcamp.com 127.0.0.1, MAP shop.fixture.example 127.0.0.1, EXCLUDE localhost`,
         `--disable-extensions-except=${extensionDir}`,
         `--load-extension=${extensionDir}`,
       ],
@@ -136,7 +93,13 @@ const checks = [
       () =>
         document.documentElement.getAttribute("data-bcampx-host") === "webextension" &&
         document.documentElement.getAttribute("data-bcampx-init-state") === "ready" &&
-        document.documentElement.getAttribute("data-bcampx-enhanced-count") === "1",
+        document.documentElement.getAttribute("data-bcampx-enhanced-count") === "2" &&
+        document.querySelectorAll("#fixture-main-card .bcampx").length === 1 &&
+        document.querySelectorAll("#fixture-delayed-card .bcampx").length === 1 &&
+        document.querySelectorAll("#fixture-sidebar-card .bcampx").length === 0 &&
+        (document.querySelector("#fixture-main-card .bcampx__facts")?.textContent || "").includes("2024") &&
+        (document.querySelector("#fixture-main-card .bcampx__facts")?.textContent || "").includes("Shanghai") &&
+        (document.querySelector("#fixture-delayed-card .bcampx__empty")?.textContent || "").includes("custom domain"),
       { timeout: 15000 },
     );
 
@@ -148,13 +111,64 @@ const checks = [
         .map(([, , label]) => label);
     }, checks);
 
-    const content = await page.content();
-    if (!content.includes("Track One")) {
-      missing.push("tracklist rendered");
+    const cardState = await page.evaluate(() => ({
+      main: document.querySelectorAll("#fixture-main-card .bcampx").length,
+      delayed: document.querySelectorAll("#fixture-delayed-card .bcampx").length,
+      sidebar: document.querySelectorAll("#fixture-sidebar-card .bcampx").length,
+      mainFacts:
+        document.querySelector("#fixture-main-card .bcampx__facts")?.textContent || "",
+      mainTrackTitles: Array.from(
+        document.querySelectorAll("#fixture-main-card .bcampx__tracks li"),
+      ).map((node) => node.textContent || ""),
+      delayedMessage:
+        document.querySelector("#fixture-delayed-card .bcampx__empty")?.textContent || "",
+    }));
+    if (cardState.main !== 1) {
+      missing.push("main feed card enhanced");
     }
-    if (!content.includes("Loading extra context")) {
-      missing.push("extension enhancement shell rendered");
+    if (cardState.delayed !== 1) {
+      missing.push("delayed feed card recovered and enhanced");
     }
+    if (cardState.sidebar !== 0) {
+      missing.push("sidebar card remained filtered");
+    }
+    if (!cardState.mainFacts.includes("2024") || !cardState.mainFacts.includes("Shanghai")) {
+      missing.push("main feed card rendered release facts");
+    }
+    if (!cardState.mainTrackTitles.includes("Track One")) {
+      missing.push("main feed card rendered tracklist");
+    }
+    if (!/custom domain/i.test(cardState.delayedMessage)) {
+      missing.push("custom-domain release showed limitation message");
+    }
+
+    const releasePage = await context.newPage();
+    await releasePage.goto(releaseUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 15000,
+    });
+    await releasePage.waitForFunction(
+      () =>
+        document.documentElement.getAttribute("data-bcampx-host") === "webextension" &&
+        document.documentElement.getAttribute("data-bcampx-script-loaded") === "true" &&
+        document.documentElement.getAttribute("data-bcampx-page-kind") === "other",
+      { timeout: 15000 },
+    );
+    const releaseChecks = await releasePage.evaluate(() => ({
+      host: document.documentElement.getAttribute("data-bcampx-host"),
+      loaded: document.documentElement.getAttribute("data-bcampx-script-loaded"),
+      pageKind: document.documentElement.getAttribute("data-bcampx-page-kind"),
+    }));
+    if (releaseChecks.host !== "webextension") {
+      missing.push("bandcamp release page host bridge initialized");
+    }
+    if (releaseChecks.loaded !== "true") {
+      missing.push("bandcamp release page core booted");
+    }
+    if (releaseChecks.pageKind !== "other") {
+      missing.push("bandcamp release page recognized as non-feed page");
+    }
+    await releasePage.close();
 
     console.log("chrome_smoke_mode=playwright");
     console.log("chrome_smoke_fixture=" + (missing.length ? "failed" : "passed"));
@@ -163,7 +177,7 @@ const checks = [
       for (const label of missing) {
         console.log("missing=" + label);
       }
-      console.log(content);
+      console.log(JSON.stringify(cardState, null, 2));
       process.exitCode = 1;
     }
   } catch (error) {

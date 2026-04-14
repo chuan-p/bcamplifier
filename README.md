@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="assets/icons/icon-1024.png" alt="Bandcamplifer icon" width="180" height="180" />
+  <img src="assets/icons/icon-1024.png" alt="Bandcamplifier icon" width="180" height="180" />
 </div>
 
-# Bandcamplifer
+# Bandcamplifier
 
-Bandcamplifer is an open source userscript and browser extension that makes the Bandcamp fan feed much more usable. It pulls release context into feed cards, shows inline tracklists, adds playback controls, and keeps Bandcamp-native wishlist and buy shortcuts close at hand. Made by [chuan](https://www.instagram.com/chuan_p/) with heavy use of Codex.
+Bandcamplifier is an open source userscript and browser extension that makes the Bandcamp fan feed much more usable. It pulls release context into feed cards, shows inline tracklists, adds playback controls, and keeps Bandcamp-native wishlist and buy shortcuts close at hand. Made by [chuan](https://www.instagram.com/chuan_p/) with heavy use of Codex.
 
-![Bandcamplifer storefront screenshot](assets/store/store-screenshot-real-02.png)
+![Bandcamplifier storefront screenshot](assets/store/store-screenshot-real-02.png)
 
 ## Highlights
 
@@ -31,7 +31,7 @@ Bandcamplifer is an open source userscript and browser extension that makes the 
 
 ### Userscript
 
-Bandcamplifer ships as a Tampermonkey userscript through the public Bandcamplifer release you distribute. For local testing or self-hosting, the repository release file is [`bcamplifier.user.js`](./bcamplifier.user.js).
+Bandcamplifier ships as a Tampermonkey userscript through the public Bandcamplifier release you distribute. For local testing or self-hosting, the repository release file is [`bcamplifier.user.js`](./bcamplifier.user.js).
 
 The release userscript:
 
@@ -122,6 +122,7 @@ node --check bcamplifier.user.js
 ./scripts/check-extension-scope.sh
 ./scripts/build-extension.sh
 ./scripts/smoke-test-extension.sh
+./scripts/smoke-test-firefox.sh
 ./scripts/test-feed-fixture.sh
 ```
 
@@ -129,6 +130,7 @@ The verification helpers are:
 
 - [`scripts/check-extension-scope.sh`](./scripts/check-extension-scope.sh): locks extension scope to the intended Bandcamp URLs
 - [`scripts/smoke-test-extension.sh`](./scripts/smoke-test-extension.sh): checks that the Chrome build loads without manifest-level errors
+- [`scripts/smoke-test-firefox.sh`](./scripts/smoke-test-firefox.sh): installs the Firefox package temporarily and verifies the shared core against a local HTTPS fixture
 - [`scripts/test-feed-fixture.sh`](./scripts/test-feed-fixture.sh): serves a local fixture and verifies that the shared core injects enhancement UI
 
 ## Configuration

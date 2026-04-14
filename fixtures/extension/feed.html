@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bandcamplifer Extension Fixture</title>
+    <title>Bandcamplifier Extension Fixture</title>
     <style>
       body {
         margin: 0;
@@ -16,9 +16,12 @@
       .fixture-shell {
         max-width: 860px;
         margin: 0 auto;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 24px;
       }
 
-      .story {
+      .feed-item {
         list-style: none;
         margin: 0;
         padding: 20px;
@@ -61,12 +64,16 @@
       .tag-line {
         color: #4b5563;
       }
+
+      aside {
+        display: block;
+      }
     </style>
   </head>
   <body>
     <div class="fixture-shell">
-      <ol>
-        <li class="story">
+      <main>
+        <article id="fixture-main-card" class="feed-item">
           <div class="story-title">
             <a class="fan-name" href="https://bandcamp.com:__PORT__/testfan"
               >Test Fan</a
@@ -106,8 +113,98 @@
               </div>
             </div>
           </div>
-        </li>
-      </ol>
+        </article>
+
+        <article id="fixture-delayed-card" class="feed-item">
+          <div class="story-title">
+            <a class="fan-name" href="https://bandcamp.com:__PORT__/delayedfan"
+              >Delayed Fan</a
+            >
+            bought
+            <span class="item-link">Delayed Release</span>
+          </div>
+
+          <div class="story-innards">
+            <div
+              class="story-body"
+              data-item-json='{"item_id":321,"item_type":"album","item_url":"https://shop.fixture.example:__PORT__/album/synthetic-release"}'
+            >
+              <div class="tralbum-wrapper">
+                <div class="art">
+                  <img
+                    src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+                    alt="Delayed fixture art"
+                  />
+                </div>
+
+                <div class="tralbum-wrapper-col1">
+                  <div>featured track: Track One</div>
+                  <div class="tag-line">tags: delayed, fixture-pop</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </main>
+
+      <aside>
+        <article id="fixture-sidebar-card" class="feed-item">
+          <div class="story-title">
+            <a class="fan-name" href="https://bandcamp.com:__PORT__/sidebarfan"
+              >Sidebar Fan</a
+            >
+            bought
+            <a
+              class="item-link"
+              href="https://shop.fixture.example:__PORT__/album/sidebar-release"
+              >Sidebar Release</a
+            >
+          </div>
+          <div class="story-innards">
+            <div class="story-body">
+              <div class="tralbum-wrapper">
+                <div class="art">
+                  <img
+                    src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+                    alt="Sidebar art"
+                  />
+                </div>
+
+                <div class="tralbum-wrapper-col1">
+                  <a
+                    class="item-link"
+                    href="https://shop.fixture.example:__PORT__/album/sidebar-release"
+                    >Sidebar Release</a
+                  >
+                  <div>featured track: Ignore Me</div>
+                  <a
+                    class="buy-link"
+                    href="https://shop.fixture.example:__PORT__/album/sidebar-release"
+                    >buy now</a
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </aside>
     </div>
+
+    <script>
+      window.setTimeout(() => {
+        const delayedColumn = document.querySelector(
+          "#fixture-delayed-card .tralbum-wrapper-col1",
+        );
+        if (!delayedColumn) {
+          return;
+        }
+
+        const link = document.createElement("a");
+        link.className = "item-link";
+        link.href = "https://shop.fixture.example:__PORT__/album/synthetic-release";
+        link.textContent = "Synthetic Release";
+        delayedColumn.insertBefore(link, delayedColumn.firstChild || null);
+      }, 250);
+    </script>
   </body>
 </html>

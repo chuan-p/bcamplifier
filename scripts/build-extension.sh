@@ -41,11 +41,14 @@ build_target() {
 }
 
 mkdir -p "$DIST_DIR"
+cp "$ROOT_DIR/bcamplifier.user.js" "$DIST_DIR/bcamplifier.user.js"
 build_target chrome manifest.chrome.json zip
 build_target firefox manifest.firefox.json xpi
 
 printf 'Built extension targets:\n'
 printf '  %s\n' "$DIST_DIR/chrome" "$DIST_DIR/firefox"
+printf 'Built userscript:\n'
+printf '  %s\n' "$DIST_DIR/bcamplifier.user.js"
 
 if command -v zip >/dev/null 2>&1; then
     printf 'Built packages:\n'

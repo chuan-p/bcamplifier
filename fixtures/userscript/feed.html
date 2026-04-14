@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Bandcamplifier Feed Fixture</title>
+    <title>Bandcamplifier Userscript Fixture</title>
     <meta property="og:site_name" content="Bandcamp" />
     <style>
       body {
@@ -80,17 +80,20 @@
             bought
             <a
               class="item-link"
-              href="https://fixture.bandcamp.com/album/synthetic-release?from=fannewrel"
+              href="https://shop.fixture.example:__PORT__/album/synthetic-release"
               >Synthetic Release</a
             >
           </div>
 
           <div class="story-innards">
-            <div class="story-body">
+            <div
+              class="story-body"
+              data-item-json='{"item_id":321,"item_type":"album","item_url":"https://shop.fixture.example:__PORT__/album/synthetic-release"}'
+            >
               <div class="tralbum-wrapper">
                 <div class="art">
                   <img
-                    src="https://dummyimage.com/320x320/d1d5db/111827.png&text=Fixture"
+                    src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
                     alt="Fixture art"
                   />
                 </div>
@@ -98,47 +101,16 @@
                 <div class="tralbum-wrapper-col1">
                   <a
                     class="item-link"
-                    href="https://fixture.bandcamp.com/album/synthetic-release?from=fannewrel"
+                    href="https://shop.fixture.example:__PORT__/album/synthetic-release"
                     >Synthetic Release</a
                   >
                   <div>featured track: Track One</div>
                   <div class="tag-line">tags: synthwave, fixture-pop</div>
                   <a
                     class="buy-link"
-                    href="https://fixture.bandcamp.com/album/synthetic-release?from=fannewrel"
+                    href="https://shop.fixture.example:__PORT__/album/synthetic-release"
                     >buy now</a
                   >
-                </div>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article id="fixture-delayed-card" class="feed-item">
-          <div class="story-title">
-            <a class="fan-name" href="https://bandcamp.com/delayedfan"
-              >Delayed Fan</a
-            >
-            bought
-            <span class="item-link">Delayed Release</span>
-          </div>
-
-          <div class="story-innards">
-            <div
-              class="story-body"
-              data-item-json='{"item_id":321,"item_type":"album","item_url":"https://fixture.bandcamp.com/album/synthetic-release"}'
-            >
-              <div class="tralbum-wrapper">
-                <div class="art">
-                  <img
-                    src="https://dummyimage.com/320x320/c7d2fe/111827.png&text=Delayed"
-                    alt="Delayed fixture art"
-                  />
-                </div>
-
-                <div class="tralbum-wrapper-col1">
-                  <div>featured track: Track One</div>
-                  <div class="tag-line">tags: delayed, fixture-pop</div>
                 </div>
               </div>
             </div>
@@ -155,7 +127,7 @@
             bought
             <a
               class="item-link"
-              href="https://shop.fixture.example/album/sidebar-release"
+              href="https://shop.fixture.example:__PORT__/album/sidebar-release"
               >Sidebar Release</a
             >
           </div>
@@ -164,20 +136,21 @@
               <div class="tralbum-wrapper">
                 <div class="art">
                   <img
-                    src="https://dummyimage.com/320x320/e5e7eb/111827.png&text=Sidebar"
+                    src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
                     alt="Sidebar art"
                   />
                 </div>
+
                 <div class="tralbum-wrapper-col1">
                   <a
                     class="item-link"
-                    href="https://shop.fixture.example/album/sidebar-release"
+                    href="https://shop.fixture.example:__PORT__/album/sidebar-release"
                     >Sidebar Release</a
                   >
                   <div>featured track: Ignore Me</div>
                   <a
                     class="buy-link"
-                    href="https://shop.fixture.example/album/sidebar-release"
+                    href="https://shop.fixture.example:__PORT__/album/sidebar-release"
                     >buy now</a
                   >
                 </div>
@@ -190,65 +163,75 @@
 
     <script>
       (() => {
-        const releaseUrl =
+        const canonicalReleaseUrl =
           "https://fixture.bandcamp.com/album/synthetic-release";
+        const embeddedPlayerUrl =
+          "https://bandcamp.com/EmbeddedPlayer/v=2/album=321/size=large/tracklist=false/artwork=small/";
+        const embeddedPlayerHtml = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta property="og:url" content="${canonicalReleaseUrl}" />
+  </head>
+  <body>
+    <input id="shareurl" value="${canonicalReleaseUrl}" />
+  </body>
+</html>`;
         const releaseHtml = `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <title>Synthetic Release | Fixture Artist</title>
-    <meta property="og:image" content="https://dummyimage.com/640x640/cbd5e1/111827.png&text=Synthetic+Release" />
+    <meta property="og:site_name" content="Bandcamp" />
+    <meta property="og:image" content="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
   </head>
   <body>
     <div
-      data-tralbum='{"current":{"title":"Synthetic Release","release_date":"2024-01-02","about":"A synthetic release used to validate the extension port against a feed fixture.","id":321,"type":"album","band_id":654},"album_title":"Synthetic Release","artist":"Fixture Artist","album_release_date":"2024-01-02","trackinfo":[{"title":"Track One","track_id":"1","file":{"mp3-128":"https://example.com/track-one.mp3"},"duration":123,"title_link":"https://fixture.bandcamp.com/track/track-one"},{"title":"Track Two","track_id":"2","file":{"mp3-128":"https://example.com/track-two.mp3"},"duration":156,"title_link":"https://fixture.bandcamp.com/track/track-two"}]}'
+      data-tralbum='{"current":{"title":"Synthetic Release","release_date":"2024-01-02","about":"A synthetic release used to validate the userscript GM bridge.","id":321,"type":"album","band_id":654},"album_title":"Synthetic Release","artist":"Fixture Artist","album_release_date":"2024-01-02","trackinfo":[{"title":"Track One","track_id":"1","file":{"mp3-128":"https://fixture.bandcamp.com/audio/track-one.mp3"},"duration":123,"title_link":"https://fixture.bandcamp.com/track/track-one"},{"title":"Track Two","track_id":"2","file":{"mp3-128":"https://fixture.bandcamp.com/audio/track-two.mp3"},"duration":156,"title_link":"https://fixture.bandcamp.com/track/track-two"}]}'
     ></div>
     <div id="band-name-location">
       <span class="location">Shanghai</span>
     </div>
     <div class="tralbum-about">
-      <p>A synthetic release used to validate the extension port against a feed fixture.</p>
+      <p>A synthetic release used to validate the userscript GM bridge.</p>
     </div>
   </body>
 </html>`;
 
+        const responseBodies = new Map([
+          [embeddedPlayerUrl, embeddedPlayerHtml],
+          [canonicalReleaseUrl, releaseHtml],
+        ]);
         const storage = new Map();
 
-        globalThis.__BCAMPX_HOST__ = {
-          kind: "webextension",
-          requestHtml: async (url) => {
-            if (url === releaseUrl) {
-              return releaseHtml;
-            }
-
-            throw new Error(`Unexpected fixture request for ${url}`);
-          },
-          requestJson: async () => {
-            throw new Error("requestJson is not used in this fixture");
-          },
-          storageGet: async (key, fallback) =>
-            storage.has(key) ? storage.get(key) : fallback,
-          storageSet: async (key, value) => {
-            storage.set(key, value);
-          },
+        globalThis.GM_getValue = (key, fallback) =>
+          storage.has(key) ? storage.get(key) : fallback;
+        globalThis.GM_setValue = (key, value) => {
+          storage.set(key, value);
         };
-
-        window.setTimeout(() => {
-          const delayedColumn = document.querySelector(
-            "#fixture-delayed-card .tralbum-wrapper-col1",
-          );
-          if (!delayedColumn) {
-            return;
-          }
-
-          const link = document.createElement("a");
-          link.className = "item-link";
-          link.href = releaseUrl;
-          link.textContent = "Synthetic Release";
-          delayedColumn.insertBefore(link, delayedColumn.firstChild || null);
-        }, 250);
+        globalThis.GM_xmlhttpRequest = (options = {}) => {
+          const url = String(options.url || "");
+          const body = responseBodies.get(url);
+          window.setTimeout(() => {
+            if (!body) {
+              if (typeof options.onerror === "function") {
+                options.onerror(new Error(`Unexpected GM request for ${url}`));
+              }
+              return;
+            }
+            if (typeof options.onload === "function") {
+              options.onload({
+                status: 200,
+                responseText: body,
+              });
+            }
+          }, 0);
+          return {
+            abort() {},
+          };
+        };
       })();
     </script>
-    <script src="/bcamplifier.user.js"></script>
+    <script src="/dist/bcamplifier.user.js"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@ This file is written for Chrome Web Store reviewers and for release prep.
 
 ## Single Purpose
 
-Bandcamplifer has one purpose: improve the Bandcamp fan feed with richer release context and faster Bandcamp-native actions. It only runs on Bandcamp pages needed for that workflow.
+Bandcamplifier has one purpose: improve the Bandcamp fan feed with richer release context and faster Bandcamp-native actions. It only runs on Bandcamp pages needed for that workflow.
 
 ## Permissions
 
@@ -24,6 +24,7 @@ Why host access is needed:
 - Bandcamp release and track pages live on `*.bandcamp.com`
 - user-initiated wishlist and buy helpers run inside real Bandcamp release-page contexts
 - content-script injection is limited to feed, album, and track pages rather than every Bandcamp page
+- Bandcamp label custom domains are intentionally not enhanced so the extension can stay limited to Bandcamp-owned hosts
 
 ## Security Notes
 
@@ -52,7 +53,7 @@ Why host access is needed:
 
 ## Paste-Ready Test Instructions
 
-`Sign in to Bandcamp, open https://bandcamp.com/feed, and wait for feed cards to gain extra release metadata such as dates, locations, and track details. Play a track from the feed to confirm the persistent bottom player appears and stays in sync while browsing. Click a wishlist control to verify that account-affecting actions only occur after an explicit user click. Click a buy shortcut to verify that the extension opens Bandcamp's own purchase flow in a new tab or window. The extension only injects on Bandcamp feed, album, and track pages; background requests are limited to HTTPS Bandcamp URLs.`
+`Sign in to Bandcamp, open https://bandcamp.com/feed, and wait for feed cards to gain extra release metadata such as dates, locations, and track details. Play a track from the feed to confirm the persistent bottom player appears and stays in sync while browsing. Click a wishlist control to verify that account-affecting actions only occur after an explicit user click. Click a buy shortcut to verify that the extension opens Bandcamp's own purchase flow in a new tab or window. The extension only injects on Bandcamp feed, album, and track pages under bandcamp.com and *.bandcamp.com; background requests are limited to HTTPS Bandcamp URLs. Label custom-domain pages are intentionally not enhanced to keep permissions narrower.`
 
 ## Why `all_frames` Is Enabled
 

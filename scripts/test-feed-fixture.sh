@@ -21,6 +21,7 @@ trap cleanup EXIT INT TERM
 sleep 1
 
 python3 - "$CHROME_BIN" "$PORT" <<'PY'
+import re
 import subprocess
 import sys
 
@@ -49,13 +50,13 @@ checks = {
     'data-bcampx-script-loaded="true"': "core script booted",
     'data-bcampx-page-kind="feed"': "page was recognized as a feed",
     'data-bcampx-init-state="ready"': "feed initializer finished",
-    'data-bcampx-enhance-attempt-count="1"': "enhancement pipeline ran once",
-    'data-bcampx-enhanced-count="1"': "card was enhanced once",
+    'data-bcampx-enhance-attempt-count="2"': "enhancement pipeline ran twice",
+    'data-bcampx-enhanced-count="2"': "cards were enhanced twice",
     'class="bcampx bcampx--expanded"': "enhancement UI rendered",
     'Jan 2, 2024 · Shanghai': "release facts rendered",
     "Track One": "first track rendered",
     "Track Two": "second track rendered",
-    "Extra context loaded": "summary state updated",
+    "Description · 2 tracks": "summary state updated",
 }
 
 missing = [label for token, label in checks.items() if token not in stdout]
@@ -64,6 +65,39 @@ if missing:
     print("fixture_test=failed")
     for label in missing:
         print("missing=" + label)
+    sys.exit(1)
+
+main_card = re.search(
+    r'<article id="fixture-main-card"[\s\S]*?</article>',
+    stdout,
+)
+sidebar_card = re.search(
+    r'<article id="fixture-sidebar-card"[\s\S]*?</article>',
+    stdout,
+)
+delayed_card = re.search(
+    r'<article id="fixture-delayed-card"[\s\S]*?</article>',
+    stdout,
+)
+
+if not main_card or 'class="bcampx' not in main_card.group(0):
+    print("fixture_test=failed")
+    print("missing=main feed card enhancement shell")
+    sys.exit(1)
+
+if not delayed_card or 'class="bcampx' not in delayed_card.group(0):
+    print("fixture_test=failed")
+    print("missing=delayed feed card enhancement shell")
+    sys.exit(1)
+
+if not sidebar_card:
+    print("fixture_test=failed")
+    print("missing=sidebar fixture card")
+    sys.exit(1)
+
+if 'class="bcampx' in sidebar_card.group(0):
+    print("fixture_test=failed")
+    print("missing=sidebar card remained filtered")
     sys.exit(1)
 
 print("fixture_test=passed")

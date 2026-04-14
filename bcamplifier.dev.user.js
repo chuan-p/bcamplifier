@@ -18,7 +18,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @run-at       document-idle
-// @require      http://127.0.0.1:8000/bcamplifier.user.js?v=0.1.175
+// @require      http://127.0.0.1:8000/bcamplifier.user.js?v=0.1.176
 // ==/UserScript==
 
 (function () {

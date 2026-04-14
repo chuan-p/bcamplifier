@@ -1,6 +1,10 @@
+<div align="center">
+  <img src="assets/icons/icon-1024.png" alt="Bandcamplifer icon" width="180" height="180" />
+</div>
+
 # Bandcamplifer
 
-Bandcamplifer is an open source userscript and browser extension that makes the Bandcamp fan feed much more usable. It pulls release context into feed cards, shows inline tracklists, adds playback controls, and keeps Bandcamp-native wishlist and buy shortcuts close at hand.
+Bandcamplifer is an open source userscript and browser extension that makes the Bandcamp fan feed much more usable. It pulls release context into feed cards, shows inline tracklists, adds playback controls, and keeps Bandcamp-native wishlist and buy shortcuts close at hand. Made by [chuan](https://www.instagram.com/chuan_p/) with heavy use of Codex.
 
 ![Bandcamplifer storefront screenshot](assets/store/store-screenshot-real-02.png)
 

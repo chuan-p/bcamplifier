@@ -6646,35 +6646,39 @@
     }
 
     async function playNeighborPlayableRelease(offset) {
-        const neighbor = findNeighborPlayableRelease(offset);
-        if (!neighbor) {
+        const neighbors = getNeighborPlayableReleases(offset);
+        if (!neighbors.length) {
             return false;
         }
 
-        try {
-            const data = await getAvailableOrFetchReleaseDataForCard(
-                neighbor.card,
-                neighbor.releaseUrl,
-            );
-            const track = offset < 0
-                ? findLastPlayableTrack(data)
-                : findFeaturedTrackForCard(neighbor.card, null, data) ||
-                  findFirstPlayableTrack(data);
-            if (!track || !track.streamUrl) {
-                return false;
+        for (const neighbor of neighbors) {
+            try {
+                const data = await getAvailableOrFetchReleaseDataForCard(
+                    neighbor.card,
+                    neighbor.releaseUrl,
+                );
+                const track = offset < 0
+                    ? findLastPlayableTrack(data)
+                    : findFeaturedTrackForCard(neighbor.card, null, data) ||
+                      findFirstPlayableTrack(data);
+                if (!track || !track.streamUrl) {
+                    continue;
+                }
+
+                playTrackForCard(
+                    neighbor.card,
+                    null,
+                    track,
+                    data,
+                    neighbor.releaseUrl,
+                );
+                return true;
+            } catch (_error) {
+                continue;
             }
-
-            playTrackForCard(
-                neighbor.card,
-                null,
-                track,
-                data,
-                neighbor.releaseUrl,
-            );
-            return true;
-        } catch (_error) {
-            return false;
         }
+
+        return false;
     }
 
     function hasNeighborPlayableRelease(offset) {
@@ -6682,17 +6686,23 @@
     }
 
     function findNeighborPlayableRelease(offset) {
+        const neighbors = getNeighborPlayableReleases(offset);
+        return neighbors.length ? neighbors[0] : null;
+    }
+
+    function getNeighborPlayableReleases(offset) {
         const currentCard = getStoryRoot(STATE.activeTrackCard) || STATE.activeTrackCard;
         if (!(currentCard instanceof Element) || !offset) {
-            return null;
+            return [];
         }
 
         const cards = getStoryCardsFromRoots([document]);
         const currentIndex = cards.indexOf(currentCard);
         if (currentIndex < 0) {
-            return null;
+            return [];
         }
 
+        const neighbors = [];
         const step = offset > 0 ? 1 : -1;
         for (
             let index = currentIndex + step;
@@ -6713,13 +6723,13 @@
                 continue;
             }
 
-            return {
+            neighbors.push({
                 card,
                 releaseUrl: normalizedReleaseUrl,
-            };
+            });
         }
 
-        return null;
+        return neighbors;
     }
 
     function isContinuousPlaybackCandidate(card) {
@@ -6737,7 +6747,18 @@
             return false;
         }
 
-        return !!getCardPrimaryReleaseUrl(card);
+        const releaseUrl = normalizeReleaseUrl(getCardPrimaryReleaseUrl(card));
+        if (!releaseUrl) {
+            return false;
+        }
+
+        // Extension builds intentionally skip custom-domain releases to keep
+        // host permissions limited to bandcamp.com and *.bandcamp.com.
+        if (isWebExtensionHost() && isCustomDomainReleaseUrl(releaseUrl)) {
+            return false;
+        }
+
+        return true;
     }
 
     async function getAvailableOrFetchReleaseDataForCard(card, releaseUrl) {

@@ -1,10 +1,14 @@
 <div align="center">
   <img src="assets/icons/icon-1024.png" alt="Bandcamplifier icon" width="180" height="180" />
+  <h1 align="center">Bandcamplifier</h1>
+  <p>
+    <a href="https://greasyfork.org/en/scripts/573187-bandcamplifier">Greasy Fork</a>
+    ·
+    <a href="https://chromewebstore.google.com/detail/bandcamplifer/ohkoanfoenpenbeehajomlmjnekphbaa">Chrome Web Store</a>
+  </p>
 </div>
 
-# Bandcamplifier
-
-Bandcamplifier is an open source userscript and browser extension that makes the Bandcamp fan feed much more usable. It pulls release context into feed cards, shows inline tracklists, adds playback controls, and keeps Bandcamp-native wishlist and buy shortcuts close at hand. Made by [chuan](https://www.instagram.com/chuan_p/) with heavy use of Codex.
+Bandcamplifier is an open source userscript and browser extension that improves the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts. Made by [chuan](https://www.instagram.com/chuan_p/) with heavy use of Codex.
 
 ![Bandcamplifier storefront screenshot](assets/store/store-screenshot-real-02.png)
 

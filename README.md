@@ -149,15 +149,6 @@ Edit the `CONFIG` object near the top of [`bcamplifier.user.js`](./bcamplifier.u
 - `autoExpandTracks`
 - `enableTrackRowActions`
 
-## Release Notes
-
-- Userscript release checklist: [`GREASYFORK_RELEASE.md`](./GREASYFORK_RELEASE.md)
-- Extension release guide: [`EXTENSION_RELEASE.md`](./EXTENSION_RELEASE.md)
-- Store listing copy: [`STORE_LISTING.md`](./STORE_LISTING.md)
-- Privacy policy draft: [`PRIVACY_POLICY.md`](./PRIVACY_POLICY.md)
-- Reviewer notes: [`CHROME_REVIEW_NOTES.md`](./CHROME_REVIEW_NOTES.md)
-- Submission checklist: [`SUBMISSION_CHECKLIST.md`](./SUBMISSION_CHECKLIST.md)
-
 ## Status And Tradeoffs
 
 - The project relies on Bandcamp's current DOM and helper flows.

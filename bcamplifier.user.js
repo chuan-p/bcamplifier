@@ -1575,6 +1575,20 @@
         return !!(releaseUrl && !isBandcampReleaseUrl(releaseUrl));
     }
 
+    function hasExtensionHostPermission(rawUrl) {
+        const releaseUrl = normalizeReleaseUrl(rawUrl || "");
+        if (!releaseUrl || !isWebExtensionHost()) {
+            return false;
+        }
+
+        const host = getExternalHostApi();
+        return !!(
+            host &&
+            typeof host.hasHostPermission === "function" &&
+            host.hasHostPermission(releaseUrl)
+        );
+    }
+
     function getHostRequestOptions(baseOptions = {}) {
         return {
             method: baseOptions.method || "GET",
@@ -3318,15 +3332,7 @@
             updateToggle(toggle, shouldExpand);
             text.textContent = buildLoadedSummaryText(normalizedData, result);
         } catch (error) {
-            if (isExtensionCustomDomainReleaseUnsupportedError(error)) {
-                controller.loaded = true;
-                controller.data = createEmptyReleaseData();
-                renderEmpty(meta, text, releaseUrl, {
-                    message:
-                        "This release uses a Bandcamp custom domain. The extension stays limited to bandcamp.com pages, so extra metadata is skipped here.",
-                    summary: "Custom-domain release skipped",
-                });
-            } else if (shouldAbandonReleaseEnhancement(error)) {
+            if (shouldAbandonReleaseEnhancement(error)) {
                 controller.loaded = true;
                 controller.data = createEmptyReleaseData();
                 renderEmpty(meta, text, releaseUrl, {
@@ -3479,15 +3485,6 @@
             };
         }
 
-        if (
-            isWebExtensionHost() &&
-            isCustomDomainReleaseUrl(normalizedContext.releaseUrl)
-        ) {
-            throw new Error(
-                "Custom-domain Bandcamp releases are not supported in the extension build.",
-            );
-        }
-
         let directFetchError = null;
         try {
             const directFetchResult =
@@ -3511,18 +3508,33 @@
             );
         }
 
-        const embeddedHtml = await requestHtml(embeddedPlayerUrl);
-        const canonicalUrl = extractEmbeddedPlayerCanonicalUrl(embeddedHtml);
-        if (!canonicalUrl) {
-            throw new Error(
-                "Custom-domain Bandcamp release could not be resolved.",
-            );
+        let embeddedError = null;
+        try {
+            const embeddedHtml = await requestHtml(embeddedPlayerUrl);
+            const canonicalUrl = extractEmbeddedPlayerCanonicalUrl(embeddedHtml);
+            if (canonicalUrl) {
+                return {
+                    releaseUrl: canonicalUrl,
+                    fetchUrl: canonicalUrl,
+                };
+            }
+        } catch (error) {
+            embeddedError = error;
         }
 
-        return {
-            releaseUrl: canonicalUrl,
-            fetchUrl: canonicalUrl,
-        };
+        if (isMissingCustomDomainHostPermissionError(directFetchError)) {
+            throw directFetchError;
+        }
+
+        if (embeddedError) {
+            throw embeddedError;
+        }
+
+        if (directFetchError) {
+            throw directFetchError;
+        }
+
+        throw new Error("Custom-domain Bandcamp release could not be resolved.");
     }
 
     async function tryResolveCustomDomainReleaseRequestContext(requestContext) {
@@ -4825,6 +4837,11 @@
         message.textContent = `Could not load release details: ${errorMessage}`;
 
         meta.append(message);
+        if (shouldOfferCustomDomainPermissionButton(error, releaseUrl)) {
+            meta.append(
+                createGrantCustomDomainAccessButton(controller, releaseUrl),
+            );
+        }
         if (controller && typeof controller.fetchAndRender === "function") {
             meta.append(createRetryReleaseButton(controller));
         }
@@ -4843,11 +4860,25 @@
         );
     }
 
-    function isExtensionCustomDomainReleaseUnsupportedError(error) {
+    function extractMissingCustomDomainHostPermissionPattern(error) {
         const message =
             error && error.message ? String(error.message) : "";
-        return /Custom-domain Bandcamp releases are not supported in the extension build\./i.test(
-            message,
+        const match = message.match(
+            /Host permission required for (https:\/\/[^\s]+\/\*)/i,
+        );
+        return match ? match[1] : "";
+    }
+
+    function isMissingCustomDomainHostPermissionError(error) {
+        return Boolean(extractMissingCustomDomainHostPermissionPattern(error));
+    }
+
+    function shouldOfferCustomDomainPermissionButton(error, releaseUrl) {
+        return Boolean(
+            isMissingCustomDomainHostPermissionError(error) &&
+                isWebExtensionHost() &&
+                isCustomDomainReleaseUrl(releaseUrl) &&
+                canUseExternalHostMethod("requestHostPermission"),
         );
     }
 
@@ -4866,6 +4897,10 @@
 
         if (/storage\.local\./i.test(rawMessage)) {
             return "Extension storage is unavailable. Refresh the tab or restart the browser and try again.";
+        }
+
+        if (isMissingCustomDomainHostPermissionError(error)) {
+            return "This release uses a Bandcamp custom domain. Allow access to this domain to load details in the extension.";
         }
 
         return rawMessage;
@@ -4921,6 +4956,39 @@
         });
     }
 
+    function createGrantCustomDomainAccessButton(controller, releaseUrl) {
+        return createActionButton("Allow this domain", async (button) => {
+            if (
+                !controller ||
+                controller.loading ||
+                !canUseExternalHostMethod("requestHostPermission")
+            ) {
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = "Opening request...";
+            try {
+                const result = await getExternalHostApi().requestHostPermission(
+                    releaseUrl,
+                );
+                if (result && result.granted) {
+                    button.textContent = "Retrying...";
+                    await controller.fetchAndRender({ auto: false });
+                    button.disabled = false;
+                    button.textContent = "Allow this domain";
+                    return;
+                }
+
+                button.disabled = false;
+                flashActionButtonLabel(button, "Not granted");
+            } catch (_error) {
+                button.disabled = false;
+                flashActionButtonLabel(button, "Try again");
+            }
+        });
+    }
+
     function createRefreshReleasePageButton() {
         return createActionButton("Refresh page", (button) => {
             button.disabled = true;
@@ -4929,13 +4997,29 @@
         });
     }
 
+    function flashActionButtonLabel(button, label, durationMs = 1400) {
+        if (!button) {
+            return;
+        }
+
+        const originalLabel =
+            button.dataset.bcampxOriginalLabel || button.textContent;
+        button.textContent = label;
+        window.setTimeout(() => {
+            button.textContent = originalLabel;
+        }, durationMs);
+    }
+
     function createActionButton(label, onClick) {
         const button = createClassedElement("button", "bcampx__action");
         button.type = "button";
         button.textContent = label;
+        button.dataset.bcampxOriginalLabel = label;
         button.addEventListener("click", () => {
             if (typeof onClick === "function") {
-                onClick(button);
+                Promise.resolve(onClick(button)).catch((error) => {
+                    console.warn("[Bandcamplifier] Action button failed.", error);
+                });
             }
         });
         return button;
@@ -6752,9 +6836,11 @@
             return false;
         }
 
-        // Extension builds intentionally skip custom-domain releases to keep
-        // host permissions limited to bandcamp.com and *.bandcamp.com.
-        if (isWebExtensionHost() && isCustomDomainReleaseUrl(releaseUrl)) {
+        if (
+            isWebExtensionHost() &&
+            isCustomDomainReleaseUrl(releaseUrl) &&
+            !hasExtensionHostPermission(releaseUrl)
+        ) {
             return false;
         }
 
@@ -7805,7 +7891,7 @@
       .bcampx__error,
       .bcampx__empty {
         margin: 0 0 6px;
-        color: #7a4b00;
+        color: #66757f;
       }
 
       .bcampx--loading {

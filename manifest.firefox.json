@@ -17,6 +17,9 @@
     "https://bandcamp.com/*",
     "https://*.bandcamp.com/*"
   ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
   "background": {
     "scripts": [
       "extension.background.js"

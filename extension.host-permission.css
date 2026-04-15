@@ -1,0 +1,150 @@
+:root {
+    --bcampx-page-bg: #f2f7f8;
+    --bcampx-card-bg: #ffffff;
+    --bcampx-card-border: #d5e1e7;
+    --bcampx-card-shadow: rgba(52, 81, 94, 0.12);
+    --bcampx-brand: #4085b6;
+    --bcampx-brand-strong: #2f6f9f;
+    --bcampx-brand-soft: #edf5fa;
+    --bcampx-brand-soft-border: #c7dbe9;
+    --bcampx-text: #1f2f3a;
+    --bcampx-muted: #586a75;
+    --bcampx-secondary-bg: #f7fafb;
+    --bcampx-secondary-border: #cad8e0;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    background:
+        radial-gradient(circle at top, rgba(64, 133, 182, 0.12), transparent 38%),
+        linear-gradient(180deg, #f7fbfc 0%, var(--bcampx-page-bg) 100%);
+    color: var(--bcampx-text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.bcampx-permission-page {
+    position: relative;
+    width: min(100%, 560px);
+    background: var(--bcampx-card-bg);
+    border: 1px solid var(--bcampx-card-border);
+    border-radius: 18px;
+    box-shadow: 0 18px 48px var(--bcampx-card-shadow);
+    padding: 30px;
+}
+
+.bcampx-permission-page::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 5px;
+    border-radius: 18px 18px 0 0;
+    background: linear-gradient(90deg, var(--bcampx-brand), #6ea8c8);
+}
+
+.bcampx-permission-page__eyebrow {
+    margin: 0 0 10px;
+    color: var(--bcampx-brand);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.bcampx-permission-page__title {
+    margin: 0 0 12px;
+    font-size: 30px;
+    line-height: 1.15;
+}
+
+.bcampx-permission-page__body,
+.bcampx-permission-page__note,
+.bcampx-permission-page__status {
+    margin: 0;
+}
+
+.bcampx-permission-page__body {
+    color: var(--bcampx-muted);
+}
+
+.bcampx-permission-page__domain {
+    margin: 18px 0 12px;
+    padding: 13px 15px;
+    border: 1px solid var(--bcampx-brand-soft-border);
+    border-radius: 12px;
+    background: var(--bcampx-brand-soft);
+    color: var(--bcampx-brand-strong);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 15px;
+    word-break: break-word;
+}
+
+.bcampx-permission-page__note {
+    color: var(--bcampx-muted);
+}
+
+.bcampx-permission-page__actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 22px;
+}
+
+.bcampx-permission-page__actions button {
+    appearance: none;
+    border: 1px solid var(--bcampx-brand);
+    border-radius: 8px;
+    background: var(--bcampx-brand);
+    color: #ffffff;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    min-height: 44px;
+    padding: 0 18px;
+    transition:
+        background-color 120ms ease,
+        border-color 120ms ease,
+        color 120ms ease,
+        opacity 120ms ease;
+}
+
+.bcampx-permission-page__actions button:hover {
+    background: var(--bcampx-brand-strong);
+    border-color: var(--bcampx-brand-strong);
+}
+
+.bcampx-permission-page__actions button.is-secondary {
+    background: var(--bcampx-secondary-bg);
+    border-color: var(--bcampx-secondary-border);
+    color: var(--bcampx-brand-strong);
+}
+
+.bcampx-permission-page__actions button.is-secondary:hover {
+    background: #eef4f7;
+    border-color: #b9ccd8;
+}
+
+.bcampx-permission-page__actions button:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+.bcampx-permission-page__status {
+    min-height: 24px;
+    margin-top: 18px;
+    color: var(--bcampx-brand-strong);
+    font-size: 14px;
+}

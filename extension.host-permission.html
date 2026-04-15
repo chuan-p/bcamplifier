@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Bandcamplifier Host Access</title>
+        <link rel="stylesheet" href="extension.host-permission.css" />
+    </head>
+    <body>
+        <main class="bcampx-permission-page">
+            <p class="bcampx-permission-page__eyebrow">Bandcamplifier</p>
+            <h1 class="bcampx-permission-page__title">Allow this custom domain?</h1>
+            <p class="bcampx-permission-page__body">
+                This Bandcamp release is hosted on a label-owned domain. Allowing
+                access lets the extension load release details and keep wishlist or
+                purchase actions working for this host.
+            </p>
+            <p class="bcampx-permission-page__domain" id="domain-label">Loading…</p>
+            <p class="bcampx-permission-page__note">
+                Only this specific HTTPS domain is requested. Bandcamp hosts stay on
+                the existing default permissions.
+            </p>
+            <div class="bcampx-permission-page__actions">
+                <button type="button" id="allow-button">Allow access</button>
+                <button type="button" id="cancel-button" class="is-secondary">
+                    Cancel
+                </button>
+            </div>
+            <p class="bcampx-permission-page__status" id="status" aria-live="polite"></p>
+        </main>
+        <script src="extension.host-permission.js"></script>
+    </body>
+</html>

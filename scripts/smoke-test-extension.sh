@@ -99,7 +99,10 @@ const checks = [
         document.querySelectorAll("#fixture-sidebar-card .bcampx").length === 0 &&
         (document.querySelector("#fixture-main-card .bcampx__facts")?.textContent || "").includes("2024") &&
         (document.querySelector("#fixture-main-card .bcampx__facts")?.textContent || "").includes("Shanghai") &&
-        (document.querySelector("#fixture-delayed-card .bcampx__empty")?.textContent || "").includes("custom domain"),
+        (document.querySelector("#fixture-delayed-card .bcampx__error")?.textContent || "").includes("custom domain") &&
+        Array.from(document.querySelectorAll("#fixture-delayed-card .bcampx__action")).some(
+          (node) => (node.textContent || "").includes("Allow this domain")
+        ),
       { timeout: 15000 },
     );
 
@@ -121,7 +124,10 @@ const checks = [
         document.querySelectorAll("#fixture-main-card .bcampx__tracks li"),
       ).map((node) => node.textContent || ""),
       delayedMessage:
-        document.querySelector("#fixture-delayed-card .bcampx__empty")?.textContent || "",
+        document.querySelector("#fixture-delayed-card .bcampx__error")?.textContent || "",
+      delayedActions: Array.from(
+        document.querySelectorAll("#fixture-delayed-card .bcampx__action"),
+      ).map((node) => node.textContent || ""),
     }));
     if (cardState.main !== 1) {
       missing.push("main feed card enhanced");
@@ -140,6 +146,9 @@ const checks = [
     }
     if (!/custom domain/i.test(cardState.delayedMessage)) {
       missing.push("custom-domain release showed limitation message");
+    }
+    if (!cardState.delayedActions.includes("Allow this domain")) {
+      missing.push("custom-domain release exposed on-demand permission action");
     }
 
     const releasePage = await context.newPage();

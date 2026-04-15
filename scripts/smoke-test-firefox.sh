@@ -103,7 +103,10 @@ try:
               document.querySelectorAll("#fixture-sidebar-card .bcampx").length === 0 &&
               (document.querySelector("#fixture-main-card .bcampx__facts")?.textContent || "").includes("2024") &&
               (document.querySelector("#fixture-main-card .bcampx__facts")?.textContent || "").includes("Shanghai") &&
-              (document.querySelector("#fixture-delayed-card .bcampx__empty")?.textContent || "").includes("custom domain")
+              (document.querySelector("#fixture-delayed-card .bcampx__error")?.textContent || "").includes("custom domain") &&
+              Array.from(document.querySelectorAll("#fixture-delayed-card .bcampx__action")).some(
+                (node) => (node.textContent || "").includes("Allow this domain")
+              )
             );
             """
         )
@@ -121,7 +124,10 @@ try:
             document.querySelectorAll("#fixture-main-card .bcampx__tracks li")
           ).map((node) => node.textContent || ""),
           delayedMessage:
-            document.querySelector("#fixture-delayed-card .bcampx__empty")?.textContent || "",
+            document.querySelector("#fixture-delayed-card .bcampx__error")?.textContent || "",
+          delayedActions: Array.from(
+            document.querySelectorAll("#fixture-delayed-card .bcampx__action")
+          ).map((node) => node.textContent || ""),
         };
         """
     )
@@ -133,6 +139,8 @@ try:
         raise RuntimeError("Firefox smoke fixture did not render the main-card tracklist.")
     if "custom domain" not in card_state["delayedMessage"].lower():
         raise RuntimeError("Firefox smoke fixture did not show the custom-domain limitation message.")
+    if "Allow this domain" not in card_state["delayedActions"]:
+        raise RuntimeError("Firefox smoke fixture did not expose the on-demand permission action.")
 
     driver.get(release_url)
     WebDriverWait(driver, 20).until(

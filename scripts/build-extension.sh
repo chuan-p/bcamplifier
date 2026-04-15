@@ -9,6 +9,9 @@ COMMON_FILES="
 bcamplifier.user.js
 extension.content.js
 extension.background.js
+extension.host-permission.html
+extension.host-permission.js
+extension.host-permission.css
 README.md
 LICENSE
 "

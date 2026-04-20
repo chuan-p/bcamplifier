@@ -4,6 +4,8 @@
   <p>
     <a href="https://greasyfork.org/en/scripts/573187-bandcamplifier">Greasy Fork</a>
     ·
+    <a href="https://addons.mozilla.org/zh-CN/firefox/addon/bandcamplifier/">Firefox Add-ons</a>
+    ·
     <a href="https://chromewebstore.google.com/detail/bandcamplifer/ohkoanfoenpenbeehajomlmjnekphbaa">Chrome Web Store</a>
   </p>
 </div>
@@ -144,6 +146,7 @@ Edit the `CONFIG` object near the top of [`bcamplifier.user.js`](./bcamplifier.u
 - `autoFetchOnVisible`
 - `expandAfterAutoFetch`
 - `cacheTtlMs`
+- `playbackCacheTtlMs`
 - `maxTracks`
 - `maxDescriptionLength`
 - `autoExpandTracks`

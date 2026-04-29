@@ -2,11 +2,11 @@
   <img src="assets/icons/icon-1024.png" alt="Bandcamplifier icon" width="180" height="180" />
   <h1 align="center">Bandcamplifier</h1>
   <p>
-    <a href="https://greasyfork.org/en/scripts/573187-bandcamplifier">Greasy Fork</a>
+    <a href="https://chromewebstore.google.com/detail/bandcamplifer/ohkoanfoenpenbeehajomlmjnekphbaa">Chrome Web Store</a>
     ·
     <a href="https://addons.mozilla.org/zh-CN/firefox/addon/bandcamplifier/">Firefox Add-ons</a>
     ·
-    <a href="https://chromewebstore.google.com/detail/bandcamplifer/ohkoanfoenpenbeehajomlmjnekphbaa">Chrome Web Store</a>
+    <a href="https://greasyfork.org/en/scripts/573187-bandcamplifier">Greasy Fork</a>
   </p>
 </div>
 

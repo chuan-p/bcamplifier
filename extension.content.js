@@ -328,11 +328,11 @@
         }
 
         if (runtimeApi.kind === "browser") {
-            return Promise.resolve(runtimeApi.runtime.sendMessage(message)).catch(
-                (error) => {
+            return Promise.resolve()
+                .then(() => runtimeApi.runtime.sendMessage(message))
+                .catch((error) => {
                     throw normalizeExtensionError(error);
-                },
-            );
+                });
         }
 
         return new Promise((resolve, reject) => {
@@ -360,9 +360,11 @@
         }
 
         if (runtimeApi.kind === "browser") {
-            return Promise.resolve(storage[methodName](payload)).catch((error) => {
-                throw normalizeExtensionError(error);
-            });
+            return Promise.resolve()
+                .then(() => storage[methodName](payload))
+                .catch((error) => {
+                    throw normalizeExtensionError(error);
+                });
         }
 
         return new Promise((resolve, reject) => {

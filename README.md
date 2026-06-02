@@ -68,7 +68,7 @@ This produces:
 
 Load locally:
 
-- Chrome: open `chrome://extensions`, enable Developer mode, click `Load unpacked`, then select `dist/chrome`
+- Chrome: open `chrome://extensions`, enable Developer mode, click `Load unpacked`, then select `dist/chrome-unpacked`
 - Firefox: open `about:debugging#/runtime/this-firefox`, click `Load Temporary Add-on`, then select [`dist/firefox/manifest.json`](./dist/firefox/manifest.json)
 
 ## Permissions And Behavior

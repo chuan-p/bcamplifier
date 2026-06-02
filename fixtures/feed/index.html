@@ -72,8 +72,49 @@
     </style>
   </head>
   <body>
+    <div
+      id="pagedata"
+      data-blob='{"track_list":[{"track_id":11,"title":"Collection One Featured","duration":125,"band_name":"Fixture Artist","streaming_url":{"mp3-128":"https://example.com/collection-one-featured.mp3"}},{"track_id":22,"title":"Collection Two Featured","duration":130,"band_name":"Fixture Artist","streaming_url":{"mp3-128":"https://example.com/collection-two-featured.mp3"}}]}'
+    ></div>
     <div class="fixture-shell">
       <main>
+        <ol class="collection-grid">
+          <li
+            id="fixture-collection-one"
+            class="new-release collection-item-container track_play_hilite"
+            data-trackid="11"
+            data-item-json='{"item_id":421,"item_type":"a","item_url":"https://fixture.bandcamp.com/album/collection-one","featured_track":11,"featured_track_title":"Collection One Featured"}'
+          >
+            <a class="track_play_auxiliary" data-trackid="11">
+              <img
+                class="collection-item-art"
+                src="https://dummyimage.com/320x320/fde68a/111827.png&text=Collection+One"
+                alt="Collection one art"
+              />
+            </a>
+            <a href="https://fixture.bandcamp.com/album/collection-one"
+              >Collection One</a
+            >
+          </li>
+          <li
+            id="fixture-collection-two"
+            class="new-release collection-item-container track_play_hilite"
+            data-trackid="22"
+            data-item-json='{"item_id":422,"item_type":"a","item_url":"https://fixture.bandcamp.com/album/collection-two","featured_track":22,"featured_track_title":"Collection Two Featured"}'
+          >
+            <a class="track_play_auxiliary" data-trackid="22">
+              <img
+                class="collection-item-art"
+                src="https://dummyimage.com/320x320/fca5a5/111827.png&text=Collection+Two"
+                alt="Collection two art"
+              />
+            </a>
+            <a href="https://fixture.bandcamp.com/album/collection-two"
+              >Collection Two</a
+            >
+          </li>
+        </ol>
+
         <article id="fixture-main-card" class="feed-item">
           <div class="story-title">
             <a class="fan-name" href="https://bandcamp.com/testfan">Test Fan</a>
@@ -192,6 +233,10 @@
       (() => {
         const releaseUrl =
           "https://fixture.bandcamp.com/album/synthetic-release";
+        const collectionOneUrl =
+          "https://fixture.bandcamp.com/album/collection-one";
+        const collectionTwoUrl =
+          "https://fixture.bandcamp.com/album/collection-two";
         const releaseHtml = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -211,14 +256,47 @@
     </div>
   </body>
 </html>`;
+        const collectionOneHtml = releaseHtml
+          .replaceAll("Synthetic Release", "Collection One")
+          .replace(
+            '"trackinfo":[',
+            '"trackinfo":[{"title":"Collection One Deep Cut","track_id":"10","file":{"mp3-128":"https://example.com/collection-one-deep-cut.mp3"},"duration":120},{"title":"Collection One Featured","track_id":"11","file":{"mp3-128":"https://example.com/collection-one-featured.mp3"},"duration":125}],"_fixtureUnused":[',
+          );
+        const collectionTwoHtml = releaseHtml
+          .replaceAll("Synthetic Release", "Collection Two")
+          .replace(
+            '"trackinfo":[',
+            '"trackinfo":[{"title":"Collection Two Featured","track_id":"22","file":{"mp3-128":"https://example.com/collection-two-featured.mp3"},"duration":130}],"_fixtureUnused":[',
+          );
 
         const storage = new Map();
+        let collectionReleaseRequestCount = 0;
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-release-request-count",
+          collectionReleaseRequestCount,
+        );
 
         globalThis.__BCAMPX_HOST__ = {
           kind: "webextension",
           requestHtml: async (url) => {
             if (url === releaseUrl) {
               return releaseHtml;
+            }
+            if (url === collectionOneUrl) {
+              collectionReleaseRequestCount += 1;
+              document.documentElement.setAttribute(
+                "data-bcampx-collection-release-request-count",
+                collectionReleaseRequestCount,
+              );
+              return collectionOneHtml;
+            }
+            if (url === collectionTwoUrl) {
+              collectionReleaseRequestCount += 1;
+              document.documentElement.setAttribute(
+                "data-bcampx-collection-release-request-count",
+                collectionReleaseRequestCount,
+              );
+              return collectionTwoHtml;
             }
 
             throw new Error(`Unexpected fixture request for ${url}`);
@@ -250,5 +328,35 @@
       })();
     </script>
     <script src="/bcamplifier.user.js"></script>
+    <script>
+      window.setTimeout(async () => {
+        document
+          .querySelector("#fixture-collection-one .track_play_auxiliary")
+          .click();
+        await new Promise((resolve) => window.setTimeout(resolve, 300));
+
+        const root = document.querySelector("#bcampx-player-host").shadowRoot;
+        const inputs = root.querySelectorAll(".bcampx-player-settings-checkbox");
+        inputs[inputs.length - 1].click();
+        const next = root.querySelector(
+          ".bcampx-player-controls button:nth-child(2)",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-next-disabled",
+          next.disabled,
+        );
+        next.click();
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-playback",
+          root.querySelector(".bcampx-player-track").textContent,
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-shell-count",
+          document.querySelectorAll(".collection-grid .bcampx").length,
+        );
+      }, 1200);
+    </script>
   </body>
 </html>

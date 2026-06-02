@@ -10,7 +10,7 @@ SERVER_LOG=${SERVER_LOG:-/tmp/bcampx-extension-fixture-server.log}
 CERT_DIR=${CERT_DIR:-/tmp/bcampx-extension-cert}
 TEST_URL=${TEST_URL:-https://bandcamp.com:${PORT}/feed}
 
-if [ ! -d "$DIST_DIR/chrome" ] || [ ! -f "$DIST_DIR/chrome/manifest.json" ]; then
+if [ ! -d "$DIST_DIR/chrome-unpacked" ] || [ ! -f "$DIST_DIR/chrome-unpacked/manifest.json" ]; then
     echo "Chrome build output is missing. Run ./scripts/build-extension.sh first." >&2
     exit 1
 fi
@@ -52,7 +52,7 @@ trap cleanup EXIT INT TERM
 sleep 1
 
 if node -e 'require.resolve("playwright")' >/dev/null 2>&1; then
-    node - "$DIST_DIR/chrome" "$TEST_URL" <<'JS'
+    node - "$DIST_DIR/chrome-unpacked" "$TEST_URL" <<'JS'
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -203,7 +203,7 @@ const checks = [
 })();
 JS
 else
-    python3 - "$CHROME_BIN" "$DIST_DIR/chrome" <<'PY'
+    python3 - "$CHROME_BIN" "$DIST_DIR/chrome-unpacked" <<'PY'
 import shutil
 import subprocess
 import sys

@@ -29,6 +29,7 @@ chrome_bin, port = sys.argv[1:3]
 cmd = [
     chrome_bin,
     "--headless=new",
+    "--no-sandbox",
     "--disable-gpu",
     "--virtual-time-budget=6000",
     "--dump-dom",

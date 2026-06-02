@@ -28,7 +28,9 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Export Chromium path
-        run: echo "CHROME_BIN=$(node -e \"const { chromium } = require('playwright'); console.log(chromium.executablePath())\")" >> "$GITHUB_ENV"
+        run: |
+          CHROME_BIN=$(node -e "const { chromium } = require('playwright'); console.log(chromium.executablePath())")
+          echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
 
       - name: Syntax check userscript
         run: node --check bcamplifier.user.js

@@ -29,6 +29,7 @@ chrome_bin, port = sys.argv[1:3]
 cmd = [
     chrome_bin,
     "--headless=new",
+    "--no-sandbox",
     "--disable-gpu",
     "--virtual-time-budget=6000",
     "--dump-dom",
@@ -57,6 +58,9 @@ checks = {
     "Track One": "first track rendered",
     "Track Two": "second track rendered",
     "Description · 2 tracks": "summary state updated",
+    'data-bcampx-collection-playback="Fixture Artist - Collection Two Featured"': "collection grid continuous playback advanced to the next featured track",
+    'data-bcampx-collection-shell-count="0"': "collection grid playback did not mount tracklist UI",
+    'data-bcampx-collection-release-request-count="0"': "collection grid preview playback avoided release page requests",
 }
 
 missing = [label for token, label in checks.items() if token not in stdout]

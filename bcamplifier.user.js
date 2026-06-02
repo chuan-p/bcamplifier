@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamplifier
 // @namespace    https://github.com/chuan-p/bcamplifier
-// @version      0.1.176
+// @version      0.1.186
 // @description  Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.
 // @author       chuan
 // @match        https://bandcamp.com/feed*
@@ -69,7 +69,10 @@
         activeReleaseData: null,
         activeReleaseUrl: "",
         activeCardArtUrl: "",
+        activePlaybackScope: "",
         coverPlaybackStateNode: null,
+        collectionCoverStateObserver: null,
+        collectionCoverStateObserverTimer: 0,
         playerUi: null,
         playerHost: null,
         playerSettingsOpen: false,
@@ -85,6 +88,10 @@
         claimedPlaybackKind: "",
         claimedPlaybackSource: null,
         lastTrackActionDiagnostic: null,
+        collectionPointerReleaseUrl: "",
+        collectionPointerHandledAt: 0,
+        feedPreviewTracks: null,
+        feedPreviewTrackMap: null,
     };
 
     const RELEASE_LINK_SELECTOR = [
@@ -248,6 +255,7 @@
 
     function init() {
         markDebugState("data-bcampx-script-loaded", "true");
+        markDebugState("data-bcampx-version", "0.1.186");
         markDebugState(
             "data-bcampx-page-kind",
             isFeedPage() ? "feed" : "other",
@@ -557,11 +565,48 @@
     }
 
     function setupNativePlaybackInterception() {
-        document.addEventListener(
+        window.addEventListener(
+            "pointerdown",
+            handleCollectionGridPointerDown,
+            true,
+        );
+        window.addEventListener(
             "click",
             handleNativePlaybackTriggerClick,
             true,
         );
+        markDebugState("data-bcampx-native-playback-listener", "ready");
+    }
+
+    function handleCollectionGridPointerDown(event) {
+        if (event.button !== 0) {
+            return;
+        }
+
+        const trigger = findNativePlaybackTrigger(event.target);
+        const card = findCollectionGridCard(trigger);
+        if (!card || isFullDiscographyCard(card)) {
+            return;
+        }
+
+        const releaseUrl = getCardPrimaryReleaseUrl(card);
+        if (!releaseUrl) {
+            return;
+        }
+
+        STATE.collectionPointerReleaseUrl = normalizeReleaseUrl(releaseUrl);
+        STATE.collectionPointerHandledAt = Date.now();
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof event.stopImmediatePropagation === "function") {
+            event.stopImmediatePropagation();
+        }
+
+        markDebugState(
+            "data-bcampx-collection-playback-state",
+            "pointer-triggered",
+        );
+        void playCollectionGridTrigger(card, trigger, releaseUrl);
     }
 
     function setupPlayerMenuDismissal() {
@@ -615,7 +660,8 @@
             return;
         }
 
-        const card = findPlaybackCard(trigger);
+        const collectionCard = findCollectionGridCard(trigger);
+        const card = collectionCard || findPlaybackCard(trigger);
         if (
             !card ||
             isFullDiscographyCard(card) ||
@@ -630,10 +676,30 @@
             return;
         }
 
+        if (
+            collectionCard &&
+            normalizeReleaseUrl(releaseUrl) ===
+                STATE.collectionPointerReleaseUrl &&
+            Date.now() - STATE.collectionPointerHandledAt < 1000
+        ) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === "function") {
+                event.stopImmediatePropagation();
+            }
+            return;
+        }
+
         event.preventDefault();
         event.stopPropagation();
         if (typeof event.stopImmediatePropagation === "function") {
             event.stopImmediatePropagation();
+        }
+
+        if (collectionCard) {
+            markDebugState("data-bcampx-collection-playback-state", "triggered");
+            void playCollectionGridTrigger(collectionCard, trigger, releaseUrl);
+            return;
         }
 
         playNativeCardTrigger(card, trigger, releaseUrl);
@@ -647,6 +713,113 @@
         return node.closest(
             ".track_play_auxiliary, .tralbum-art-container, .track_play_time",
         );
+    }
+
+    function findCollectionGridCard(node) {
+        if (!node || typeof node.closest !== "function") {
+            return null;
+        }
+
+        const card = node.closest(".collection-grid .collection-item-container");
+        return card instanceof Element ? card : null;
+    }
+
+    async function playCollectionGridTrigger(card, trigger, releaseUrl) {
+        if (
+            isActiveReleaseForCard(releaseUrl) &&
+            STATE.activePlaybackScope === "collection-grid" &&
+            STATE.activeTrack &&
+            STATE.activeTrack.streamUrl
+        ) {
+            toggleActiveReleasePlayback(card);
+            return;
+        }
+
+        try {
+            const preview = getCollectionGridFeaturedPreview(card);
+            if (preview) {
+                markDebugState(
+                    "data-bcampx-collection-playback-state",
+                    "preview-playing",
+                );
+                playTrackForCard(
+                    card,
+                    null,
+                    preview.track,
+                    preview.data,
+                    releaseUrl,
+                    {
+                        playbackScope: "collection-grid",
+                        trackList: [preview.track],
+                        onPlayError: () =>
+                            retryCollectionGridPlaybackWithoutPreview(
+                                card,
+                                trigger,
+                                releaseUrl,
+                            ),
+                    },
+                );
+                observeCollectionCoverState();
+                return;
+            }
+
+            markDebugState("data-bcampx-collection-playback-state", "fetching");
+            const audio = ensureSharedAudio();
+            if (audio && !audio.paused) {
+                audio.pause();
+            }
+            STATE.activePlaybackScope = "collection-grid";
+            setActiveTrackCard(card);
+            syncCoverPlaybackState();
+            observeCollectionCoverState();
+            const data = await getAvailableOrFetchReleaseDataForCard(
+                card,
+                releaseUrl,
+            );
+            const track = findFeaturedTrackForCard(card, trigger, data);
+            if (!track || !track.streamUrl) {
+                markDebugState(
+                    "data-bcampx-collection-playback-state",
+                    "missing-featured-track",
+                );
+                return;
+            }
+
+            markDebugState("data-bcampx-collection-playback-state", "playing");
+            playTrackForCard(card, null, track, data, releaseUrl, {
+                playbackScope: "collection-grid",
+                trackList: [track],
+            });
+            observeCollectionCoverState();
+        } catch (_error) {
+            markDebugState("data-bcampx-collection-playback-state", "error");
+        }
+    }
+
+    async function retryCollectionGridPlaybackWithoutPreview(
+        card,
+        trigger,
+        releaseUrl,
+    ) {
+        const memo = getNodeMemo(card);
+        if (memo) {
+            memo.collectionGridFeaturedPreview = null;
+        }
+
+        const data = await getAvailableOrFetchReleaseDataForCard(
+            card,
+            releaseUrl,
+        );
+        const track = findFeaturedTrackForCard(card, trigger, data);
+        if (!track || !track.streamUrl) {
+            return;
+        }
+
+        playTrackForCard(card, null, track, data, releaseUrl, {
+            playbackScope: "collection-grid",
+            trackList: [track],
+        });
+        observeCollectionCoverState();
     }
 
     async function playNativeCardTrigger(card, trigger, releaseUrl) {
@@ -899,6 +1072,99 @@
         return parsed;
     }
 
+    function getCollectionGridFeaturedPreview(card) {
+        const memo = getNodeMemo(card);
+        if (
+            memo &&
+            Object.prototype.hasOwnProperty.call(
+                memo,
+                "collectionGridFeaturedPreview",
+            )
+        ) {
+            return memo.collectionGridFeaturedPreview;
+        }
+
+        const parsed = getParsedItemJson(card);
+        const trackId = cleanText(parsed && parsed.featured_track);
+        if (!trackId) {
+            return null;
+        }
+
+        const preview = getFeedPreviewTrackMap().get(trackId);
+        const streamUrl = cleanText(
+            preview &&
+                preview.streaming_url &&
+                preview.streaming_url["mp3-128"],
+        );
+        if (!preview || !streamUrl) {
+            return null;
+        }
+
+        const track = createTrackData(
+            preview.title || parsed.featured_track_title,
+            preview.track_id || trackId,
+            streamUrl,
+            preview.duration || parsed.featured_track_duration,
+            preview.track_url || parsed.featured_track_url || "",
+        );
+        if (!track) {
+            return null;
+        }
+
+        const art =
+            parsed && parsed.item_art && typeof parsed.item_art === "object"
+                ? parsed.item_art
+                : {};
+        const result = {
+            track,
+            data: normalizeReleaseData({
+                url: getItemJsonReleaseUrl(card),
+                title: parsed.album_title || parsed.item_title || "",
+                artist: parsed.band_name || preview.band_name || "",
+                artUrl:
+                    parsed.item_art_url ||
+                    art.url ||
+                    getCardArtUrl(card),
+                tracks: [track],
+            }),
+        };
+        if (memo) {
+            memo.collectionGridFeaturedPreview = result;
+        }
+        return result;
+    }
+
+    function getFeedPreviewTracks() {
+        if (Array.isArray(STATE.feedPreviewTracks)) {
+            return STATE.feedPreviewTracks;
+        }
+
+        const blob =
+            parseJsonAttribute(
+                document.querySelector("#pagedata"),
+                "data-blob",
+            ) || {};
+        STATE.feedPreviewTracks = Array.isArray(blob.track_list)
+            ? blob.track_list
+            : [];
+        return STATE.feedPreviewTracks;
+    }
+
+    function getFeedPreviewTrackMap() {
+        if (STATE.feedPreviewTrackMap instanceof Map) {
+            return STATE.feedPreviewTrackMap;
+        }
+
+        STATE.feedPreviewTrackMap = new Map();
+        getFeedPreviewTracks().forEach((track) => {
+            const trackId = cleanText(track && track.track_id);
+            if (trackId) {
+                STATE.feedPreviewTrackMap.set(trackId, track);
+            }
+        });
+        return STATE.feedPreviewTrackMap;
+    }
+
     function getItemJsonReleaseUrl(node) {
         const parsed = getParsedItemJson(node);
         return normalizeReleaseUrl(parsed && parsed.item_url ? parsed.item_url : "");
@@ -1028,6 +1294,36 @@
             );
             if (exactTrack) {
                 return exactTrack;
+            }
+        }
+
+        const parsed = getParsedItemJson(card);
+        const parsedFeaturedTrackId = cleanText(
+            parsed && parsed.featured_track,
+        );
+        if (parsedFeaturedTrackId) {
+            const exactTrack = data.tracks.find(
+                (track) =>
+                    cleanText(track && track.trackId) ===
+                        parsedFeaturedTrackId && track.streamUrl,
+            );
+            if (exactTrack) {
+                return exactTrack;
+            }
+        }
+
+        const parsedFeaturedTitle = cleanText(
+            parsed && parsed.featured_track_title,
+        );
+        if (parsedFeaturedTitle) {
+            const normalizedParsedTitle = parsedFeaturedTitle.toLowerCase();
+            const titleMatch = data.tracks.find(
+                (track) =>
+                    cleanText(track && track.title).toLowerCase() ===
+                        normalizedParsedTitle && track.streamUrl,
+            );
+            if (titleMatch) {
+                return titleMatch;
             }
         }
 
@@ -5843,7 +6139,14 @@
         return /\bfull(?:\s+digital)?\s+discography\b/i.test(title);
     }
 
-    function playTrackForCard(card, triggerButton, track, data, releaseUrl) {
+    function playTrackForCard(
+        card,
+        triggerButton,
+        track,
+        data,
+        releaseUrl,
+        options = {},
+    ) {
         if (!track || !track.streamUrl) {
             return;
         }
@@ -5876,10 +6179,20 @@
         } else {
             clearActiveTrackButton();
         }
-        setActiveTrackContext(track, data, releaseUrl, card, cardArtUrl);
+        setActiveTrackContext(
+            track,
+            data,
+            releaseUrl,
+            card,
+            cardArtUrl,
+            options,
+        );
         syncActiveTrackUi(cardArtUrl);
         audio.play().catch(() => {
             clearActiveTrackButton();
+            if (typeof options.onPlayError === "function") {
+                void Promise.resolve(options.onPlayError()).catch(() => {});
+            }
         });
     }
 
@@ -5998,6 +6311,49 @@
         scheduleUiSync(cardArtUrl);
     }
 
+    function observeCollectionCoverState() {
+        stopObservingCollectionCoverState();
+
+        const card = getConnectedActiveTrackCard();
+        const stateNode = findCoverPlaybackStateNodeForCard(card);
+        if (
+            STATE.activePlaybackScope !== "collection-grid" ||
+            !stateNode ||
+            typeof MutationObserver !== "function"
+        ) {
+            return;
+        }
+
+        const observer = new MutationObserver(() => {
+            const audio = ensureSharedAudio();
+            const expectedClass = audio && audio.paused ? "paused" : "playing";
+            if (
+                STATE.coverPlaybackStateNode === stateNode &&
+                !stateNode.classList.contains(expectedClass)
+            ) {
+                syncCoverPlaybackState();
+            }
+        });
+        observer.observe(stateNode, {
+            attributes: true,
+            attributeFilter: ["class"],
+        });
+        STATE.collectionCoverStateObserver = observer;
+        STATE.collectionCoverStateObserverTimer = window.setTimeout(
+            stopObservingCollectionCoverState,
+            2200,
+        );
+    }
+
+    function stopObservingCollectionCoverState() {
+        if (STATE.collectionCoverStateObserver) {
+            STATE.collectionCoverStateObserver.disconnect();
+            STATE.collectionCoverStateObserver = null;
+        }
+        window.clearTimeout(STATE.collectionCoverStateObserverTimer);
+        STATE.collectionCoverStateObserverTimer = 0;
+    }
+
     function getConnectedActiveTrackCard() {
         return STATE.activeTrackCard && document.contains(STATE.activeTrackCard)
             ? STATE.activeTrackCard
@@ -6051,17 +6407,27 @@
         );
     }
 
-    function setActiveTrackContext(track, data, releaseUrl, card, cardArtUrl) {
+    function setActiveTrackContext(
+        track,
+        data,
+        releaseUrl,
+        card,
+        cardArtUrl,
+        options = {},
+    ) {
         STATE.activeTrack = track || null;
         STATE.activeReleaseData = data || null;
         STATE.activeReleaseUrl = releaseUrl || "";
         STATE.activeTrackCard = card || null;
         STATE.activeCardArtUrl = cardArtUrl || STATE.activeCardArtUrl || "";
+        STATE.activePlaybackScope = cleanText(options.playbackScope);
 
         const tracks =
-            data && Array.isArray(data.tracks)
-                ? data.tracks.filter((item) => item && item.title)
-                : [];
+            Array.isArray(options.trackList)
+                ? options.trackList.filter((item) => item && item.title)
+                : data && Array.isArray(data.tracks)
+                  ? data.tracks.filter((item) => item && item.title)
+                  : [];
         STATE.activeTrackList = tracks;
         STATE.activeTrackIndex = findTrackIndex(tracks, track);
 
@@ -6632,6 +6998,7 @@
         const checked = !!(event && event.target && event.target.checked);
         CONFIG.continuousMode = checked;
         syncPlayerSettingsMenu();
+        syncPlayerShell();
         void persistUserSettings();
     }
 
@@ -6737,14 +7104,25 @@
 
         for (const neighbor of neighbors) {
             try {
-                const data = await getAvailableOrFetchReleaseDataForCard(
-                    neighbor.card,
-                    neighbor.releaseUrl,
-                );
-                const track = offset < 0
-                    ? findLastPlayableTrack(data)
-                    : findFeaturedTrackForCard(neighbor.card, null, data) ||
-                      findFirstPlayableTrack(data);
+                const preview =
+                    neighbor.playbackScope === "collection-grid"
+                        ? getCollectionGridFeaturedPreview(neighbor.card)
+                        : null;
+                const data = preview
+                    ? preview.data
+                    : await getAvailableOrFetchReleaseDataForCard(
+                          neighbor.card,
+                          neighbor.releaseUrl,
+                      );
+                const track =
+                    preview
+                        ? preview.track
+                        : neighbor.playbackScope === "collection-grid"
+                        ? findFeaturedTrackForCard(neighbor.card, null, data)
+                        : offset < 0
+                          ? findLastPlayableTrack(data)
+                          : findFeaturedTrackForCard(neighbor.card, null, data) ||
+                            findFirstPlayableTrack(data);
                 if (!track || !track.streamUrl) {
                     continue;
                 }
@@ -6755,7 +7133,16 @@
                     track,
                     data,
                     neighbor.releaseUrl,
+                    neighbor.playbackScope === "collection-grid"
+                        ? {
+                              playbackScope: "collection-grid",
+                              trackList: [track],
+                          }
+                        : {},
                 );
+                if (neighbor.playbackScope === "collection-grid") {
+                    observeCollectionCoverState();
+                }
                 return true;
             } catch (_error) {
                 continue;
@@ -6780,7 +7167,10 @@
             return [];
         }
 
-        const cards = getStoryCardsFromRoots([document]);
+        const collectionGridPlayback = findCollectionGridCard(currentCard);
+        const cards = collectionGridPlayback
+            ? getCollectionGridPlaybackCards(currentCard)
+            : getStoryCardsFromRoots([document]);
         const currentIndex = cards.indexOf(currentCard);
         if (currentIndex < 0) {
             return [];
@@ -6794,7 +7184,11 @@
             index += step
         ) {
             const card = cards[index];
-            if (!isContinuousPlaybackCandidate(card)) {
+            if (
+                collectionGridPlayback
+                    ? !isCollectionGridPlaybackCandidate(card)
+                    : !isContinuousPlaybackCandidate(card)
+            ) {
                 continue;
             }
 
@@ -6810,10 +7204,41 @@
             neighbors.push({
                 card,
                 releaseUrl: normalizedReleaseUrl,
+                playbackScope: collectionGridPlayback
+                    ? "collection-grid"
+                    : "",
             });
         }
 
         return neighbors;
+    }
+
+    function getCollectionGridPlaybackCards(card) {
+        const grid = card && card.closest(".collection-grid");
+        if (!grid) {
+            return [];
+        }
+
+        return Array.from(
+            grid.querySelectorAll(".collection-item-container"),
+        ).filter((item) => item instanceof Element);
+    }
+
+    function isCollectionGridPlaybackCandidate(card) {
+        if (!(card instanceof Element) || isFullDiscographyCard(card)) {
+            return false;
+        }
+
+        const releaseUrl = normalizeReleaseUrl(getCardPrimaryReleaseUrl(card));
+        if (!releaseUrl) {
+            return false;
+        }
+
+        return !(
+            isWebExtensionHost() &&
+            isCustomDomainReleaseUrl(releaseUrl) &&
+            !hasExtensionHostPermission(releaseUrl)
+        );
     }
 
     function isContinuousPlaybackCandidate(card) {

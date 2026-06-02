@@ -18,10 +18,11 @@ LICENSE
 
 build_target() {
     target="$1"
-    manifest_source="$2"
-    package_ext="$3"
+    package_name="$2"
+    manifest_source="$3"
+    package_ext="$4"
     target_dir="$DIST_DIR/$target"
-    zip_path="$DIST_DIR/bcamplifier-$target.$package_ext"
+    zip_path="$DIST_DIR/bcamplifier-$package_name.$package_ext"
 
     rm -rf "$target_dir" "$zip_path"
     mkdir -p "$target_dir"
@@ -45,11 +46,11 @@ build_target() {
 
 mkdir -p "$DIST_DIR"
 cp "$ROOT_DIR/bcamplifier.user.js" "$DIST_DIR/bcamplifier.user.js"
-build_target chrome manifest.chrome.json zip
-build_target firefox manifest.firefox.json xpi
+build_target chrome-unpacked chrome manifest.chrome.json zip
+build_target firefox firefox manifest.firefox.json xpi
 
 printf 'Built extension targets:\n'
-printf '  %s\n' "$DIST_DIR/chrome" "$DIST_DIR/firefox"
+printf '  %s\n' "$DIST_DIR/chrome-unpacked" "$DIST_DIR/firefox"
 printf 'Built userscript:\n'
 printf '  %s\n' "$DIST_DIR/bcamplifier.user.js"
 

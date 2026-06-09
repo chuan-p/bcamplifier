@@ -11,14 +11,20 @@ Thanks for your interest in improving Bandcamplifer.
 ## Development Setup
 
 1. Clone the repository.
-2. Start a local web server from the repository root:
+2. Build the generated userscript:
+
+```sh
+node scripts/build-userscript.mjs
+```
+
+3. Start a local web server from the repository root:
 
 ```sh
 python3 -m http.server 8000 --bind 127.0.0.1
 ```
 
-3. Install [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js) in Tampermonkey for local iteration.
-4. If you are testing the extension build, run:
+4. Install [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js) in Tampermonkey for local iteration.
+5. If you are testing the extension build, run:
 
 ```sh
 ./scripts/build-extension.sh
@@ -29,6 +35,8 @@ python3 -m http.server 8000 --bind 127.0.0.1
 Run the checks that match your change before opening a pull request:
 
 ```sh
+node scripts/build-userscript.mjs
+node --check src/bcamplifier.core.js
 node --check bcamplifier.user.js
 ./scripts/check-extension-scope.sh
 ./scripts/build-extension.sh

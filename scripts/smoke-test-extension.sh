@@ -179,6 +179,43 @@ const checks = [
     }
     await releasePage.close();
 
+    const labelUrl = new URL(`https://fixture.bandcamp.com:${new URL(testUrl).port}/`);
+    labelUrl.search =
+      "search_item_id%3D3824279452%26search_item_type%3Db%26search_match_part%3D%253F%26search_page_id%3D5483808787%26search_page_no%3D0%26search_rank%3D1";
+    const labelPage = await context.newPage();
+    await labelPage.goto(labelUrl.toString(), {
+      waitUntil: "domcontentloaded",
+      timeout: 15000,
+    });
+    await labelPage.waitForFunction(
+      () =>
+        document.documentElement.getAttribute("data-bcampx-host") === "webextension" &&
+        document.documentElement.getAttribute("data-bcampx-script-loaded") === "true" &&
+        document.documentElement.getAttribute("data-bcampx-page-kind") === "artist-music" &&
+        document.documentElement.getAttribute("data-bcampx-label-feed-state") === "ready",
+      { timeout: 15000 },
+    );
+    const labelChecks = await labelPage.evaluate(() => ({
+      host: document.documentElement.getAttribute("data-bcampx-host"),
+      loaded: document.documentElement.getAttribute("data-bcampx-script-loaded"),
+      pageKind: document.documentElement.getAttribute("data-bcampx-page-kind"),
+      feedState: document.documentElement.getAttribute("data-bcampx-label-feed-state"),
+      cardCount: document.querySelectorAll(".bcampx-label-feed-card").length,
+    }));
+    if (labelChecks.host !== "webextension") {
+      missing.push("query-root label page host bridge initialized");
+    }
+    if (labelChecks.loaded !== "true") {
+      missing.push("query-root label page core booted");
+    }
+    if (labelChecks.pageKind !== "artist-music") {
+      missing.push("query-root label page recognized as artist music");
+    }
+    if (labelChecks.feedState !== "ready" || labelChecks.cardCount !== 1) {
+      missing.push("query-root label page enhanced feed rendered");
+    }
+    await labelPage.close();
+
     console.log("chrome_smoke_mode=playwright");
     console.log("chrome_smoke_fixture=" + (missing.length ? "failed" : "passed"));
 

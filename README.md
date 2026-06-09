@@ -17,6 +17,7 @@ Bandcamplifier is an open source userscript and browser extension that improves 
 ## Highlights
 
 - Enriches feed cards with release metadata loaded from linked album or track pages
+- Turns artist and label `/music` pages into an enhanced release feed
 - Replaces the `supported by` column with a readable inline tracklist on compatible cards
 - Lets you play tracks from the feed and keeps a persistent bottom player in sync
 - Adds per-track `wish` actions in the inline tracklist
@@ -25,7 +26,12 @@ Bandcamplifier is an open source userscript and browser extension that improves 
 
 ## Project Layout
 
-- [`bcamplifier.user.js`](./bcamplifier.user.js): release userscript and shared core logic
+- [`src/userscript.meta.js`](./src/userscript.meta.js): userscript metadata block
+- [`src/bcamplifier.core.js`](./src/bcamplifier.core.js): shared userscript core logic
+- [`src/styles/`](./src/styles): CSS bundled into the generated userscript
+- [`src/ui/`](./src/ui): UI fragments bundled into the generated userscript
+- [`src/utils/`](./src/utils): shared helper fragments bundled into the generated userscript
+- [`bcamplifier.user.js`](./bcamplifier.user.js): generated release userscript
 - [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js): local Tampermonkey dev loader
 - [`manifest.chrome.json`](./manifest.chrome.json): Chrome extension manifest
 - [`manifest.firefox.json`](./manifest.firefox.json): Firefox extension manifest
@@ -37,7 +43,7 @@ Bandcamplifier is an open source userscript and browser extension that improves 
 
 ### Userscript
 
-Bandcamplifier ships as a Tampermonkey userscript through the public Bandcamplifier release you distribute. For local testing or self-hosting, the repository release file is [`bcamplifier.user.js`](./bcamplifier.user.js).
+Bandcamplifier ships as a Tampermonkey userscript through the public Bandcamplifier release you distribute. For local testing or self-hosting, build the repository release file [`bcamplifier.user.js`](./bcamplifier.user.js) from the split source files in [`src/`](./src).
 
 The release userscript:
 
@@ -99,6 +105,12 @@ Use the dev loader during active work:
 
 - [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js)
 
+Build the single-file userscript after editing files in [`src/`](./src):
+
+```sh
+node scripts/build-userscript.mjs
+```
+
 Start a local server from the repository root:
 
 ```sh
@@ -115,21 +127,25 @@ The dev loader:
 
 Recommended workflow:
 
-1. Keep `bcamplifier.user.js` as the release-style script.
+1. Edit the split source files in [`src/`](./src).
 2. Use `bcamplifier.dev.user.js` while iterating locally.
-3. Bump `@version` in `bcamplifier.user.js` when you want Tampermonkey to detect a fresh release build.
+3. Rebuild `bcamplifier.user.js` before testing or packaging.
+4. Bump `@version` in [`src/userscript.meta.js`](./src/userscript.meta.js) when you want Tampermonkey to detect a fresh release build.
 
 ## Validation
 
 Run the core checks from the repository root:
 
 ```sh
+node scripts/build-userscript.mjs
+node --check src/bcamplifier.core.js
 node --check bcamplifier.user.js
 ./scripts/check-extension-scope.sh
 ./scripts/build-extension.sh
 ./scripts/smoke-test-extension.sh
 ./scripts/smoke-test-firefox.sh
 ./scripts/test-feed-fixture.sh
+./scripts/test-label-music-fixture.sh
 ```
 
 The verification helpers are:
@@ -138,10 +154,11 @@ The verification helpers are:
 - [`scripts/smoke-test-extension.sh`](./scripts/smoke-test-extension.sh): checks that the Chrome build loads without manifest-level errors
 - [`scripts/smoke-test-firefox.sh`](./scripts/smoke-test-firefox.sh): installs the Firefox package temporarily and verifies the shared core against a local HTTPS fixture
 - [`scripts/test-feed-fixture.sh`](./scripts/test-feed-fixture.sh): serves a local fixture and verifies that the shared core injects enhancement UI
+- [`scripts/test-label-music-fixture.sh`](./scripts/test-label-music-fixture.sh): verifies artist and label `/music` pages are converted into enhanced feed cards
 
 ## Configuration
 
-Edit the `CONFIG` object near the top of [`bcamplifier.user.js`](./bcamplifier.user.js) to tune behavior:
+Edit the `CONFIG` object near the top of [`src/bcamplifier.core.js`](./src/bcamplifier.core.js) to tune behavior:
 
 - `autoFetchOnVisible`
 - `expandAfterAutoFetch`

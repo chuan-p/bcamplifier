@@ -10,7 +10,7 @@ CERT_DIR=${CERT_DIR:-/tmp/bcampx-userscript-cert}
 TEST_URL=${TEST_URL:-https://bandcamp.com:${PORT}/feed}
 
 if [ ! -f "$DIST_DIR/bcamplifier.user.js" ]; then
-    echo "Built userscript is missing. Run ./scripts/build-extension.sh first." >&2
+    echo "Built userscript is missing. Run node scripts/build-userscript.mjs first." >&2
     exit 1
 fi
 
@@ -78,6 +78,17 @@ const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), "bcampx-userscript-smok
         document.documentElement.getAttribute("data-bcampx-page-kind") === "feed" &&
         document.documentElement.getAttribute("data-bcampx-init-state") === "ready" &&
         document.documentElement.getAttribute("data-bcampx-enhanced-count") === "1",
+      { timeout: 15000 },
+    );
+    await page.waitForFunction(
+      () => {
+        const card = document.querySelector("#fixture-main-card");
+        const text = card ? card.textContent || "" : "";
+        return (
+          text.includes("Jan 2, 2024 · Shanghai") &&
+          text.includes("Description · 2 tracks")
+        );
+      },
       { timeout: 15000 },
     );
 

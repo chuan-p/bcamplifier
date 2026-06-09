@@ -21,8 +21,7 @@ expected_matches = [
     "https://bandcamp.com/*/feed*",
     "https://bandcamp.com/album/*",
     "https://bandcamp.com/track/*",
-    "https://*.bandcamp.com/album/*",
-    "https://*.bandcamp.com/track/*",
+    "https://*.bandcamp.com/*",
 ]
 
 manifests = [

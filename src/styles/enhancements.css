@@ -1,0 +1,678 @@
+.bcampx {
+        box-sizing: border-box;
+        margin: 6px 0 0;
+        padding: 0;
+        max-width: 360px;
+        color: #444;
+        font: 12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .bcampx * {
+        box-sizing: border-box;
+      }
+
+      .bcampx-label-feed {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 940px;
+        margin: 0 0 28px;
+        padding: 0;
+      }
+
+      .bcampx-label-feed__list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .bcampx-label-feed-page--enhanced .label-band-selector.fade-in-on-load {
+        display: none !important;
+      }
+
+      .bcampx-label-feed-native-offscreen {
+        position: absolute !important;
+        left: -10000px !important;
+        top: auto !important;
+        width: 1px !important;
+        height: 1px !important;
+        max-width: 1px !important;
+        max-height: 1px !important;
+        overflow: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+
+      .bcampx-label-feed-card {
+        box-sizing: border-box;
+        display: block;
+        width: 100%;
+        min-height: 150px;
+        content-visibility: auto;
+        contain-intrinsic-size: auto 260px;
+        margin: 0 0 16px;
+        padding: 15px 18px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.92);
+        color: #333;
+        font: 400 13px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      .bcampx-label-feed-card * {
+        box-sizing: border-box;
+      }
+
+      .bcampx-label-feed-card .bcampx-label-feed-card__story-title {
+        display: none !important;
+      }
+
+      .bcampx-label-feed-card .story-title a {
+        color: #4085b6 !important;
+        font: inherit !important;
+        font-weight: 600 !important;
+        text-decoration: none !important;
+      }
+
+      .bcampx-label-feed-card .story-title a:hover {
+        text-decoration: underline !important;
+      }
+
+      .bcampx-label-feed-card .tralbum-wrapper {
+        display: grid;
+        grid-template-columns: 200px minmax(180px, 1fr) minmax(220px, 280px);
+        gap: 18px;
+        align-items: start;
+      }
+
+      .bcampx-label-feed-card .art img {
+        display: block;
+        width: 200px;
+        height: 200px;
+        object-fit: cover;
+      }
+
+      .bcampx-label-feed-card .tralbum-wrapper-col1,
+      .bcampx-label-feed-card .tralbum-wrapper-col2 {
+        min-width: 0;
+      }
+
+      .bcampx-label-feed-card .item-link {
+        color: #222 !important;
+        font: 700 15px/1.25 "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+        text-decoration: none !important;
+      }
+
+      .bcampx-label-feed-card .item-link:hover,
+      .bcampx-label-feed-card .buy-link:hover {
+        text-decoration: underline !important;
+      }
+
+      .bcampx-label-feed-card .itemsubtext {
+        margin-top: 4px !important;
+        color: #777 !important;
+        font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+      }
+
+      .bcampx-label-feed-card .buy-link {
+        display: inline-block;
+        margin-top: 8px !important;
+        color: #4085b6 !important;
+        font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+        text-decoration: none !important;
+      }
+
+      .bcampx-label-feed-card .tralbum-owners {
+        color: #5d5d5d;
+        font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      .bcampx-label-feed-card .bcampx--supported-slot {
+        width: 100%;
+      }
+
+      .bcampx-label-feed-card .bcampx--supported-slot.bcampx--expanded {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 360px;
+      }
+
+      .bcampx-label-feed-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: auto;
+        height: 22px;
+        min-height: 22px;
+        margin: 0 8px 10px 0;
+        padding: 1px;
+        border: 1px solid rgba(0, 0, 0, 0.13);
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: none;
+        color: #777;
+        cursor: pointer;
+        vertical-align: middle;
+      }
+
+      .bcampx-label-feed-toggle__icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 18px;
+        border-radius: 2px;
+        color: #777;
+      }
+
+      .bcampx-label-feed-toggle__icon + .bcampx-label-feed-toggle__icon {
+        margin-left: 2px;
+      }
+
+      .bcampx-label-feed-toggle--feed .bcampx-label-feed-toggle__icon--feed,
+      .bcampx-label-feed-toggle--original .bcampx-label-feed-toggle__icon--original {
+        color: #fff;
+        background: rgba(64, 133, 182, 0.86);
+      }
+
+      .bcampx-label-feed-toggle svg {
+        display: block;
+      }
+
+      .bcampx-label-feed-toggle--floating {
+        position: fixed;
+        left: 14px;
+        bottom: 14px;
+        z-index: 2147483645;
+        margin: 0;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);
+      }
+
+      .bcampx-label-feed-toggle--inline {
+        position: static;
+      }
+
+      .bcampx-label-feed-toggle--navbar {
+        margin: 0 0 0 auto;
+        align-self: center;
+      }
+
+      #band-navbar.bcampx-label-feed-navbar-host {
+        display: flex;
+        align-items: center;
+        gap: 0;
+      }
+
+      .bcampx-label-feed-toggle:hover {
+        border-color: rgba(64, 133, 182, 0.3);
+        color: #266a99;
+        background: rgba(255, 255, 255, 0.96);
+      }
+
+      .bcampx-label-feed-toggle:hover .bcampx-label-feed-toggle__icon {
+        color: #266a99;
+        background: rgba(64, 133, 182, 0.08);
+      }
+
+      .bcampx-label-feed-toggle--feed:hover .bcampx-label-feed-toggle__icon--feed,
+      .bcampx-label-feed-toggle--original:hover .bcampx-label-feed-toggle__icon--original {
+        color: #fff;
+        background: rgba(64, 133, 182, 0.86);
+      }
+
+      .bcampx-label-feed-toggle:focus-visible {
+        outline: 2px solid #4085b6;
+        outline-offset: 2px;
+      }
+
+      @media (max-width: 560px) {
+        .bcampx-label-feed {
+          max-width: none;
+        }
+
+        .bcampx-label-feed-card {
+          padding: 14px;
+        }
+
+        .bcampx-label-feed-card .tralbum-wrapper {
+          grid-template-columns: 128px minmax(0, 1fr);
+          gap: 12px;
+        }
+
+        .bcampx-label-feed-card .tralbum-wrapper-col2 {
+          grid-column: 1 / -1;
+          padding-top: 4px;
+        }
+
+        .bcampx-label-feed-card .art img {
+          width: 128px;
+          height: 128px;
+        }
+
+        .bcampx-label-feed-toggle {
+          margin-right: 8px;
+        }
+
+        .bcampx-label-feed-toggle--floating {
+          left: 10px;
+          bottom: 10px;
+          margin: 0;
+        }
+      }
+
+      .bcampx__meta {
+        display: block;
+        color: #555;
+        padding-top: 4px;
+      }
+
+      .bcampx__summary {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 4px;
+        color: #777;
+      }
+
+      .bcampx--supported-slot {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .bcampx--supported-slot .bcampx__meta {
+        padding: 0;
+        max-width: none;
+        color: #5d5d5d;
+        font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      .bcampx__slot-panel {
+        padding: 0;
+        border-left: 0;
+      }
+
+      .bcampx__summary-text {
+        min-width: 0;
+      }
+
+      .bcampx__merge-note {
+        margin: 8px 0 12px;
+        color: #8a8a8a;
+        font: 400 12px/1.34 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        text-align: left;
+      }
+
+      .bcampx__merge-fan {
+        color: #6d6d6d;
+        font-weight: 600;
+      }
+
+      .bcampx__merge-copy {
+        color: #8a8a8a;
+      }
+
+      .bcampx__merge-track-button {
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #4085b6;
+        font: inherit;
+        line-height: inherit;
+        text-align: left;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .bcampx__merge-track-button:hover {
+        text-decoration: underline;
+      }
+
+      .bcampx__merge-track-button.bcampx__track-link--active {
+        color: #4085b6;
+        text-decoration: underline;
+      }
+
+      .bcampx__merge-track-button:disabled {
+        cursor: progress;
+        opacity: 0.75;
+      }
+
+      .bcampx__toggle {
+        cursor: pointer;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #4085b6;
+        font: inherit;
+        text-decoration: underline;
+      }
+
+      .bcampx__toggle:disabled {
+        cursor: progress;
+        opacity: 0.68;
+      }
+
+      .bcampx__facts {
+        color: #666;
+      }
+
+      .bcampx__slot-header {
+        margin: 0 0 7px;
+        color: #757575;
+        font-size: 10px;
+        line-height: 1.2;
+        font-weight: 600;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+      }
+
+      .bcampx__slot-subhead {
+        margin: 8px 0 0;
+        color: #949494;
+        font-size: 11px;
+        font-weight: 400;
+      }
+
+      .bcampx__description {
+        margin: 6px 0 0;
+        color: #333;
+        white-space: pre-line;
+      }
+
+      .bcampx__tracks {
+        display: none;
+        margin: 6px 0 0 18px;
+        padding: 0;
+      }
+
+      .bcampx--expanded .bcampx__tracks {
+        display: block;
+      }
+
+      .bcampx__tracks li {
+        margin: 2px 0;
+      }
+
+      .bcampx__tracks--slot {
+        display: block;
+        margin: 0;
+        padding-left: 0;
+        list-style: none;
+        counter-reset: bcampxTrackNumber;
+        color: #4a4a4a;
+        font-size: 12px;
+        font-weight: 400;
+      }
+
+      .bcampx__tracks--slot li {
+        display: grid;
+        grid-template-columns: 18px minmax(0, 1fr) auto;
+        column-gap: 7px;
+        align-items: start;
+        margin: 0;
+        padding: 2px 0 5px;
+        line-height: 1.28;
+        border-top: 0;
+      }
+
+      .bcampx__tracks--slot li:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .bcampx__tracks--slot.bcampx__tracks--collapsed .bcampx__track-item--extra {
+        display: none;
+      }
+
+      .bcampx__tracks--slot li::before {
+        counter-increment: bcampxTrackNumber;
+        content: counter(bcampxTrackNumber) ".";
+        color: #aaaaaa;
+        font-variant-numeric: tabular-nums;
+        align-self: start;
+        justify-self: start;
+        padding-top: 1px;
+      }
+
+      .bcampx__track-item--purchased::before {
+        color: #4085b6;
+        font-weight: 400;
+      }
+
+      .bcampx__track-link {
+        cursor: pointer;
+        display: block;
+        width: 100%;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        line-height: inherit;
+        text-align: left;
+        text-decoration: none;
+        min-width: 0;
+        margin: 0;
+      }
+
+      .bcampx__track-link:hover {
+        color: #4085b6;
+        text-decoration: underline;
+      }
+
+      .bcampx__track-link--active {
+        color: #4085b6;
+        font-weight: 400;
+        text-decoration: underline;
+      }
+
+      .bcampx__track-item--purchased .bcampx__track-link {
+        color: #333;
+        font-weight: 400;
+      }
+
+      .bcampx__track-duration {
+        color: #a0a0a0;
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        padding-top: 1px;
+        text-align: right;
+        opacity: 0.88;
+        align-self: start;
+      }
+
+      .bcampx__track-end {
+        display: flex;
+        justify-content: flex-end;
+        align-items: flex-start;
+        min-width: 42px;
+      }
+
+      .bcampx__track-actions {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        margin-top: -1px;
+      }
+
+      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-duration,
+      .bcampx__track-item--show-actions .bcampx__track-duration {
+        display: none;
+      }
+
+      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-actions,
+      .bcampx__track-item--show-actions .bcampx__track-actions {
+        display: flex;
+      }
+
+      .bcampx__track-action {
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #6f8eaa;
+        font: 400 10px/1.2 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        cursor: pointer;
+        text-transform: lowercase;
+      }
+
+      .bcampx__track-action:hover {
+        color: #4085b6;
+        text-decoration: underline;
+      }
+
+      .bcampx__track-action:disabled {
+        cursor: default;
+        opacity: 0.7;
+      }
+
+      .bcampx__track-action--pending,
+      .bcampx__track-action--flash {
+        color: #4085b6;
+      }
+
+      .bcampx__track-action-frame {
+        position: fixed;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+        left: -9999px;
+        top: -9999px;
+        border: 0;
+      }
+
+      .bcampx__track-link:disabled {
+        cursor: default;
+        opacity: 0.55;
+      }
+
+
+      .bcampx__description--slot {
+        margin-top: 10px;
+        color: #757575;
+        font-size: 12px;
+        line-height: 1.4;
+        white-space: normal;
+      }
+
+      .bcampx__description-block {
+        display: block;
+        margin-top: 10px;
+        padding-top: 0;
+        border-top: 0;
+      }
+
+      .bcampx__description--slot p {
+        margin: 0 0 5px;
+      }
+
+      .bcampx__description--slot p:last-child {
+        margin-bottom: 0;
+      }
+
+      .bcampx__description--slot.bcampx__description--collapsed {
+        max-height: calc(1.35em * 4);
+        overflow: hidden;
+      }
+
+      .bcampx__description--slot a {
+        color: #4085b6;
+        text-decoration: none;
+      }
+
+      .bcampx__description--slot a:hover {
+        text-decoration: underline;
+      }
+
+      .bcampx__slot-expand {
+        display: inline-block;
+        margin-top: 3px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #6f8eaa;
+        font: 400 11px/1.2 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        cursor: pointer;
+        text-decoration: none;
+      }
+
+
+      .bcampx__slot-expand:hover {
+        color: #4085b6;
+        text-decoration: underline;
+      }
+
+      #track_play_waypoint {
+        display: none !important;
+      }
+
+      .bcampx__waypoint-toggle {
+        position: absolute;
+        right: -18px;
+        top: 50%;
+        transform: translateY(-50%);
+        min-width: 62px;
+        padding: 6px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        border-radius: 999px;
+        background: rgba(120, 120, 120, 0.92);
+        color: #fff;
+        font: 600 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        z-index: 4;
+      }
+
+      .bcampx__waypoint-toggle:hover {
+        background: rgba(105, 105, 105, 0.98);
+      }
+
+      .bcampx__waypoint-toggle--paused {
+        background: rgba(132, 132, 132, 0.9);
+      }
+
+
+      .bcampx__link {
+        display: inline-block;
+        margin-top: 8px;
+        color: #4085b6;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .bcampx__link:hover {
+        text-decoration: underline;
+      }
+
+      .bcampx__action {
+        display: inline-block;
+        margin: 8px 10px 0 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #4085b6;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .bcampx__action:hover {
+        text-decoration: underline;
+      }
+
+      .bcampx__action:disabled {
+        cursor: default;
+        opacity: 0.6;
+        text-decoration: none;
+      }
+
+      .bcampx__error,
+      .bcampx__empty {
+        margin: 0 0 6px;
+        color: #66757f;
+      }
+
+      .bcampx--loading {
+        opacity: 0.78;
+      }

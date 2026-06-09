@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Music | Fixture Label</title>
+    <meta property="og:site_name" content="Fixture Label" />
+    <style>
+      body {
+        margin: 0;
+        padding: 32px;
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f5f5f5;
+        color: #222;
+      }
+
+      #music-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 160px);
+        gap: 20px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .music-grid-item img {
+        width: 160px;
+        height: 160px;
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <script
+      data-band='{"name":"Fixture Label","https_url":"https://fixture.bandcamp.com"}'
+    ></script>
+    <div
+      id="pagedata"
+      data-blob='{"identities":{"fan":{"id":987,"name":"Fixture Fan"}}}'
+      hidden
+    ></div>
+
+    <main>
+      <nav id="band-navbar">
+        <a href="/music">music</a>
+      </nav>
+
+      <div
+        class="label-band-selector fade-in-on-load"
+        data-label-band-selector='{"member_bands":[{"id":654,"name":"Fixture Artist"},{"id":999,"name":"Other Artist"}],"label_band":{"id":1,"name":"Fixture Label"}}'
+      >
+        <a class="selected" href="/music">all</a>
+        <a href="/music?filter_band=654">Fixture Artist</a>
+        <a href="/music?filter_band=999">Other Artist</a>
+      </div>
+
+      <ol class="featured-grid featured-items featured-music occupied">
+        <li class="featured-item">
+          <a href="https://fixture.bandcamp.com/album/synthetic-release?label=1&tab=music">
+            <div class="art">
+              <img
+                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Crect width='320' height='320' fill='%23cbd5e1'/%3E%3Ctext x='36' y='170' font-family='Arial' font-size='34' fill='%23111827'%3ERelease%3C/text%3E%3C/svg%3E"
+                alt=""
+              />
+            </div>
+            <p class="title">
+              Synthetic Release
+              <br /><span class="artist-override">Fixture Artist</span>
+            </p>
+          </a>
+        </li>
+      </ol>
+
+      <ol id="music-grid" class="editable-grid music-grid columns-4 public">
+        <li
+          class="music-grid-item square featured"
+          data-item-id="album-321"
+          data-band-id="654"
+          style="display:none"
+        >
+          <a href="https://fixture.bandcamp.com/album/synthetic-release">
+            <div class="art">
+              <img
+                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Crect width='320' height='320' fill='%23cbd5e1'/%3E%3Ctext x='36' y='170' font-family='Arial' font-size='34' fill='%23111827'%3ERelease%3C/text%3E%3C/svg%3E"
+                alt=""
+              />
+            </div>
+            <p class="title">
+              Synthetic Release
+              <br /><span class="artist-override">Fixture Artist</span>
+            </p>
+          </a>
+        </li>
+
+        <li
+          class="music-grid-item square"
+          data-item-id="track-222"
+          data-band-id="654"
+        >
+          <a href="https://fixture.bandcamp.com/track/synthetic-track">
+            <div class="art">
+              <img
+                class="lazy"
+                src="/img/0.gif"
+                data-original="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Crect width='320' height='320' fill='%23fca5a5'/%3E%3Ctext x='70' y='170' font-family='Arial' font-size='34' fill='%23111827'%3ETrack%3C/text%3E%3C/svg%3E"
+                alt=""
+              />
+            </div>
+            <p class="title">Synthetic Track</p>
+          </a>
+        </li>
+      </ol>
+    </main>
+
+    <script>
+      (() => {
+        const albumUrl = "https://fixture.bandcamp.com/album/synthetic-release";
+        const trackUrl = "https://fixture.bandcamp.com/track/synthetic-track";
+        const releaseHtml = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Synthetic Release | Fixture Artist</title>
+    <meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='640'%3E%3Crect width='640' height='640' fill='%23cbd5e1'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div
+      id="pagedata"
+      data-blob='{"identities":{"fan":{"id":987,"name":"Fixture Fan"}},"fan_tralbum_data":{"is_wishlisted":false}}'
+      hidden
+    ></div>
+    <div
+      data-tralbum-collect-info='{"fan_id":987,"collect_item_id":321,"collect_item_type":"album","collect_band_id":654,"is_collected":false}'
+      hidden
+    ></div>
+    <div
+      data-tralbum='{"current":{"title":"Synthetic Release","release_date":"2024-01-02","about":"A synthetic release for the label music fixture.","id":321,"type":"album","band_id":654},"album_title":"Synthetic Release","artist":"Fixture Artist","album_release_date":"2024-01-02","trackinfo":[{"title":"Track One","track_id":"1","file":{"mp3-128":"https://example.com/track-one.mp3"},"duration":123,"title_link":"https://fixture.bandcamp.com/track/track-one"},{"title":"Track Two","track_id":"2","file":{"mp3-128":"https://example.com/track-two.mp3"},"duration":156,"title_link":"https://fixture.bandcamp.com/track/track-two"}]}'
+    ></div>
+    <div id="band-name-location"><span class="location">Shanghai</span></div>
+    <div class="tralbum-about"><p>A synthetic release for the label music fixture.</p></div>
+  </body>
+</html>`;
+        const trackHtml = releaseHtml
+          .replaceAll("Synthetic Release", "Synthetic Track")
+          .replace('"type":"album"', '"type":"track"')
+          .replace('"id":321', '"id":222')
+          .replace(
+            '"trackinfo":[',
+            '"trackinfo":[{"title":"Synthetic Track","track_id":"222","file":{"mp3-128":"https://example.com/synthetic-track.mp3"},"duration":99}],"_fixtureUnused":[',
+          );
+        const storage = new Map();
+
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async (url) => {
+            if (url === albumUrl) {
+              return releaseHtml;
+            }
+            if (url === trackUrl) {
+              return trackHtml;
+            }
+            throw new Error(`Unexpected fixture request for ${url}`);
+          },
+          requestJson: async () => ({ ok: true }),
+          storageGet: async (key, fallback) =>
+            storage.has(key) ? storage.get(key) : fallback,
+          storageSet: async (key, value) => {
+            storage.set(key, value);
+          },
+        };
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+    <script>
+      window.setTimeout(() => {
+        const toggle = document.querySelector(".bcampx-label-feed-toggle");
+        const feed = document.querySelector(".bcampx-label-feed");
+        const grid = document.querySelector("#music-grid");
+        if (!toggle || !feed || !grid) {
+          return;
+        }
+
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-in-navbar",
+          String(toggle.parentElement && toggle.parentElement.id === "band-navbar"),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-inline",
+          String(toggle.classList.contains("bcampx-label-feed-toggle--inline")),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-navbar-class",
+          String(toggle.classList.contains("bcampx-label-feed-toggle--navbar")),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-navbar-host-class",
+          String(
+            document
+              .querySelector("#band-navbar")
+              .classList.contains("bcampx-label-feed-navbar-host"),
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-icon-count",
+          String(toggle.querySelectorAll(".bcampx-label-feed-toggle__icon").length),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-left-grid",
+          String(
+            toggle.firstElementChild &&
+              toggle.firstElementChild.classList.contains(
+                "bcampx-label-feed-toggle__icon--original",
+              ),
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-right-list",
+          String(
+            toggle.lastElementChild &&
+              toggle.lastElementChild.classList.contains(
+                "bcampx-label-feed-toggle__icon--feed",
+              ),
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-feed-state-initial",
+          String(toggle.classList.contains("bcampx-label-feed-toggle--feed")),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-label-selector-display",
+          getComputedStyle(document.querySelector(".label-band-selector")).display,
+        );
+
+        toggle.click();
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-original-grid-hidden",
+          String(grid.hidden),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-original-feed-hidden",
+          String(feed.hidden),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-original-featured-hidden",
+          String(document.querySelector(".featured-items").hidden),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-label-selector-original-display",
+          getComputedStyle(document.querySelector(".label-band-selector")).display,
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-grid-state",
+          String(toggle.classList.contains("bcampx-label-feed-toggle--original")),
+        );
+
+        toggle.click();
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-feed-grid-hidden",
+          String(
+            grid.hidden ||
+              grid.classList.contains("bcampx-label-feed-native-offscreen"),
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-feed-feed-hidden",
+          String(feed.hidden),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-feed-featured-hidden",
+          String(document.querySelector(".featured-items").hidden),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-feed-featured-display",
+          getComputedStyle(document.querySelector(".featured-items")).display,
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-label-selector-feed-display",
+          getComputedStyle(document.querySelector(".label-band-selector")).display,
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-toggle-feed-state-restored",
+          String(toggle.classList.contains("bcampx-label-feed-toggle--feed")),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-label-feed-card-count",
+          String(document.querySelectorAll(".bcampx-label-feed-card").length),
+        );
+
+        const firstTrackButton = document.querySelector(
+          ".bcampx-label-feed .bcampx__track-link",
+        );
+        if (firstTrackButton) {
+          firstTrackButton.click();
+          window.setTimeout(() => {
+            const playerHost = document.querySelector("#bcampx-player-host");
+            const favoriteButton =
+              playerHost &&
+              playerHost.shadowRoot &&
+              playerHost.shadowRoot.querySelector(".bcampx-player-favorite");
+            document.documentElement.setAttribute(
+              "data-bcampx-label-player-favorite-hidden",
+              String(Boolean(favoriteButton && favoriteButton.hidden)),
+            );
+            if (favoriteButton) {
+              favoriteButton.click();
+              document.documentElement.setAttribute(
+                "data-bcampx-label-player-favorite-active-after-click",
+                String(favoriteButton.getAttribute("aria-pressed") === "true"),
+              );
+              document.documentElement.setAttribute(
+                "data-bcampx-label-player-favorite-pending-after-click",
+                String(favoriteButton.classList.contains("bcampx-player-button--pending")),
+              );
+            }
+          }, 200);
+        }
+      }, 1400);
+    </script>
+  </body>
+</html>

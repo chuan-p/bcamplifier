@@ -45,7 +45,7 @@ build_target() {
 }
 
 mkdir -p "$DIST_DIR"
-cp "$ROOT_DIR/bcamplifier.user.js" "$DIST_DIR/bcamplifier.user.js"
+node "$ROOT_DIR/scripts/build-userscript.mjs"
 build_target chrome-unpacked chrome manifest.chrome.json zip
 build_target firefox firefox manifest.firefox.json xpi
 

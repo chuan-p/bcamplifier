@@ -1,0 +1,334 @@
+.bcampx-player-shell {
+        position: fixed;
+        left: 50%;
+        bottom: 18px;
+        width: min(920px, calc(100vw - 36px));
+        transform: translateX(-50%);
+        pointer-events: auto;
+        padding: 14px;
+        border: 1px solid rgba(190, 198, 204, 0.68);
+        border-radius: 18px;
+        background: rgba(247, 247, 247, 0.98);
+        box-shadow: 0 18px 40px rgba(36, 28, 20, 0.12);
+        color: #2f2f2f;
+        overflow: visible;
+        isolation: isolate;
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
+
+      .bcampx-player-controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .bcampx-player-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 80px;
+        min-height: 38px;
+        padding: 8px 12px;
+        border: solid 1px #dedede;
+        border-radius: 999px;
+        background-color: #fbfcfd;
+        background-image: none;
+        color: #408294;
+        font: 700 13px/1 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        cursor: pointer;
+        white-space: nowrap;
+        text-align: center;
+        outline: none;
+        box-shadow: none;
+      }
+
+      .bcampx-player-button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .bcampx-player-button--circle {
+        width: 38px;
+        min-width: 38px;
+        min-height: 38px;
+        padding: 0;
+      }
+
+      .bcampx-player-button--circle svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+        flex: 0 0 auto;
+      }
+
+      .bcampx-player-settings {
+        position: relative;
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+      }
+
+      .bcampx-player-settings-toggle {
+        color: #408294;
+        border-color: #dedede;
+        background-color: #fbfcfd;
+      }
+
+      .bcampx-player-settings-toggle svg {
+        width: 19px;
+        height: 19px;
+      }
+
+      .bcampx-player-settings-toggle:hover {
+        border-color: #b8c6cf;
+        background-color: #f3f7f9;
+        color: #408294;
+      }
+
+      .bcampx-player-settings-menu {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        right: 0;
+        z-index: 20;
+        min-width: 220px;
+        padding: 12px 13px;
+        border: 1px solid rgba(190, 198, 204, 0.9);
+        border-radius: 12px;
+        background: rgba(251, 252, 253, 0.98);
+        box-shadow: 0 14px 32px rgba(36, 28, 20, 0.14);
+        color: #2f2f2f;
+        max-height: min(55vh, 420px);
+        overflow: auto;
+      }
+
+      .bcampx-player-settings-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 0;
+        cursor: pointer;
+      }
+
+      .bcampx-player-settings-row + .bcampx-player-settings-row {
+        border-top: 1px solid rgba(222, 222, 222, 0.85);
+      }
+
+      .bcampx-player-settings-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      .bcampx-player-settings-label {
+        color: #2f2f2f;
+        font: 700 13px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      .bcampx-player-settings-description {
+        color: #666;
+        font: 500 12px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      .bcampx-player-settings-checkbox {
+        margin: 2px 0 0;
+        inline-size: 14px;
+        block-size: 14px;
+        accent-color: #408294;
+        flex: 0 0 auto;
+      }
+
+      .bcampx-player-settings-footer {
+        margin-top: 8px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(222, 222, 222, 0.85);
+        color: #777;
+        font: 500 11px/1.45 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      .bcampx-player-settings-footer-link {
+        color: #408294;
+        text-decoration: none;
+      }
+
+      .bcampx-player-settings-footer-link:hover {
+        text-decoration: underline;
+      }
+
+      .bcampx-player-button:hover {
+        text-decoration: none;
+        background-color: #f3f7f9;
+      }
+
+      .bcampx-player-favorite {
+        color: #408294;
+        position: relative;
+        transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, background-image 120ms ease;
+      }
+
+      .bcampx-player-favorite-outline,
+      .bcampx-player-favorite-fill {
+        transition: opacity 120ms ease;
+      }
+
+      .bcampx-player-favorite-fill {
+        opacity: 0;
+      }
+
+      .bcampx-player-favorite.active {
+        border: solid 1px #e06d2f;
+        background-color: #e06d2f;
+        background-image: none;
+        color: #fff;
+      }
+
+      .bcampx-player-favorite.active:hover,
+      .bcampx-player-button--circle:hover {
+        border-color: #b8c6cf;
+        background-color: #f3f7f9;
+        color: #408294;
+      }
+
+      .bcampx-player-favorite.active:hover {
+        border-color: #d66428;
+        background-color: #d66428;
+        color: #fff;
+      }
+
+      .bcampx-player-favorite.active .bcampx-player-favorite-outline {
+        opacity: 0;
+      }
+
+      .bcampx-player-favorite.active .bcampx-player-favorite-fill {
+        opacity: 1;
+      }
+
+      .bcampx-player-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+
+      .bcampx-player-now {
+        display: inline-block;
+        margin-bottom: 5px;
+        font-size: 12px;
+        line-height: 1;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #777;
+      }
+
+      .bcampx-player-track {
+        display: block;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #2f2f2f;
+        font: 700 16px/1.04 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .bcampx-player-track:hover,
+      .bcampx-player-store:hover {
+        text-decoration: underline;
+      }
+
+      .bcampx-player-store {
+        color: #6b6b6b;
+        text-decoration: none;
+        font: 500 13px/1.05 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .bcampx-player-native {
+        margin-top: 2px;
+        background: transparent;
+      }
+
+      .bcampx-player-audio {
+        width: 100%;
+        height: 40px;
+        border-radius: 10px;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: static !important;
+        pointer-events: auto !important;
+      }
+
+      @media (max-width: 820px) {
+        .bcampx-player-shell {
+          left: 50%;
+          bottom: 10px;
+          width: min(920px, calc(100vw - 20px));
+          transform: translateX(-50%);
+          padding: 10px 12px;
+          border-radius: 16px;
+        }
+
+        .bcampx-player-controls {
+          gap: 6px;
+          margin-bottom: 8px;
+        }
+
+        .bcampx-player-button {
+          min-height: 34px;
+          min-width: 74px;
+          padding: 7px 10px;
+          font-size: 12px;
+        }
+
+        .bcampx-player-button--circle {
+          width: 34px;
+          min-width: 34px;
+          min-height: 34px;
+        }
+
+        .bcampx-player-button--circle svg {
+          width: 17px;
+          height: 17px;
+        }
+
+        .bcampx-player-settings-menu {
+          min-width: 200px;
+          padding: 11px 12px;
+        }
+
+        .bcampx-player-settings-toggle svg {
+          width: 18px;
+          height: 18px;
+        }
+
+        .bcampx-player-meta {
+          gap: 8px;
+          margin-bottom: 7px;
+        }
+
+        .bcampx-player-track {
+          font-size: 15px;
+          line-height: 1.03;
+        }
+
+        .bcampx-player-store,
+        .bcampx-player-now {
+          font-size: 11px;
+        }
+
+        .bcampx-player-now {
+          margin-bottom: 4px;
+        }
+
+        .bcampx-player-audio {
+          height: 36px;
+        }
+      }

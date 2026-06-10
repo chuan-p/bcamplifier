@@ -4,7 +4,7 @@
   <p>
     <a href="https://chromewebstore.google.com/detail/bandcamplifer/ohkoanfoenpenbeehajomlmjnekphbaa">Chrome Web Store</a>
     ·
-    <a href="https://addons.mozilla.org/zh-CN/firefox/addon/bandcamplifier/">Firefox Add-ons</a>
+    <a href="https://addons.mozilla.org/en-US/firefox/addon/bandcamplifier/">Firefox Add-ons</a>
     ·
     <a href="https://greasyfork.org/en/scripts/573187-bandcamplifier">Greasy Fork</a>
   </p>

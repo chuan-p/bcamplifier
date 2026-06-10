@@ -12,8 +12,7 @@
 // @downloadURL  http://127.0.0.1:8000/bcamplifier.dev.user.js
 // @connect      127.0.0.1
 // @connect      localhost
-// @connect      bandcamp.com
-// @connect      *.bandcamp.com
+// @connect      *
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue

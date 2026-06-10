@@ -50,17 +50,12 @@
         setStatus("Requesting access…");
 
         try {
-            const alreadyGranted = await callPermissionsMethod("contains", {
+            const granted = await callPermissionsMethod("request", {
                 origins: [originPattern],
             });
-            const granted = alreadyGranted
-                ? true
-                : await callPermissionsMethod("request", {
-                      origins: [originPattern],
-                  });
 
             await finish(granted, granted ? "" : "Permission was not granted.", {
-                alreadyGranted,
+                alreadyGranted: false,
             });
         } catch (error) {
             await finish(

@@ -133,36 +133,8 @@
             directFetchError = error;
         }
 
-        const embeddedPlayerUrl = getEmbeddedPlayerRequestUrl(normalizedContext);
-        if (!embeddedPlayerUrl) {
-            if (directFetchError) {
-                throw directFetchError;
-            }
-            throw new Error(
-                "Custom-domain Bandcamp release could not be resolved.",
-            );
-        }
-
-        let embeddedError = null;
-        try {
-            const embeddedHtml = await requestHtml(embeddedPlayerUrl);
-            const canonicalUrl = extractEmbeddedPlayerCanonicalUrl(embeddedHtml);
-            if (canonicalUrl) {
-                return {
-                    releaseUrl: canonicalUrl,
-                    fetchUrl: canonicalUrl,
-                };
-            }
-        } catch (error) {
-            embeddedError = error;
-        }
-
         if (isMissingCustomDomainHostPermissionError(directFetchError)) {
             throw directFetchError;
-        }
-
-        if (embeddedError) {
-            throw embeddedError;
         }
 
         if (directFetchError) {
@@ -186,51 +158,6 @@
             fetchUrl: releaseUrl,
             html,
         };
-    }
-
-    function getEmbeddedPlayerRequestUrl(requestContext) {
-        const itemId = firstPositiveNumber(requestContext && requestContext.itemId);
-        const itemType = normalizeReleaseItemType(
-            requestContext && requestContext.itemType,
-            requestContext && requestContext.releaseUrl,
-        );
-        if (!itemId || !itemType) {
-            return "";
-        }
-
-        return `https://bandcamp.com/EmbeddedPlayer/v=2/${itemType}=${itemId}/size=large/tracklist=false/artwork=small/`;
-    }
-
-    function extractEmbeddedPlayerCanonicalUrl(html) {
-        const doc = htmlToDocument(html);
-        const shareInput = doc.querySelector("#shareurl");
-        const shareUrl =
-            shareInput && typeof shareInput.getAttribute === "function"
-                ? normalizeReleaseUrl(
-                      shareInput.getAttribute("value") || shareInput.value || "",
-                  )
-                : "";
-        if (isBandcampReleaseUrl(shareUrl)) {
-            return shareUrl;
-        }
-
-        const playerData = parseJsonAttribute(
-            doc.querySelector("script[data-player-data]"),
-            "data-player-data",
-        );
-        const linkback = normalizeReleaseUrl(
-            playerData && playerData.linkback ? playerData.linkback : "",
-        );
-        if (isBandcampReleaseUrl(linkback)) {
-            return linkback;
-        }
-
-        const ogUrl = normalizeReleaseUrl(metaContent(doc, 'meta[property="og:url"]'));
-        if (isBandcampReleaseUrl(ogUrl)) {
-            return ogUrl;
-        }
-
-        return "";
     }
 
     function isBandcampReleaseUrl(rawUrl) {

@@ -160,7 +160,7 @@
             }
 
             handleHostPermissionResultMessage(message);
-            return undefined;
+            return null;
         });
     }
 

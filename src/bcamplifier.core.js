@@ -23,14 +23,17 @@
         maxConcurrentFetches: 3,
     };
 
-    const CACHE_SCHEMA_VERSION = 10;
+    const CACHE_SCHEMA_VERSION = 16;
     const RELEASE_CACHE_PREFIX = "bcampx:release:";
     const USER_SETTINGS_KEY = "bcampx:userSettings";
     const ARTIST_MUSIC_VIEW_KEY = "bcampx:artistMusicView";
-    const GLOBAL_PLAYBACK_KEY = "bcampx:globalPlaybackOwner";
-    const GLOBAL_PLAYBACK_HEARTBEAT_MS = 1500;
-    const GLOBAL_PLAYBACK_STALE_MS = 4500;
+    const PLAYBACK_PAUSE_REQUEST_KEY = "bcampx:playbackPauseRequest";
+    const OWNED_RELEASE_COLLECTION_SEARCH_KEY =
+        "bcampx:ownedReleaseCollectionSearch";
+    const PLAYBACK_PAUSE_POLL_MS = 1000;
+    const PLAYBACK_PAUSE_STALE_MS = 10000;
     const PLAYER_WISHLIST_STATE_RETRY_MS = 30000;
+    const OWNED_RELEASE_COLLECTION_SEARCH_TTL_MS = 2 * 60 * 1000;
     const STATE = {
         initialized: false,
         artistMusicFeedBuilt: false,
@@ -75,16 +78,16 @@
         uiSyncFrame: 0,
         pendingUiSyncCardArtUrl: "",
         tabId: `bcampx-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        playbackHeartbeatTimer: 0,
-        playbackMonitorTimer: 0,
-        claimedPlaybackKind: "",
-        claimedPlaybackSource: null,
-        lastPlaybackClaimedAt: 0,
+        playbackPauseMonitorTimer: 0,
+        playbackPauseUnsubscribe: null,
+        lastPlaybackStartedAt: 0,
+        lastHandledPlaybackPauseRequestAt: 0,
         lastTrackActionDiagnostic: null,
         collectionPointerReleaseUrl: "",
         collectionPointerHandledAt: 0,
         feedPreviewTracks: null,
         feedPreviewTrackMap: null,
+        memoVersion: 1,
     };
 
     const RELEASE_LINK_SELECTOR = [
@@ -181,6 +184,8 @@
         }
 
         setupGlobalPlaybackBridge();
+        setupOwnedReleaseCollectionHandoff();
+        void applyPendingOwnedReleaseCollectionSearch();
 
         if (STATE.initialized || !isFeedEnhancerPage()) {
             if (STATE.initialized) {
@@ -226,11 +231,10 @@
 
         STATE.globalBridgeInitialized = true;
         document.addEventListener("play", handleDocumentAudioPlay, true);
-        document.addEventListener("pause", handleDocumentAudioStop, true);
-        document.addEventListener("ended", handleDocumentAudioStop, true);
-        STATE.playbackMonitorTimer = window.setInterval(
-            checkForForeignPlayback,
-            900,
+        subscribeToPlaybackPauseRequests();
+        STATE.playbackPauseMonitorTimer = window.setInterval(
+            checkForPlaybackPauseRequest,
+            PLAYBACK_PAUSE_POLL_MS,
         );
     }
 
@@ -289,7 +293,7 @@
             document.querySelector("audio") ||
             null;
         if (STATE.pageAudio) {
-            STATE.pageAudio.addEventListener(
+            isFeedEnhancerPage() && STATE.pageAudio.addEventListener(
                 "play",
                 suppressNativePageAudio,
                 true,
@@ -311,12 +315,8 @@
             "volumechange",
         ], syncPlayerShell);
         STATE.sharedAudio.addEventListener("play", () =>
-            claimPlaybackOwnership("feed-preview", STATE.sharedAudio),
+            announcePlaybackStart("feed-preview"),
         );
-        addAudioEventListeners(STATE.sharedAudio, [
-            "pause",
-            "ended",
-        ], () => releasePlaybackOwnershipIfCurrent(STATE.sharedAudio));
         addAudioEventListeners(STATE.sharedAudio, [
             "play",
             "pause",
@@ -353,16 +353,7 @@
             return;
         }
 
-        claimPlaybackOwnership("bandcamp-native", audio);
-    }
-
-    function handleDocumentAudioStop(event) {
-        const audio = event.target;
-        if (!(audio instanceof HTMLAudioElement)) {
-            return;
-        }
-
-        releasePlaybackOwnershipIfCurrent(audio);
+        announcePlaybackStart("bandcamp-native");
     }
 
     function handleSharedAudioEnded() {
@@ -371,98 +362,90 @@
         }, 0);
     }
 
-    function claimPlaybackOwnership(kind, source) {
-        STATE.claimedPlaybackKind = kind || "";
-        STATE.claimedPlaybackSource = source || null;
-        STATE.lastPlaybackClaimedAt = Date.now();
-        void publishPlaybackHeartbeat({ force: true });
-        startPlaybackHeartbeat();
-    }
-
-    function startPlaybackHeartbeat() {
-        window.clearInterval(STATE.playbackHeartbeatTimer);
-        STATE.playbackHeartbeatTimer = window.setInterval(() => {
-            void publishPlaybackHeartbeat();
-        }, GLOBAL_PLAYBACK_HEARTBEAT_MS);
-    }
-
-    async function publishPlaybackHeartbeat(options = {}) {
-        if (!STATE.claimedPlaybackKind) {
-            return;
-        }
-
-        if (!options.force) {
-            const current = await storageGet(GLOBAL_PLAYBACK_KEY, null);
-            if (
-                current &&
-                current.tabId &&
-                current.tabId !== STATE.tabId &&
-                current.ts &&
-                Date.now() - Number(current.ts) <= GLOBAL_PLAYBACK_STALE_MS &&
-                Number(current.ts) > STATE.lastPlaybackClaimedAt
-            ) {
-                return;
-            }
-        }
-
-        await storageSet(GLOBAL_PLAYBACK_KEY, {
+    function announcePlaybackStart(kind) {
+        const startedAt = Date.now();
+        STATE.lastPlaybackStartedAt = startedAt;
+        void storageSet(PLAYBACK_PAUSE_REQUEST_KEY, {
             tabId: STATE.tabId,
-            kind: STATE.claimedPlaybackKind,
+            kind: kind || "bandcamp-native",
             pageUrl: window.location.href,
-            ts: Date.now(),
+            ts: startedAt,
+            nonce: Math.random().toString(36).slice(2, 10),
         });
     }
 
-    async function releasePlaybackOwnershipIfCurrent(source) {
+    function subscribeToPlaybackPauseRequests() {
+        const host = getExternalHostApi();
         if (
-            source &&
-            STATE.claimedPlaybackSource &&
-            source !== STATE.claimedPlaybackSource
+            host &&
+            typeof host.subscribeStorageKey === "function"
         ) {
+            STATE.playbackPauseUnsubscribe = host.subscribeStorageKey(
+                PLAYBACK_PAUSE_REQUEST_KEY,
+                handlePlaybackPauseRequest,
+            );
             return;
         }
 
-        const current = await storageGet(GLOBAL_PLAYBACK_KEY, null);
-        if (current && current.tabId === STATE.tabId) {
-            await storageSet(GLOBAL_PLAYBACK_KEY, {
-                tabId: "",
-                kind: "",
-                pageUrl: "",
-                ts: 0,
-            });
-        }
-
-        STATE.claimedPlaybackKind = "";
-        STATE.claimedPlaybackSource = null;
-        STATE.lastPlaybackClaimedAt = 0;
-        window.clearInterval(STATE.playbackHeartbeatTimer);
-        STATE.playbackHeartbeatTimer = 0;
+        try {
+            if (typeof GM_addValueChangeListener === "function") {
+                const listenerId = GM_addValueChangeListener(
+                    PLAYBACK_PAUSE_REQUEST_KEY,
+                    (_key, _oldValue, newValue, remote) => {
+                        if (remote !== false) {
+                            handlePlaybackPauseRequest(newValue);
+                        }
+                    },
+                );
+                STATE.playbackPauseUnsubscribe = () => {
+                    if (typeof GM_removeValueChangeListener === "function") {
+                        GM_removeValueChangeListener(listenerId);
+                    }
+                };
+            }
+        } catch (_error) {}
     }
 
-    async function checkForForeignPlayback() {
-        const activeAudios = getLocalActiveAudios();
-        if (!activeAudios.length) {
+    async function checkForPlaybackPauseRequest() {
+        const request = await storageGet(PLAYBACK_PAUSE_REQUEST_KEY, null);
+        handlePlaybackPauseRequest(request);
+    }
+
+    function handlePlaybackPauseRequest(request) {
+        if (!request || typeof request !== "object") {
             return;
         }
 
-        const current = await storageGet(GLOBAL_PLAYBACK_KEY, null);
-        if (!current || !current.tabId || current.tabId === STATE.tabId) {
+        if (!request.tabId || request.tabId === STATE.tabId) {
             return;
         }
 
-        if (!current.ts || Date.now() - current.ts > GLOBAL_PLAYBACK_STALE_MS) {
+        const requestTs = Number(request.ts) || 0;
+        if (!requestTs) {
             return;
         }
 
+        if (requestTs <= STATE.lastHandledPlaybackPauseRequestAt) {
+            return;
+        }
+
+        if (Date.now() - requestTs > PLAYBACK_PAUSE_STALE_MS) {
+            return;
+        }
+
+        STATE.lastHandledPlaybackPauseRequestAt = requestTs;
         if (
-            STATE.claimedPlaybackKind &&
-            STATE.lastPlaybackClaimedAt &&
-            Number(current.ts) < STATE.lastPlaybackClaimedAt
+            STATE.lastPlaybackStartedAt &&
+            requestTs < STATE.lastPlaybackStartedAt
         ) {
-            void publishPlaybackHeartbeat({ force: true });
             return;
         }
 
+        pauseLocalPlayback();
+    }
+
+    function pauseLocalPlayback() {
+        const activeAudios = getLocalActiveAudios();
         activeAudios.forEach((audio) => {
             if (typeof audio.pause === "function") {
                 audio.pause();
@@ -1094,756 +1077,7 @@
         return STATE.feedPreviewTrackMap;
     }
 
-    async function buildArtistMusicFeed() {
-        if (STATE.artistMusicFeedBuilt || !isArtistMusicPage()) {
-            return false;
-        }
-
-        const releases = collectArtistMusicReleaseCandidates();
-        if (!releases.length) {
-            markDebugState("data-bcampx-label-feed-state", "empty");
-            return false;
-        }
-
-        const sourceGrid = findArtistMusicSourceGrid();
-        if (!sourceGrid || !sourceGrid.parentNode) {
-            markDebugState("data-bcampx-label-feed-state", "missing-source");
-            return false;
-        }
-
-        const feed = document.createElement("section");
-        feed.className = "bcampx-label-feed";
-        feed.setAttribute("aria-label", "Bandcamp release feed");
-
-        const list = document.createElement("ol");
-        list.className = "bcampx-label-feed__list";
-        releases.forEach((release) => {
-            list.appendChild(createArtistMusicFeedCard(release));
-        });
-        feed.appendChild(list);
-
-        const storedView = cleanText(
-            await storageGet(ARTIST_MUSIC_VIEW_KEY, "feed"),
-        );
-        STATE.artistMusicFeedView = storedView === "original" ? "original" : "feed";
-        STATE.artistMusicFeedNode = feed;
-        STATE.artistMusicSourceGridNode = sourceGrid;
-        STATE.artistMusicFeaturedNodes = findArtistMusicFeaturedNodes();
-
-        sourceGrid.parentNode.insertBefore(feed, sourceGrid);
-        document.body.classList.add("bcampx-label-feed-page");
-        ensureArtistMusicViewToggle();
-        applyArtistMusicFeedView(STATE.artistMusicFeedView);
-        STATE.artistMusicFeedBuilt = true;
-
-        markDebugState("data-bcampx-label-feed-state", "ready");
-        markDebugState("data-bcampx-label-feed-count", String(releases.length));
-        markDebugState(
-            "data-bcampx-label-feed-visible-count",
-            String(releases.length),
-        );
-        return true;
-    }
-
-    function ensureArtistMusicViewToggle() {
-        if (STATE.artistMusicToggleNode || !document.body) {
-            return STATE.artistMusicToggleNode;
-        }
-
-        const button = document.createElement("div");
-        button.className = "bcampx-label-feed-toggle";
-        button.setAttribute("role", "button");
-        button.setAttribute("tabindex", "0");
-        button.addEventListener("click", () => {
-            void setArtistMusicFeedView(
-                STATE.artistMusicFeedView === "feed" ? "original" : "feed",
-            );
-        });
-        button.addEventListener("keydown", (event) => {
-            if (event.key !== "Enter" && event.key !== " ") {
-                return;
-            }
-
-            event.preventDefault();
-            button.click();
-        });
-        button.append(
-            createArtistMusicViewToggleIcon("original"),
-            createArtistMusicViewToggleIcon("feed"),
-        );
-
-        document.body.appendChild(button);
-        STATE.artistMusicToggleNode = button;
-        positionArtistMusicViewToggle();
-        scheduleArtistMusicViewTogglePlacement();
-        return button;
-    }
-
-    function createArtistMusicViewToggleIcon(view) {
-        const svg = document.createElementNS(SVG_NS, "svg");
-        svg.classList.add("bcampx-label-feed-toggle__icon");
-        svg.classList.add(`bcampx-label-feed-toggle__icon--${view}`);
-        svg.setAttribute("viewBox", "0 0 20 20");
-        svg.setAttribute("width", "13");
-        svg.setAttribute("height", "13");
-        svg.setAttribute("aria-hidden", "true");
-        svg.setAttribute("focusable", "false");
-
-        if (view === "feed") {
-            [
-                ["4", "5", "12"],
-                ["4", "10", "12"],
-                ["4", "15", "12"],
-            ].forEach(([x1, y, x2]) => {
-                const line = document.createElementNS(SVG_NS, "path");
-                line.setAttribute("d", `M${x1} ${y}h${x2}`);
-                line.setAttribute("fill", "none");
-                line.setAttribute("stroke", "currentColor");
-                line.setAttribute("stroke-width", "1.35");
-                line.setAttribute("stroke-linecap", "round");
-                svg.appendChild(line);
-            });
-            return svg;
-        }
-
-        [
-            ["4", "4"],
-            ["11", "4"],
-            ["4", "11"],
-            ["11", "11"],
-        ].forEach(([x, y]) => {
-            const rect = document.createElementNS(SVG_NS, "rect");
-            rect.setAttribute("x", x);
-            rect.setAttribute("y", y);
-            rect.setAttribute("width", "5");
-            rect.setAttribute("height", "5");
-            rect.setAttribute("rx", "0.8");
-            rect.setAttribute("fill", "none");
-            rect.setAttribute("stroke", "currentColor");
-            rect.setAttribute("stroke-width", "1.25");
-            svg.appendChild(rect);
-        });
-        return svg;
-    }
-
-    function scheduleArtistMusicViewTogglePlacement() {
-        [250, 1000, 2500].forEach((delay) => {
-            window.setTimeout(positionArtistMusicViewToggle, delay);
-        });
-    }
-
-    function positionArtistMusicViewToggle() {
-        const button = STATE.artistMusicToggleNode;
-        if (!button || !document.body) {
-            return;
-        }
-
-        const navbar = document.querySelector("#band-navbar");
-        if (navbar) {
-            navbar.appendChild(button);
-            navbar.classList.add("bcampx-label-feed-navbar-host");
-            button.classList.remove("bcampx-label-feed-toggle--floating");
-            button.classList.add("bcampx-label-feed-toggle--inline");
-            button.classList.add("bcampx-label-feed-toggle--navbar");
-            return;
-        }
-
-        const target = findArtistMusicViewToggleTarget();
-        if (target && target.parentNode) {
-            target.parentNode.insertBefore(button, target);
-            button.classList.remove("bcampx-label-feed-toggle--floating");
-            button.classList.add("bcampx-label-feed-toggle--inline");
-            button.classList.remove("bcampx-label-feed-toggle--navbar");
-            return;
-        }
-
-        if (!document.body.contains(button)) {
-            document.body.appendChild(button);
-        }
-        button.classList.remove("bcampx-label-feed-toggle--inline");
-        button.classList.remove("bcampx-label-feed-toggle--navbar");
-        button.classList.add("bcampx-label-feed-toggle--floating");
-    }
-
-    function findArtistMusicViewToggleTarget() {
-        return (
-            document.querySelector(".label-band-selector.fade-in-on-load") ||
-            document.querySelector(".label-band-selector")
-        );
-    }
-
-    async function setArtistMusicFeedView(view) {
-        const nextView = view === "original" ? "original" : "feed";
-        applyArtistMusicFeedView(nextView);
-        await storageSet(ARTIST_MUSIC_VIEW_KEY, nextView);
-    }
-
-    function applyArtistMusicFeedView(view) {
-        const nextView = view === "original" ? "original" : "feed";
-        const feed = STATE.artistMusicFeedNode;
-        const sourceGrid = STATE.artistMusicSourceGridNode;
-
-        STATE.artistMusicFeedView = nextView;
-        if (feed) {
-            feed.hidden = nextView !== "feed";
-        }
-        if (sourceGrid) {
-            setArtistMusicNativeSectionHidden(
-                sourceGrid,
-                nextView === "feed",
-                "offscreen",
-            );
-            sourceGrid.setAttribute(
-                "data-bcampx-label-feed-source-hidden",
-                nextView === "feed" ? "true" : "false",
-            );
-        }
-        STATE.artistMusicFeaturedNodes = findArtistMusicFeaturedNodes();
-        STATE.artistMusicFeaturedNodes.forEach((node) => {
-            setArtistMusicNativeSectionHidden(node, nextView === "feed");
-            node.setAttribute(
-                "data-bcampx-label-feed-featured-hidden",
-                nextView === "feed" ? "true" : "false",
-            );
-        });
-
-        document.body.classList.toggle(
-            "bcampx-label-feed-page--original",
-            nextView === "original",
-        );
-        document.body.classList.toggle(
-            "bcampx-label-feed-page--enhanced",
-            nextView === "feed",
-        );
-
-        updateArtistMusicViewToggle();
-        markDebugState("data-bcampx-label-feed-view", nextView);
-
-        if (nextView === "feed" && feed) {
-            scheduleScan(feed);
-        }
-    }
-
-    function setArtistMusicNativeSectionHidden(node, hidden, mode = "display") {
-        if (!(node instanceof Element)) {
-            return;
-        }
-
-        if (mode === "offscreen") {
-            node.hidden = false;
-            node.classList.toggle(
-                "bcampx-label-feed-native-offscreen",
-                hidden,
-            );
-            if (hidden) {
-                node.setAttribute("aria-hidden", "true");
-                node.style.removeProperty("display");
-                return;
-            }
-
-            node.classList.remove("bcampx-label-feed-native-offscreen");
-            node.removeAttribute("aria-hidden");
-            return;
-        }
-
-        node.classList.remove("bcampx-label-feed-native-offscreen");
-        node.hidden = hidden;
-        if (hidden) {
-            if (!node.hasAttribute("data-bcampx-original-display")) {
-                node.setAttribute(
-                    "data-bcampx-original-display",
-                    node.style.display || "",
-                );
-            }
-            node.style.display = "none";
-            return;
-        }
-
-        const originalDisplay = node.getAttribute(
-            "data-bcampx-original-display",
-        );
-        node.removeAttribute("data-bcampx-original-display");
-        if (originalDisplay) {
-            node.style.display = originalDisplay;
-        } else {
-            node.style.removeProperty("display");
-        }
-    }
-
-    function updateArtistMusicViewToggle() {
-        const toggle = STATE.artistMusicToggleNode;
-        if (!toggle) {
-            return;
-        }
-
-        const showingFeed = STATE.artistMusicFeedView === "feed";
-        toggle.classList.toggle(
-            "bcampx-label-feed-toggle--feed",
-            showingFeed,
-        );
-        toggle.classList.toggle(
-            "bcampx-label-feed-toggle--original",
-            !showingFeed,
-        );
-        toggle.setAttribute(
-            "aria-label",
-            showingFeed ? "Show original grid" : "Show enhanced feed",
-        );
-        toggle.setAttribute("aria-pressed", showingFeed ? "true" : "false");
-        toggle.title = showingFeed ? "Show original grid" : "Show enhanced feed";
-    }
-
-    function findArtistMusicSourceGrid() {
-        const gridItem = document.querySelector(".music-grid-item");
-        return (
-            document.querySelector("#music-grid") ||
-            document.querySelector(".music-grid") ||
-            (gridItem ? gridItem.parentElement : null) ||
-            null
-        );
-    }
-
-    function findArtistMusicFeaturedNodes() {
-        const nodes = new Set();
-        document
-            .querySelectorAll(".featured-grid.featured-items, .featured-items")
-            .forEach((node) => nodes.add(node));
-        document.querySelectorAll(".featured-item").forEach((item) => {
-            const container =
-                item.closest(".featured-grid, .featured-items") || item;
-            nodes.add(container);
-        });
-        return Array.from(nodes).filter(
-            (node) =>
-                node instanceof Element &&
-                !node.closest(".bcampx-label-feed"),
-        );
-    }
-
-    function collectArtistMusicReleaseCandidates() {
-        const seen = new Set();
-        const candidatesByKey = new Map();
-        const candidates = [];
-        const featuredItems = Array.from(
-            document.querySelectorAll(
-                ".featured-items .featured-item, .featured-grid .featured-item, .featured-item",
-            ),
-        );
-        const gridItems = Array.from(
-            document.querySelectorAll(
-                [
-                    "#music-grid .music-grid-item",
-                    ".music-grid .music-grid-item",
-                    "[data-item-id^='album-']",
-                    "[data-item-id^='track-']",
-                ].join(", "),
-            ),
-        );
-
-        featuredItems.forEach((item) => {
-            addArtistMusicReleaseCandidate(
-                candidates,
-                seen,
-                item,
-                null,
-                "featured",
-                candidatesByKey,
-            );
-        });
-
-        gridItems.forEach((item) => {
-            addArtistMusicReleaseCandidate(
-                candidates,
-                seen,
-                item,
-                null,
-                "grid",
-                candidatesByKey,
-            );
-        });
-
-        Array.from(document.querySelectorAll(RELEASE_LINK_SELECTOR)).forEach(
-            (link) => {
-                if (link.closest(".bcampx-label-feed, #menubar-vm, #menubar")) {
-                    return;
-                }
-
-                const item =
-                    link.closest(
-                        ".music-grid-item, [data-item-id^='album-'], [data-item-id^='track-']",
-                    ) || link;
-                addArtistMusicReleaseCandidate(
-                    candidates,
-                    seen,
-                    item,
-                    link,
-                    item.matches && item.matches(".music-grid-item")
-                        ? "grid"
-                        : "link",
-                    candidatesByKey,
-                );
-            },
-        );
-
-        return candidates;
-    }
-
-    function addArtistMusicReleaseCandidate(
-        candidates,
-        seen,
-        item,
-        link = null,
-        sourceKind = "link",
-        candidatesByKey = new Map(),
-    ) {
-        if (!(item instanceof Element)) {
-            return;
-        }
-
-        const releaseLink =
-            link ||
-            item.querySelector(RELEASE_LINK_SELECTOR) ||
-            (item.matches(RELEASE_LINK_SELECTOR) ? item : null);
-        const releaseUrl = normalizeReleaseUrl(
-            releaseLink && releaseLink.href ? releaseLink.href : "",
-        );
-        if (!releaseUrl) {
-            return;
-        }
-
-        const itemId = getArtistMusicReleaseItemId(item);
-        const itemType = normalizeReleaseItemType("", releaseUrl);
-        const title = getArtistMusicReleaseTitle(item, releaseLink, releaseUrl);
-        const artist = getArtistMusicReleaseArtist(item);
-        const dedupeKeys = getArtistMusicReleaseDedupeKeys({
-            releaseUrl,
-            itemId,
-            itemType,
-            title,
-            artist,
-        });
-        const existingKey = dedupeKeys.find((key) => seen.has(key));
-        if (existingKey) {
-            mergeArtistMusicReleaseCandidate(
-                candidatesByKey.get(existingKey),
-                item,
-                sourceKind,
-            );
-            return;
-        }
-
-        dedupeKeys.forEach((key) => {
-            seen.add(key);
-        });
-        const candidate = {
-            releaseUrl,
-            title,
-            artist,
-            artUrl: getArtistMusicReleaseArtUrl(item),
-            itemId,
-            itemType,
-            bandId: getArtistMusicReleaseBandId(item),
-            sourceItem: item,
-            gridItem: sourceKind === "grid" ? item : null,
-            featuredItem: sourceKind === "featured" ? item : null,
-        };
-        dedupeKeys.forEach((key) => {
-            candidatesByKey.set(key, candidate);
-        });
-        candidates.push(candidate);
-    }
-
-    function mergeArtistMusicReleaseCandidate(candidate, item, sourceKind) {
-        if (!candidate || !(item instanceof Element)) {
-            return;
-        }
-
-        if (sourceKind === "grid") {
-            candidate.gridItem = candidate.gridItem || item;
-            candidate.itemId =
-                candidate.itemId || getArtistMusicReleaseItemId(item);
-            candidate.bandId =
-                candidate.bandId || getArtistMusicReleaseBandId(item);
-            return;
-        }
-
-        if (sourceKind === "featured") {
-            candidate.featuredItem = candidate.featuredItem || item;
-            if (!candidate.artUrl) {
-                candidate.artUrl = getArtistMusicReleaseArtUrl(item);
-            }
-        }
-    }
-
-    function getArtistMusicReleaseDedupeKeys(release) {
-        const keys = [`url:${release.releaseUrl}`];
-        if (release.itemId && release.itemType) {
-            keys.push(`item:${release.itemType}:${release.itemId}`);
-        }
-
-        try {
-            const url = new URL(release.releaseUrl, window.location.href);
-            const path = url.pathname.replace(/\/$/, "").toLowerCase();
-            const title = cleanText(release.title).toLowerCase();
-            const artist = cleanText(release.artist).toLowerCase();
-            if (path && title) {
-                keys.push(`path-title:${path}:${title}:${artist}`);
-            }
-        } catch (_error) {
-            // Ignore malformed URLs; normalizeReleaseUrl already rejected most of them.
-        }
-
-        return keys;
-    }
-
-    function createArtistMusicFeedCard(release) {
-        const card = document.createElement("article");
-        card.className = "feed-item story bcampx-label-feed-card";
-        card.__bcampxArtistMusicRelease = release;
-        card.setAttribute("data-bcampx-release-url", release.releaseUrl);
-        if (release.bandId) {
-            card.setAttribute("data-bcampx-band-id", release.bandId);
-        }
-
-        const itemJson = {
-            item_id: release.itemId || undefined,
-            item_type: release.itemType || undefined,
-            item_url: release.releaseUrl,
-            item_title: release.title || undefined,
-        };
-
-        const headline = document.createElement("div");
-        headline.className = "story-title bcampx-label-feed-card__story-title";
-
-        const artistLink = document.createElement("a");
-        artistLink.className = "fan-name artist-name";
-        artistLink.href = getArtistMusicPageUrl();
-        artistLink.textContent = getArtistMusicBandName();
-
-        const verb = document.createTextNode(" released ");
-        const titleLink = createReleaseLink(release, "item-link");
-
-        headline.append(artistLink, verb, titleLink);
-
-        const innards = document.createElement("div");
-        innards.className = "story-innards";
-
-        const body = document.createElement("div");
-        body.className = "story-body";
-        body.setAttribute("data-item-json", JSON.stringify(itemJson));
-
-        const wrapper = document.createElement("div");
-        wrapper.className = "tralbum-wrapper";
-
-        const art = document.createElement("div");
-        art.className = "art";
-        const artLink = document.createElement("a");
-        artLink.href = release.releaseUrl;
-        if (release.artUrl) {
-            const image = document.createElement("img");
-            image.src = release.artUrl;
-            image.alt = release.title ? `${release.title} art` : "";
-            artLink.appendChild(image);
-        }
-        art.appendChild(artLink);
-
-        const content = document.createElement("div");
-        content.className = "tralbum-wrapper-col1";
-        content.appendChild(createReleaseLink(release, "item-link"));
-
-        const byline = document.createElement("div");
-        byline.className = "itemsubtext";
-        byline.textContent = `by ${release.artist || getArtistMusicBandName()}`;
-        content.appendChild(byline);
-
-        const action = createReleaseLink(release, "buy-link");
-        action.textContent = "hear more";
-        content.appendChild(action);
-
-        const supportedSlot = document.createElement("div");
-        supportedSlot.className = "tralbum-wrapper-col2 tralbum-owners";
-
-        const supportedLabel = document.createElement("div");
-        supportedLabel.className = "bcampx-label-feed-card__supported-placeholder";
-        supportedLabel.textContent = "supported by";
-        supportedSlot.appendChild(supportedLabel);
-
-        wrapper.append(art, content, supportedSlot);
-        body.appendChild(wrapper);
-        innards.appendChild(body);
-        card.append(headline, innards);
-
-        return card;
-    }
-
-    function createReleaseLink(release, className) {
-        const link = document.createElement("a");
-        link.href = release.releaseUrl;
-        if (className) {
-            link.className = className;
-        }
-        link.textContent = release.title || release.releaseUrl;
-        return link;
-    }
-
-    function getArtistMusicReleaseTitle(item, link, releaseUrl) {
-        const titleNode =
-            item.querySelector(".title, .item-title, .collection-item-title") ||
-            null;
-        const title = titleNode
-            ? extractArtistMusicTitleText(titleNode)
-            : normalizedText(link || item);
-        if (title) {
-            return title;
-        }
-
-        try {
-            return cleanText(
-                decodeURIComponent(
-                    new URL(releaseUrl, window.location.href)
-                        .pathname.split("/")
-                        .filter(Boolean)
-                        .pop() || "",
-                ).replace(/[-_]+/g, " "),
-            );
-        } catch (_error) {
-            return "Bandcamp release";
-        }
-    }
-
-    function extractArtistMusicTitleText(titleNode) {
-        const clone = titleNode.cloneNode(true);
-        clone
-            .querySelectorAll(
-                ".artist-override, .artist, .item-artist, .collection-item-artist",
-            )
-            .forEach((node) => node.remove());
-        return normalizedText(clone);
-    }
-
-    function getArtistMusicReleaseArtist(item) {
-        const artistOverride = item.querySelector(".artist-override");
-        const artistNode = item.querySelector(
-            ".artist, .item-artist, .collection-item-artist",
-        );
-        return (
-            (artistOverride ? normalizedText(artistOverride) : "") ||
-            (artistNode ? normalizedText(artistNode) : "") ||
-            getArtistMusicBandName()
-        );
-    }
-
-    function getArtistMusicReleaseArtUrl(item) {
-        const image = item.querySelector("img");
-        if (!image) {
-            return "";
-        }
-
-        return (
-            image.getAttribute("data-original") ||
-            image.currentSrc ||
-            image.getAttribute("src") ||
-            ""
-        );
-    }
-
-    function getArtistMusicReleaseItemId(item) {
-        const raw = cleanText(item.getAttribute("data-item-id") || "");
-        const match = raw.match(/(?:album|track)-(\d+)/i);
-        return match && match[1] ? Number(match[1]) : 0;
-    }
-
-    function getArtistMusicReleaseBandId(item) {
-        if (!(item instanceof Element)) {
-            return "";
-        }
-
-        return cleanText(
-            item.getAttribute("data-band-id") ||
-                item.getAttribute("data-band") ||
-                "",
-        );
-    }
-
-    function getArtistMusicBandName() {
-        const bandData = parseJsonAttribute(
-            document.querySelector("script[data-band]"),
-            "data-band",
-        );
-        return (
-            cleanText(bandData && bandData.name) ||
-            metaContent(document, 'meta[property="og:site_name"]') ||
-            metaContent(document, 'meta[property="og:title"]') ||
-            cleanTitle(document.title) ||
-            "This artist"
-        );
-    }
-
-    function getArtistMusicPageUrl() {
-        const bandData = parseJsonAttribute(
-            document.querySelector("script[data-band]"),
-            "data-band",
-        );
-        return (
-            cleanText(
-                (bandData && (bandData.https_url || bandData.url)) || "",
-            ) || window.location.origin
-        );
-    }
-
-    function getItemJsonReleaseUrl(node) {
-        const parsed = getParsedItemJson(node);
-        return normalizeReleaseUrl(parsed && parsed.item_url ? parsed.item_url : "");
-    }
-
-    function preferBandcampReleaseUrl(urls) {
-        return (urls || []).find((url) => isBandcampReleaseUrl(url)) || "";
-    }
-
-    function extractParsedItemId(parsed) {
-        if (!parsed || typeof parsed !== "object") {
-            return 0;
-        }
-
-        return firstPositiveNumber(
-            parsed.item_id,
-            parsed.album_id,
-            parsed.track_id,
-            parsed.tralbum_id,
-            parsed.collect_item_id,
-        );
-    }
-
-    function firstPositiveNumber(...values) {
-        for (const value of values) {
-            const number = Number(value);
-            if (Number.isFinite(number) && number > 0) {
-                return number;
-            }
-        }
-
-        return 0;
-    }
-
-    function normalizeReleaseItemType(rawType, releaseUrl = "") {
-        const type = cleanText(rawType).toLowerCase();
-        if (type === "album" || type === "a") {
-            return "album";
-        }
-        if (type === "track" || type === "t") {
-            return "track";
-        }
-
-        const normalizedReleaseUrl = normalizeReleaseUrl(releaseUrl);
-        if (/\/album\//.test(normalizedReleaseUrl)) {
-            return "album";
-        }
-        if (/\/track\//.test(normalizedReleaseUrl)) {
-            return "track";
-        }
-
-        return "";
-    }
+    // __BCAMPX_ARTIST_MUSIC_FEED__
 
     function isMalformedFeedCard(card) {
         const story = getStoryRoot(card);
@@ -2051,6 +1285,286 @@
         }
 
         return "other";
+    }
+
+    function setupOwnedReleaseCollectionHandoff() {
+        if (!isReleasePage()) {
+            return;
+        }
+
+        document.addEventListener(
+            "click",
+            handleOwnedReleaseCollectionClick,
+            true,
+        );
+    }
+
+    function isReleasePage() {
+        return (
+            /\/(?:album|track)\//.test(window.location.pathname || "") ||
+            Boolean(document.querySelector("[data-tralbum]"))
+        );
+    }
+
+    function handleOwnedReleaseCollectionClick(event) {
+        const link = findOwnedReleaseCollectionLink(event.target);
+        if (!link) {
+            return;
+        }
+
+        const title = resolveCurrentReleaseTitleForCollectionSearch();
+        if (!title) {
+            return;
+        }
+
+        if (!isPlainPrimaryClick(event)) {
+            void queueOwnedReleaseCollectionSearch(
+                title,
+                link.href,
+                normalizeReleaseUrl(window.location.href),
+            );
+            return;
+        }
+
+        event.preventDefault();
+        void navigateToOwnedReleaseCollection(
+            title,
+            link.href,
+            normalizeReleaseUrl(window.location.href),
+        );
+    }
+
+    function queueOwnedReleaseCollectionSearch(title, targetUrl, releaseUrl) {
+        const cleanTitleValue = cleanText(title || "");
+        const cleanTargetUrl = cleanText(targetUrl || "");
+        if (!cleanTitleValue || !isBandcampFanProfileUrl(cleanTargetUrl)) {
+            return Promise.resolve();
+        }
+
+        markDebugState("data-bcampx-owned-search-captured", cleanTitleValue);
+        return storageSet(OWNED_RELEASE_COLLECTION_SEARCH_KEY, {
+            title: cleanTitleValue,
+            releaseUrl: normalizeReleaseUrl(releaseUrl || window.location.href),
+            targetUrl: cleanTargetUrl,
+            ts: Date.now(),
+        });
+    }
+
+    function navigateToOwnedReleaseCollection(title, targetUrl, releaseUrl) {
+        const cleanTargetUrl = cleanText(targetUrl || "");
+        return queueOwnedReleaseCollectionSearch(
+            title,
+            cleanTargetUrl,
+            releaseUrl,
+        ).finally(() => {
+            if (cleanTargetUrl) {
+                window.location.assign(cleanTargetUrl);
+            }
+        });
+    }
+
+    function findOwnedReleaseCollectionLink(target) {
+        if (!(target instanceof Element)) {
+            return null;
+        }
+
+        const link = target.closest("a[href]");
+        if (!link || !isBandcampFanProfileUrl(link.href)) {
+            return null;
+        }
+
+        if (link.classList.contains("you-own-this-link")) {
+            return link;
+        }
+
+        const ownedBlock = target.closest(".you-own-this.digital, .you-own-this");
+        if (ownedBlock && ownedBlock.contains(link)) {
+            return link;
+        }
+
+        if (/\byou own this\b/i.test(normalizedText(link))) {
+            return link;
+        }
+
+        return null;
+    }
+
+    function isPlainPrimaryClick(event) {
+        return Boolean(
+            event &&
+                event.button === 0 &&
+                !event.metaKey &&
+                !event.ctrlKey &&
+                !event.shiftKey &&
+                !event.altKey,
+        );
+    }
+
+    function resolveCurrentReleaseTitleForCollectionSearch() {
+        const tralbum = parseTralbumData(document);
+        return (
+            resolveReleaseTitle(document, tralbum, null) ||
+            cleanTitle(document.title)
+        );
+    }
+
+    function isBandcampFanProfileUrl(rawUrl) {
+        try {
+            const url = new URL(rawUrl, window.location.href);
+            if (url.hostname !== "bandcamp.com") {
+                return false;
+            }
+
+            const pathname = url.pathname.replace(/\/+$/, "");
+            if (!pathname || pathname === "/") {
+                return false;
+            }
+
+            if (
+                /\/(album|track|tagged|discover|feed|fans|terms_of_use|about|help|search|gift_cards)(\/|$)/i.test(
+                    pathname,
+                )
+            ) {
+                return false;
+            }
+
+            return pathname.split("/").filter(Boolean).length === 1;
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    async function applyPendingOwnedReleaseCollectionSearch() {
+        if (!isBandcampCollectionSearchPageCandidate()) {
+            return;
+        }
+
+        const payload = await storageGet(
+            OWNED_RELEASE_COLLECTION_SEARCH_KEY,
+            null,
+        );
+        if (!isFreshOwnedReleaseCollectionSearchPayload(payload)) {
+            if (payload) {
+                await clearOwnedReleaseCollectionSearchPayload();
+            }
+            return;
+        }
+
+        markDebugState("data-bcampx-owned-search-pending", payload.title);
+        const didFill = await fillCollectionSearchBoxWhenReady(payload.title);
+        if (didFill) {
+            markDebugState("data-bcampx-owned-search-filled", payload.title);
+        } else {
+            markDebugState("data-bcampx-owned-search-filled", "false");
+        }
+        await clearOwnedReleaseCollectionSearchPayload();
+    }
+
+    function isBandcampCollectionSearchPageCandidate() {
+        return isBandcampFanProfileUrl(window.location.href);
+    }
+
+    function isFreshOwnedReleaseCollectionSearchPayload(payload) {
+        return Boolean(
+            payload &&
+                typeof payload === "object" &&
+                cleanText(payload.title) &&
+                payload.ts &&
+                Date.now() - Number(payload.ts) <=
+                    OWNED_RELEASE_COLLECTION_SEARCH_TTL_MS,
+        );
+    }
+
+    function clearOwnedReleaseCollectionSearchPayload() {
+        return storageSet(OWNED_RELEASE_COLLECTION_SEARCH_KEY, null);
+    }
+
+    function fillCollectionSearchBoxWhenReady(title) {
+        const cleanTitleValue = cleanText(title);
+        if (!cleanTitleValue) {
+            return Promise.resolve(false);
+        }
+
+        return new Promise((resolve) => {
+            let done = false;
+            let observer = null;
+            let timeoutId = 0;
+
+            const finish = (value) => {
+                if (done) {
+                    return;
+                }
+                done = true;
+                if (observer) {
+                    observer.disconnect();
+                }
+                window.clearTimeout(timeoutId);
+                resolve(value);
+            };
+
+            const tryFill = () => {
+                const input = findCollectionSearchBox();
+                if (!input) {
+                    return false;
+                }
+
+                setTextInputValue(input, cleanTitleValue);
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                input.dispatchEvent(new Event("change", { bubbles: true }));
+                try {
+                    input.dispatchEvent(
+                        new KeyboardEvent("keyup", {
+                            bubbles: true,
+                            key: cleanTitleValue.slice(-1) || " ",
+                        }),
+                    );
+                } catch (_error) {}
+                try {
+                    input.focus();
+                    if (typeof input.select === "function") {
+                        input.select();
+                    }
+                } catch (_error) {}
+                return true;
+            };
+
+            if (tryFill()) {
+                finish(true);
+                return;
+            }
+
+            observer = new MutationObserver(() => {
+                if (tryFill()) {
+                    finish(true);
+                }
+            });
+            observer.observe(document.documentElement, {
+                childList: true,
+                subtree: true,
+            });
+            timeoutId = window.setTimeout(() => finish(false), 15000);
+        });
+    }
+
+    function findCollectionSearchBox() {
+        return document.querySelector(
+            [
+                'input.search-box[placeholder*="search your collection" i]',
+                'input[placeholder*="search your collection" i]',
+                ".collection-search input",
+            ].join(", "),
+        );
+    }
+
+    function setTextInputValue(input, value) {
+        const proto = Object.getPrototypeOf(input);
+        const descriptor =
+            proto && Object.getOwnPropertyDescriptor(proto, "value");
+        if (descriptor && typeof descriptor.set === "function") {
+            descriptor.set.call(input, value);
+        } else {
+            input.value = value;
+        }
     }
 
     function isArtistMusicPage() {
@@ -2285,14 +1799,17 @@
             const buyButton = Array.from(
                 document.querySelectorAll("button.download-link.buy-link"),
             ).find((node) =>
-                /buy digital track/i.test((node.textContent || "").trim()),
+                /(?:buy|pre-order)\s+digital\s+(?:album|track)|free download/i.test(
+                    (node.textContent || "").trim(),
+                ),
             );
             if (!buyButton) {
-                return false;
+                return "";
             }
 
+            const buttonText = cleanText(buyButton.textContent || "");
             buyButton.click();
-            return true;
+            return buttonText;
         };
 
         const focusPriceInput = () => {
@@ -2320,7 +1837,14 @@
                 return;
             }
 
-            openBuyDialog();
+            if (document.querySelector(".ui-dialog")) {
+                return;
+            }
+
+            const openedButtonText = openBuyDialog();
+            if (/free download/i.test(openedButtonText)) {
+                return;
+            }
             if (attempts >= maxAttempts) {
                 return;
             }
@@ -2820,6 +2344,7 @@
 
         STATE.mutationObserver = new MutationObserver((mutations) => {
             let shouldFullScan = false;
+            let shouldInvalidateMemo = false;
 
             mutations.forEach((mutation) => {
                 if (mutation.type === "attributes") {
@@ -2828,6 +2353,7 @@
                         return;
                     }
 
+                    shouldInvalidateMemo = true;
                     if (hasPotentialReleaseSignal(target)) {
                         const story = getStoryRoot(target);
                         if (story) {
@@ -2845,6 +2371,7 @@
                         return;
                     }
 
+                    shouldInvalidateMemo = true;
                     if (node.matches(FEED_CARD_ROOT_SELECTOR)) {
                         scheduleScan(node);
                         return;
@@ -2870,6 +2397,10 @@
                 });
             });
 
+            if (shouldInvalidateMemo) {
+                invalidateNodeMemoCache();
+            }
+
             if (shouldFullScan) {
                 scheduleScan();
             }
@@ -2877,7 +2408,7 @@
 
         STATE.mutationObserver.observe(document.body, {
             attributes: true,
-            attributeFilter: ["data-item-json", "href"],
+            attributeFilter: ["data-item-json"],
             childList: true,
             subtree: true,
         });
@@ -3051,10 +2582,11 @@
             return;
         }
 
-        clearNodeMemo(root);
-        root.querySelectorAll("*").forEach((node) => {
-            clearNodeMemo(node);
-        });
+        invalidateNodeMemoCache();
+    }
+
+    function invalidateNodeMemoCache() {
+        STATE.memoVersion += 1;
     }
 
     function hasPotentialReleaseSignal(node) {
@@ -3101,7 +2633,7 @@
                 getMatchingRootOrDescendants(root, FEED_CARD_ROOT_SELECTOR),
             )
             .forEach((candidate) => {
-                const card = getStoryRoot(candidate);
+                const card = candidate;
                 if (!(card instanceof Element) || seen.has(card)) {
                     return;
                 }
@@ -3868,6 +3400,26 @@
     }
 
     function looksLikeFeedCard(node) {
+        if (!(node instanceof Element)) {
+            return false;
+        }
+
+        const memo = getNodeMemo(node);
+        if (
+            memo &&
+            Object.prototype.hasOwnProperty.call(memo, "looksLikeFeedCard")
+        ) {
+            return memo.looksLikeFeedCard;
+        }
+
+        const result = computeLooksLikeFeedCard(node);
+        if (memo) {
+            memo.looksLikeFeedCard = result;
+        }
+        return result;
+    }
+
+    function computeLooksLikeFeedCard(node) {
         if (isAlsoBoughtRecommendationCard(node)) {
             return false;
         }
@@ -4349,8 +3901,12 @@
             return null;
         }
 
-        if (!node.__bcampxMemo) {
+        if (
+            !node.__bcampxMemo ||
+            node.__bcampxMemo.__version !== STATE.memoVersion
+        ) {
             node.__bcampxMemo = Object.create(null);
+            node.__bcampxMemo.__version = STATE.memoVersion;
         }
 
         return node.__bcampxMemo;
@@ -4463,1007 +4019,7 @@
         toggle.textContent = expanded ? "Less" : "More";
     }
 
-    async function getReleaseData(releaseInput) {
-        const requestContext = normalizeReleaseRequestContext(releaseInput);
-        const cacheKey = getReleaseCacheKey(requestContext.releaseUrl);
-        const cached = await storageGet(cacheKey, null);
-        const normalizedCached =
-            cached && typeof cached === "object"
-                ? normalizeReleaseData(cached)
-                : null;
-
-        if (isFreshReleaseCache(cached)) {
-            if (!shouldRefreshCachedRelease(cached, normalizedCached)) {
-                return { data: normalizedCached, fromCache: true, stale: false };
-            }
-        }
-
-        const pending = STATE.pendingReleaseRequests.get(cacheKey);
-        if (pending) {
-            return pending;
-        }
-
-        const request = enqueueReleaseFetch(async () => {
-            try {
-                const resolvedRequest = await resolveReleaseRequestContext(
-                    requestContext,
-                );
-                const html =
-                    typeof resolvedRequest.html === "string"
-                        ? resolvedRequest.html
-                        : await requestHtml(resolvedRequest.fetchUrl);
-                const data = normalizeReleaseData(
-                    parseReleasePage(html, resolvedRequest.releaseUrl),
-                );
-                const cacheValue = buildReleaseCacheValue(data);
-
-                await storageSet(cacheKey, cacheValue);
-                return { data: cacheValue, fromCache: false, stale: false };
-            } catch (error) {
-                if (hasVisibleEnhancements(normalizedCached)) {
-                    return {
-                        data: normalizedCached,
-                        fromCache: true,
-                        stale: true,
-                        fallbackError: error,
-                    };
-                }
-                throw error;
-            }
-        });
-
-        STATE.pendingReleaseRequests.set(cacheKey, request);
-        try {
-            return await request;
-        } finally {
-            if (STATE.pendingReleaseRequests.get(cacheKey) === request) {
-                STATE.pendingReleaseRequests.delete(cacheKey);
-            }
-        }
-    }
-
-    function enqueueReleaseFetch(task) {
-        return new Promise((resolve, reject) => {
-            STATE.releaseFetchQueue.push({ task, resolve, reject });
-            drainReleaseFetchQueue();
-        });
-    }
-
-    function drainReleaseFetchQueue() {
-        while (
-            STATE.activeReleaseFetchCount < CONFIG.maxConcurrentFetches &&
-            STATE.releaseFetchQueue.length
-        ) {
-            const next = STATE.releaseFetchQueue.shift();
-            if (!next || typeof next.task !== "function") {
-                continue;
-            }
-
-            STATE.activeReleaseFetchCount += 1;
-            Promise.resolve()
-                .then(() => next.task())
-                .then(next.resolve, next.reject)
-                .finally(() => {
-                    STATE.activeReleaseFetchCount = Math.max(
-                        0,
-                        STATE.activeReleaseFetchCount - 1,
-                    );
-                    drainReleaseFetchQueue();
-                });
-        }
-    }
-
-    function getReleaseCacheKey(releaseUrl) {
-        return `${RELEASE_CACHE_PREFIX}${releaseUrl}`;
-    }
-
-    function normalizeReleaseRequestContext(releaseInput) {
-        if (releaseInput && typeof releaseInput === "object") {
-            return {
-                releaseUrl: normalizeReleaseUrl(releaseInput.releaseUrl || ""),
-                itemId: firstPositiveNumber(releaseInput.itemId),
-                itemType: normalizeReleaseItemType(
-                    releaseInput.itemType,
-                    releaseInput.releaseUrl || "",
-                ),
-            };
-        }
-
-        return {
-            releaseUrl: normalizeReleaseUrl(releaseInput || ""),
-            itemId: 0,
-            itemType: normalizeReleaseItemType("", releaseInput || ""),
-        };
-    }
-
-    async function resolveReleaseRequestContext(requestContext) {
-        const normalizedContext = normalizeReleaseRequestContext(requestContext);
-        if (isBandcampReleaseUrl(normalizedContext.releaseUrl)) {
-            return {
-                releaseUrl: normalizedContext.releaseUrl,
-                fetchUrl: normalizedContext.releaseUrl,
-            };
-        }
-
-        let directFetchError = null;
-        try {
-            const directFetchResult =
-                await tryResolveCustomDomainReleaseRequestContext(
-                    normalizedContext,
-                );
-            if (directFetchResult) {
-                return directFetchResult;
-            }
-        } catch (error) {
-            directFetchError = error;
-        }
-
-        const embeddedPlayerUrl = getEmbeddedPlayerRequestUrl(normalizedContext);
-        if (!embeddedPlayerUrl) {
-            if (directFetchError) {
-                throw directFetchError;
-            }
-            throw new Error(
-                "Custom-domain Bandcamp release could not be resolved.",
-            );
-        }
-
-        let embeddedError = null;
-        try {
-            const embeddedHtml = await requestHtml(embeddedPlayerUrl);
-            const canonicalUrl = extractEmbeddedPlayerCanonicalUrl(embeddedHtml);
-            if (canonicalUrl) {
-                return {
-                    releaseUrl: canonicalUrl,
-                    fetchUrl: canonicalUrl,
-                };
-            }
-        } catch (error) {
-            embeddedError = error;
-        }
-
-        if (isMissingCustomDomainHostPermissionError(directFetchError)) {
-            throw directFetchError;
-        }
-
-        if (embeddedError) {
-            throw embeddedError;
-        }
-
-        if (directFetchError) {
-            throw directFetchError;
-        }
-
-        throw new Error("Custom-domain Bandcamp release could not be resolved.");
-    }
-
-    async function tryResolveCustomDomainReleaseRequestContext(requestContext) {
-        const releaseUrl = normalizeReleaseUrl(
-            requestContext && requestContext.releaseUrl,
-        );
-        if (!releaseUrl || isBandcampReleaseUrl(releaseUrl)) {
-            return null;
-        }
-
-        const html = await requestHtml(releaseUrl);
-        return {
-            releaseUrl: extractReleaseCanonicalUrl(html, releaseUrl),
-            fetchUrl: releaseUrl,
-            html,
-        };
-    }
-
-    function getEmbeddedPlayerRequestUrl(requestContext) {
-        const itemId = firstPositiveNumber(requestContext && requestContext.itemId);
-        const itemType = normalizeReleaseItemType(
-            requestContext && requestContext.itemType,
-            requestContext && requestContext.releaseUrl,
-        );
-        if (!itemId || !itemType) {
-            return "";
-        }
-
-        return `https://bandcamp.com/EmbeddedPlayer/v=2/${itemType}=${itemId}/size=large/tracklist=false/artwork=small/`;
-    }
-
-    function extractEmbeddedPlayerCanonicalUrl(html) {
-        const doc = htmlToDocument(html);
-        const shareInput = doc.querySelector("#shareurl");
-        const shareUrl =
-            shareInput && typeof shareInput.getAttribute === "function"
-                ? normalizeReleaseUrl(
-                      shareInput.getAttribute("value") || shareInput.value || "",
-                  )
-                : "";
-        if (isBandcampReleaseUrl(shareUrl)) {
-            return shareUrl;
-        }
-
-        const playerData = parseJsonAttribute(
-            doc.querySelector("script[data-player-data]"),
-            "data-player-data",
-        );
-        const linkback = normalizeReleaseUrl(
-            playerData && playerData.linkback ? playerData.linkback : "",
-        );
-        if (isBandcampReleaseUrl(linkback)) {
-            return linkback;
-        }
-
-        const ogUrl = normalizeReleaseUrl(metaContent(doc, 'meta[property="og:url"]'));
-        if (isBandcampReleaseUrl(ogUrl)) {
-            return ogUrl;
-        }
-
-        return "";
-    }
-
-    function isBandcampReleaseUrl(rawUrl) {
-        try {
-            const url = new URL(rawUrl, window.location.href);
-            return Boolean(
-                url.protocol === "https:" &&
-                    (url.hostname === "bandcamp.com" ||
-                        url.hostname.endsWith(".bandcamp.com")) &&
-                    /(^|\/)(album|track)\//.test(url.pathname),
-            );
-        } catch (_error) {
-            return false;
-        }
-    }
-
-    function extractReleaseCanonicalUrl(html, fallbackUrl = "") {
-        const doc = htmlToDocument(html);
-        const candidates = [
-            attrContent(doc, 'link[rel="canonical"]', "href"),
-            metaContent(doc, 'meta[property="og:url"]'),
-            metaContent(doc, 'meta[name="twitter:url"]'),
-        ];
-
-        for (const candidate of candidates) {
-            const normalized = normalizeReleaseUrl(candidate);
-            if (normalized) {
-                return normalized;
-            }
-        }
-
-        return normalizeReleaseUrl(fallbackUrl);
-    }
-
-    function buildReleaseCacheValue(data) {
-        return {
-            ...data,
-            schemaVersion: CACHE_SCHEMA_VERSION,
-            fetchedAt: Date.now(),
-        };
-    }
-
-    function isFreshReleaseCache(value) {
-        return Boolean(
-            value &&
-            value.fetchedAt &&
-            Date.now() - value.fetchedAt < CONFIG.cacheTtlMs,
-        );
-    }
-
-    function shouldRefreshCachedRelease(rawData, normalizedData) {
-        return (
-            needsTrackRefresh(normalizedData) ||
-            needsSchemaRefresh(rawData, normalizedData)
-        );
-    }
-
-    function requestHtml(url) {
-        if (canUseExternalHostMethod("requestHtml")) {
-            return Promise.resolve(
-                getExternalHostApi().requestHtml(
-                    url,
-                    getHostRequestOptions({
-                        credentials: "omit",
-                        headers: {
-                            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        },
-                    }),
-                ),
-            );
-        }
-
-        return new Promise((resolve, reject) => {
-            if (typeof GM_xmlhttpRequest !== "function") {
-                reject(new Error("GM_xmlhttpRequest is not available."));
-                return;
-            }
-
-            GM_xmlhttpRequest({
-                method: "GET",
-                url,
-                timeout: CONFIG.fetchTimeoutMs,
-                headers: {
-                    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                },
-                onload: (response) => {
-                    if (response.status >= 200 && response.status < 300) {
-                        resolve(response.responseText || "");
-                        return;
-                    }
-
-                    reject(new Error(`HTTP ${response.status}`));
-                },
-                onerror: () => reject(new Error("Network request failed.")),
-                ontimeout: () =>
-                    reject(new Error("Network request timed out.")),
-            });
-        });
-    }
-
-    function requestWishlistStateHtml(url) {
-        if (canUseExternalHostMethod("requestHtml")) {
-            return Promise.resolve(
-                getExternalHostApi().requestHtml(
-                    url,
-                    getHostRequestOptions({
-                        credentials: "include",
-                        headers: {
-                            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        },
-                    }),
-                ),
-            );
-        }
-
-        return requestHtml(url);
-    }
-
-    function requestJson(url, options = {}) {
-        if (canUseExternalHostMethod("requestJson")) {
-            return Promise.resolve(
-                getExternalHostApi().requestJson(
-                    url,
-                    getHostRequestOptions(options),
-                ),
-            );
-        }
-
-        return new Promise((resolve, reject) => {
-            if (typeof GM_xmlhttpRequest !== "function") {
-                reject(new Error("GM_xmlhttpRequest is not available."));
-                return;
-            }
-
-            GM_xmlhttpRequest({
-                method: options.method || "GET",
-                url,
-                data: options.data,
-                timeout: CONFIG.fetchTimeoutMs,
-                headers: options.headers || {
-                    Accept: "application/json, text/javascript, */*; q=0.01",
-                },
-                onload: (response) => {
-                    if (response.status < 200 || response.status >= 300) {
-                        reject(new Error(`HTTP ${response.status}`));
-                        return;
-                    }
-
-                    try {
-                        resolve(JSON.parse(response.responseText || "null"));
-                    } catch (_error) {
-                        reject(new Error("Invalid JSON response."));
-                    }
-                },
-                onerror: () => reject(new Error("Network request failed.")),
-                ontimeout: () =>
-                    reject(new Error("Network request timed out.")),
-            });
-        });
-    }
-
-    function htmlToDocument(html) {
-        return new DOMParser().parseFromString(html || "", "text/html");
-    }
-
-    function parseJsonAttribute(node, attr) {
-        if (!node || !attr) {
-            return null;
-        }
-
-        try {
-            return JSON.parse(node.getAttribute(attr) || "null");
-        } catch (_error) {
-            return null;
-        }
-    }
-
-    function parseReleasePage(html, releaseUrl) {
-        const documentFromHtml = htmlToDocument(html);
-        const tralbum = parseTralbumData(documentFromHtml);
-        const jsonLd = shouldParseJsonLdFallback(tralbum)
-            ? parseJsonLd(documentFromHtml)
-            : null;
-        const tracks = extractReleaseTracks(documentFromHtml, tralbum, jsonLd);
-        const descriptionState = extractReleaseDescriptionState(
-            documentFromHtml,
-            tralbum,
-            tracks,
-        );
-
-        return {
-            url: releaseUrl,
-            title: resolveReleaseTitle(documentFromHtml, tralbum, jsonLd),
-            artist: resolveReleaseArtist(documentFromHtml, tralbum, jsonLd),
-            releaseDate: resolveReleaseDate(documentFromHtml, tralbum, jsonLd),
-            location: resolveReleaseLocation(documentFromHtml),
-            artUrl: metaContent(documentFromHtml, 'meta[property="og:image"]'),
-            hasBodyDescriptionSource: descriptionState.hasBodyDescriptionSource,
-            description: descriptionState.description,
-            descriptionHtml: descriptionState.descriptionHtml,
-            tags: extractReleaseTags(documentFromHtml),
-            tracks,
-        };
-    }
-
-    function shouldParseJsonLdFallback(tralbum) {
-        const hasTitle = Boolean(
-            cleanText(
-                firstString(
-                    tralbum && tralbum.current && tralbum.current.title,
-                    tralbum && tralbum.album_title,
-                ),
-            ),
-        );
-        const hasArtist = Boolean(cleanText(tralbum && tralbum.artist));
-        const hasReleaseDate = Boolean(
-            cleanText(
-                firstString(
-                    tralbum && tralbum.album_release_date,
-                    tralbum &&
-                        tralbum.current &&
-                        tralbum.current.release_date,
-                ),
-            ),
-        );
-        const hasTracks = Boolean(
-            tralbum &&
-                Array.isArray(tralbum.trackinfo) &&
-                tralbum.trackinfo.length,
-        );
-
-        return !(hasTitle && hasArtist && hasReleaseDate && hasTracks);
-    }
-
-    function normalizeReleaseData(data) {
-        if (!data || typeof data !== "object") {
-            return createEmptyReleaseData();
-        }
-
-        const tracks = normalizeTracks(data.tracks);
-        const hasBodyDescriptionSource =
-            data.hasBodyDescriptionSource !== false;
-        const descriptionState = normalizeDescriptionState({
-            descriptionText: data.description || "",
-            descriptionHtml: data.descriptionHtml || "",
-            tracks,
-            hasBodyDescriptionSource,
-        });
-
-        return {
-            ...createEmptyReleaseData(),
-            ...data,
-            hasBodyDescriptionSource,
-            description: descriptionState.description,
-            descriptionHtml: descriptionState.descriptionHtml,
-            tags: Array.isArray(data.tags)
-                ? data.tags.map((tag) => cleanText(tag)).filter(Boolean)
-                : [],
-            tracks,
-        };
-    }
-
-    function createEmptyReleaseData() {
-        return {
-            url: "",
-            title: "",
-            artist: "",
-            releaseDate: "",
-            location: "",
-            description: "",
-            descriptionHtml: "",
-            tags: [],
-            tracks: [],
-        };
-    }
-
-    function resolveReleaseTitle(doc, tralbum, jsonLd) {
-        return (
-            firstString(tralbum && tralbum.current && tralbum.current.title) ||
-            firstString(tralbum && tralbum.album_title) ||
-            firstString(jsonLd && jsonLd.name) ||
-            metaContent(doc, 'meta[property="og:title"]') ||
-            textContent(doc, ".trackTitle") ||
-            textContent(doc, "h1") ||
-            cleanTitle(doc.title)
-        );
-    }
-
-    function resolveReleaseArtist(doc, tralbum, jsonLd) {
-        return (
-            firstString(tralbum && tralbum.artist) ||
-            extractJsonArtist(jsonLd) ||
-            textContent(doc, "#name-section .artist") ||
-            textContent(doc, "#band-name-location .title") ||
-            metaContent(doc, 'meta[property="og:site_name"]') ||
-            ""
-        );
-    }
-
-    function extractReleaseTracks(doc, tralbum, jsonLd) {
-        const tralbumTracks = uniqueTracks(extractTralbumTracks(tralbum));
-        if (tralbumTracks.length) {
-            return tralbumTracks.slice(0, CONFIG.maxTracks);
-        }
-
-        const jsonTracks = extractJsonTracks(jsonLd);
-        const domTracks = extractDomTracks(doc);
-
-        return uniqueTracks([...jsonTracks, ...domTracks]).slice(
-            0,
-            CONFIG.maxTracks,
-        );
-    }
-
-    function extractReleaseDescriptionState(doc, tralbum, tracks) {
-        const tralbumAbout = cleanText(
-            firstString(tralbum && tralbum.current && tralbum.current.about),
-        );
-        const tralbumAboutText = textContent(doc, ".tralbum-about");
-        const albumAboutText = textContent(doc, ".album-about");
-        const itempropDescriptionText = textContent(
-            doc,
-            "[itemprop='description']:not(meta)",
-        );
-        const rawDescriptionHtml = extractDescriptionHtml(doc);
-        const descriptionText =
-            tralbumAbout ||
-            tralbumAboutText ||
-            albumAboutText ||
-            itempropDescriptionText ||
-            "";
-        const hasBodyDescriptionSource = Boolean(
-            tralbumAbout ||
-            tralbumAboutText ||
-            albumAboutText ||
-            itempropDescriptionText ||
-            rawDescriptionHtml,
-        );
-        const descriptionState = normalizeDescriptionState({
-            descriptionText,
-            descriptionHtml: rawDescriptionHtml,
-            tracks,
-            hasBodyDescriptionSource,
-        });
-
-        return {
-            hasBodyDescriptionSource,
-            description: descriptionState.description,
-            descriptionHtml: descriptionState.descriptionHtml,
-        };
-    }
-
-    function extractReleaseTags(doc) {
-        return uniqueStrings([
-            ...queryTexts(doc, ".tralbum-tags a"),
-            ...queryTexts(doc, "a.tag"),
-            ...queryTexts(doc, 'a[href*="/tag/"]'),
-        ]).filter((tag) => !/^tags?$/i.test(tag));
-    }
-
-    function resolveReleaseDate(doc, tralbum, jsonLd) {
-        return (
-            firstString(tralbum && tralbum.album_release_date) ||
-            firstString(
-                tralbum && tralbum.current && tralbum.current.release_date,
-            ) ||
-            firstString(jsonLd && jsonLd.datePublished) ||
-            attrContent(doc, "time[datetime]", "datetime") ||
-            metaContent(doc, 'meta[itemprop="datePublished"]') ||
-            findReleasedDate(doc)
-        );
-    }
-
-    function resolveReleaseLocation(doc) {
-        return (
-            textContent(doc, "#band-name-location .location") ||
-            textContent(doc, ".location") ||
-            ""
-        );
-    }
-
-    function normalizeDescriptionState({
-        descriptionText,
-        descriptionHtml,
-        tracks,
-        hasBodyDescriptionSource,
-    }) {
-        const cleanDescription = cleanText(descriptionText || "");
-        const truncatedDescription = truncate(
-            cleanDescription,
-            CONFIG.maxDescriptionLength,
-        );
-        const normalizedHtml =
-            sanitizeDescriptionHtml(descriptionHtml || "") ||
-            plainTextToDescriptionHtml(
-                truncatedDescription,
-                CONFIG.maxDescriptionLength,
-            );
-        const shouldSuppress =
-            !hasBodyDescriptionSource ||
-            isLikelyTracklistText(cleanDescription, tracks) ||
-            isLikelyTracklistHtml(normalizedHtml, tracks);
-
-        return {
-            description: shouldSuppress ? "" : truncatedDescription,
-            descriptionHtml: shouldSuppress ? "" : normalizedHtml,
-        };
-    }
-
-    function normalizeTracks(tracks) {
-        if (!Array.isArray(tracks)) {
-            return [];
-        }
-
-        return tracks
-            .map((track) => {
-                if (!track) {
-                    return null;
-                }
-
-                if (typeof track === "string") {
-                    return createTrackData(track, "", "", "");
-                }
-
-                return createTrackData(
-                    track.title,
-                    track.trackId || track.track_id || "",
-                    track.streamUrl || "",
-                    track.duration || "",
-                    track.titleLink || track.title_link || "",
-                );
-            })
-            .filter(Boolean);
-    }
-
-    function needsTrackRefresh(data) {
-        if (!data || !Array.isArray(data.tracks) || !data.tracks.length) {
-            return false;
-        }
-
-        return (
-            data.tracks.some((track) => track && track.title) &&
-            !data.tracks.some((track) => track && track.streamUrl)
-        );
-    }
-
-    function needsSchemaRefresh(rawData, normalizedData) {
-        if (!rawData || rawData.schemaVersion !== CACHE_SCHEMA_VERSION) {
-            return true;
-        }
-
-        if (
-            (normalizedData.description && !normalizedData.descriptionHtml) ||
-            (normalizedData.descriptionHtml &&
-                !/<(?:p|br|a)\b/i.test(normalizedData.descriptionHtml) &&
-                /\n|https?:\/\//i.test(normalizedData.description))
-        ) {
-            return true;
-        }
-
-        if (isLikelyTracklistDescription(normalizedData)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    function parseJsonLd(doc) {
-        const documents = readJsonLdDocuments(doc);
-        for (const item of documents) {
-            const release = findJsonLdReleaseCandidate(item);
-            if (release) {
-                return release;
-            }
-        }
-
-        return null;
-    }
-
-    function readJsonLdDocuments(doc) {
-        return Array.from(
-            doc.querySelectorAll('script[type="application/ld+json"]'),
-        )
-            .map((script) => {
-                try {
-                    return JSON.parse(script.textContent.trim());
-                } catch (_error) {
-                    return null;
-                }
-            })
-            .filter(Boolean);
-    }
-
-    function findJsonLdReleaseCandidate(documentValue) {
-        const candidates = Array.isArray(documentValue)
-            ? documentValue
-            : [documentValue];
-
-        return (
-            candidates.find((item) => {
-                const type = Array.isArray(item["@type"])
-                    ? item["@type"]
-                    : [item["@type"]];
-                return type.some((value) =>
-                    /MusicAlbum|MusicRecording|Album|Track/i.test(
-                        String(value),
-                    ),
-                );
-            }) || null
-        );
-    }
-
-    function parseTralbumData(doc) {
-        const dataAttrResult = parseTralbumDataAttribute(doc);
-        if (dataAttrResult) {
-            return dataAttrResult;
-        }
-
-        return parseLegacyTralbumScriptFallback(doc);
-    }
-
-    function parseTralbumDataAttribute(doc) {
-        const dataNode = doc.querySelector("[data-tralbum]");
-        if (!dataNode) {
-            return null;
-        }
-
-        try {
-            return JSON.parse(dataNode.getAttribute("data-tralbum"));
-        } catch (_error) {
-            return null;
-        }
-    }
-
-    function parseLegacyTralbumScriptFallback(doc) {
-        const scripts = Array.from(doc.scripts);
-        const tralbumScript = scripts.find((script) =>
-            /TralbumData|trackinfo/.test(script.textContent),
-        );
-        if (!tralbumScript) {
-            return null;
-        }
-
-        const text = tralbumScript.textContent;
-        const titleMatch = text.match(/(?:album_title|title):\s*"([^"]+)"/);
-        const artistMatch = text.match(/artist:\s*"([^"]+)"/);
-        const dateMatch = text.match(/album_release_date:\s*"([^"]+)"/);
-        const trackMatches = Array.from(
-            text.matchAll(/"title"\s*:\s*"([^"]+)"/g),
-        );
-
-        return {
-            album_title: titleMatch ? decodeJsString(titleMatch[1]) : "",
-            artist: artistMatch ? decodeJsString(artistMatch[1]) : "",
-            album_release_date: dateMatch ? decodeJsString(dateMatch[1]) : "",
-            trackinfo: trackMatches.map((match) => ({
-                title: decodeJsString(match[1]),
-            })),
-        };
-    }
-
-    function extractJsonArtist(jsonLd) {
-        return getJsonLdEntityNames(jsonLd && jsonLd.byArtist);
-    }
-
-    function extractJsonTracks(jsonLd) {
-        return getJsonLdArrayValue(jsonLd && jsonLd.track)
-            .map((track) => {
-                if (typeof track === "string") {
-                    return createTrackData(track, "", "", "");
-                }
-
-                return createTrackData(
-                    track && track.name,
-                    "",
-                    "",
-                    track && track.duration ? track.duration : "",
-                );
-            })
-            .filter(Boolean);
-    }
-
-    function getJsonLdEntityNames(value) {
-        if (!value) {
-            return "";
-        }
-
-        if (typeof value === "string") {
-            return cleanText(value);
-        }
-
-        return getJsonLdArrayValue(value)
-            .map((item) => cleanText(item && item.name))
-            .filter(Boolean)
-            .join(", ");
-    }
-
-    function getJsonLdArrayValue(value) {
-        if (!value) {
-            return [];
-        }
-
-        return Array.isArray(value) ? value : [value];
-    }
-
-    function extractDomTracks(doc) {
-        const trackTitles = queryTexts(doc, "#track_table .track-title");
-        const fallbackTitles = trackTitles.length
-            ? trackTitles
-            : queryTexts(doc, ".track-title");
-
-        return fallbackTitles.map((title) =>
-            createTrackData(title, "", "", ""),
-        );
-    }
-
-    function extractTralbumTracks(tralbum) {
-        if (!tralbum || !Array.isArray(tralbum.trackinfo)) {
-            return [];
-        }
-
-        return tralbum.trackinfo
-            .map((track) =>
-                createTrackData(
-                    track && track.title,
-                    track && (track.track_id || track.id || ""),
-                    track && track.file && track.file["mp3-128"]
-                        ? track.file["mp3-128"]
-                        : "",
-                    track && typeof track.duration !== "undefined"
-                        ? track.duration
-                        : "",
-                    track && track.title_link ? track.title_link : "",
-                ),
-            )
-            .filter(Boolean);
-    }
-
-    function createTrackData(title, trackId, streamUrl, duration, titleLink) {
-        const cleanTitleValue = cleanText(title);
-        if (!cleanTitleValue) {
-            return null;
-        }
-
-        return {
-            title: cleanTitleValue,
-            trackId: cleanText(trackId),
-            streamUrl: cleanText(streamUrl),
-            duration: normalizeTrackDuration(duration),
-            titleLink: cleanText(titleLink),
-        };
-    }
-
-    function normalizeTrackDuration(value) {
-        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-            return formatTrackDuration(value);
-        }
-
-        const text = cleanText(value);
-        if (!text) {
-            return "";
-        }
-
-        if (/^\d+:\d{2}(?::\d{2})?$/.test(text)) {
-            return text;
-        }
-
-        const isoMatch = text.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i);
-        if (isoMatch) {
-            const hours = Number(isoMatch[1] || 0);
-            const minutes = Number(isoMatch[2] || 0);
-            const seconds = Number(isoMatch[3] || 0);
-            return formatTrackDuration(hours * 3600 + minutes * 60 + seconds);
-        }
-
-        const numeric = Number(text);
-        if (Number.isFinite(numeric) && numeric > 0) {
-            return formatTrackDuration(numeric);
-        }
-
-        return "";
-    }
-
-    function formatTrackDuration(totalSeconds) {
-        if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
-            return "";
-        }
-
-        const whole = Math.round(totalSeconds);
-        const hours = Math.floor(whole / 3600);
-        const minutes = Math.floor((whole % 3600) / 60);
-        const seconds = whole % 60;
-        if (hours > 0) {
-            return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-        }
-
-        return `${minutes}:${String(seconds).padStart(2, "0")}`;
-    }
-
-    function uniqueTracks(values) {
-        const seenExact = new Set();
-        const seenRichTitles = new Set();
-        const seenPlainTitles = new Set();
-        const result = [];
-
-        values.forEach((track) => {
-            if (!track || !track.title) {
-                return;
-            }
-
-            const exactKey = getTrackUniquenessKey(track);
-            const titleKey = `title:${track.title.toLowerCase()}`;
-            const hasRichIdentity = !exactKey.startsWith("title:");
-
-            if (hasRichIdentity) {
-                if (seenExact.has(exactKey)) {
-                    return;
-                }
-                seenExact.add(exactKey);
-                seenRichTitles.add(titleKey);
-                result.push(track);
-                return;
-            }
-
-            if (seenRichTitles.has(titleKey) || seenPlainTitles.has(titleKey)) {
-                return;
-            }
-
-            seenPlainTitles.add(titleKey);
-            result.push(track);
-        });
-
-        return result;
-    }
-
-    function getTrackUniquenessKey(track) {
-        const trackId = cleanText(track && track.trackId);
-        if (trackId) {
-            return `id:${trackId}`;
-        }
-
-        const titleLink = cleanText(track && track.titleLink);
-        if (titleLink) {
-            return `link:${titleLink.toLowerCase()}`;
-        }
-
-        const streamUrl = cleanText(track && track.streamUrl);
-        if (streamUrl) {
-            return `stream:${streamUrl.toLowerCase()}`;
-        }
-
-        return `title:${track.title.toLowerCase()}`;
-    }
-
-    function findReleasedDate(doc) {
-        const candidates = queryTexts(
-            doc,
-            ".tralbumData, .tralbum-credits, .credits, #trackInfo",
-        );
-        for (const candidate of candidates) {
-            const match = candidate.match(/released\s+([^\n.]+)/i);
-            if (match && match[1]) {
-                return match[1].trim();
-            }
-        }
-
-        return "";
-    }
+    // __BCAMPX_RELEASE_DATA__
 
     function renderReleaseData(shell, meta, text, toggle, data, releaseUrl) {
         if (isFullDiscographyReleaseData(data)) {
@@ -5475,6 +4031,10 @@
         meta.hidden = false;
 
         if (shell.classList.contains("bcampx--supported-slot")) {
+            updateArtistMusicCardBuyAction(
+                shell.closest(".bcampx-label-feed-card"),
+                data,
+            );
             renderSupportedSlot(meta, text, toggle, data, releaseUrl);
             shell.classList.toggle("bcampx--expanded", false);
             return;
@@ -6421,9 +4981,9 @@
             }
 
             if (action === "basket") {
-                openTrackBuyWindow(trackUrl);
+                const opened = openTrackBuyWindow(trackUrl);
                 setTrackActionButtonPending(button, false);
-                flashTrackActionButton(button, "Opened");
+                flashTrackActionButton(button, opened ? "Opened" : "Blocked");
                 return;
             }
 
@@ -6462,26 +5022,17 @@
     function openTrackBuyWindow(trackUrl) {
         const helperUrl = buildTrackActionHelperUrl(trackUrl, "buy-dialog");
         const openedWindow = openTrackActionWindow(helperUrl);
-        if (openedWindow && !openedWindow.closed) {
-            return;
-        }
-
-        openTrackActionWindowWithLink(helperUrl);
+        return Boolean(openedWindow && !openedWindow.closed);
     }
 
     function openTrackActionWindow(helperUrl) {
-        return window.open(helperUrl, "_blank", "noopener,noreferrer");
-    }
-
-    function openTrackActionWindowWithLink(helperUrl) {
-        const link = document.createElement("a");
-        link.href = helperUrl;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.style.display = "none";
-        appendToDocument(link);
-        link.click();
-        link.remove();
+        const openedWindow = window.open(helperUrl, "_blank");
+        if (openedWindow && !openedWindow.closed) {
+            try {
+                openedWindow.opener = null;
+            } catch (_error) {}
+        }
+        return openedWindow;
     }
 
     function getTrackActionOrigin(trackUrl) {
@@ -6888,9 +5439,8 @@
             options,
         );
         syncActiveTrackUi(cardArtUrl);
-        claimPlaybackOwnership("feed-preview", audio);
+        announcePlaybackStart("feed-preview");
         audio.play().catch(() => {
-            void releasePlaybackOwnershipIfCurrent(audio);
             clearActiveTrackButton();
             if (typeof options.onPlayError === "function") {
                 void Promise.resolve(options.onPlayError()).catch(() => {});
@@ -8393,11 +6943,29 @@
         return Boolean(node.offsetParent || node.getClientRects().length);
     }
 
-    function syncFavoriteButtonState() {
-        const ui = STATE.playerUi;
-        if (!ui || !ui.favoriteButton) {
-            return;
-        }
+   function syncFavoriteButtonState() {
+       const ui = STATE.playerUi;
+       if (!ui || !ui.favoriteButton) {
+           return;
+       }
+
+        ui.favoriteButton.classList.remove(
+            "bcampx-player-favorite--owned",
+        );
+
+       if (
+           STATE.activeReleaseData &&
+           isOwnedDigitalPrice(STATE.activeReleaseData.digitalPrice)
+       ) {
+           ui.favoriteButton.hidden = false;
+           ui.favoriteButton.disabled = true;
+           ui.favoriteButton.classList.remove("bcampx-player-button--pending");
+            ui.favoriteButton.classList.add(
+                "bcampx-player-favorite--owned",
+            );
+           setFavoriteButtonState(ui.favoriteButton, true);
+           return;
+       }
 
         if (isArtistMusicPage()) {
             ensureArtistMusicPlayerWishlistState(STATE.activeReleaseUrl || "");

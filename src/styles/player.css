@@ -180,15 +180,33 @@
         opacity: 0;
       }
 
-      .bcampx-player-favorite.active {
-        border: solid 1px #e06d2f;
-        background-color: #e06d2f;
+    .bcampx-player-favorite.active {
+      border: solid 1px #e06d2f;
+      background-color: #e06d2f;
+      background-image: none;
+      color: #fff;
+    }
+
+      .bcampx-player-favorite.active.bcampx-player-favorite--owned {
+        border: solid 1px #CB2D26;
+        background-color: #CB2D26;
         background-image: none;
         color: #fff;
       }
 
-      .bcampx-player-favorite.active:hover,
-      .bcampx-player-button--circle:hover {
+      .bcampx-player-favorite.active.bcampx-player-favorite--owned:disabled {
+       opacity: 1;
+       cursor: default;
+     }
+
+      .bcampx-player-favorite.active.bcampx-player-favorite--owned:hover {
+        border-color: #CB2D26;
+        background-color: #CB2D26;
+        color: #fff;
+      }
+
+    .bcampx-player-favorite.active:hover,
+     .bcampx-player-button--circle:hover {
         border-color: #b8c6cf;
         background-color: #f3f7f9;
         color: #408294;

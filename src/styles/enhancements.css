@@ -116,8 +116,19 @@
       .bcampx-label-feed-card .buy-link {
         display: inline-block;
         margin-top: 8px !important;
+        border: 0 !important;
+        background: transparent !important;
+        padding: 0 !important;
         color: #4085b6 !important;
         font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+        text-decoration: none !important;
+        cursor: pointer !important;
+      }
+
+      .bcampx-label-feed-card .buy-link:disabled,
+      .bcampx-label-feed-card .buy-link:disabled:hover {
+        color: #777 !important;
+        cursor: default !important;
         text-decoration: none !important;
       }
 

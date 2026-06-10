@@ -5,6 +5,7 @@
     const grantedHostOrigins = new Set();
     const pendingHostPermissionRequests = new Map();
     const pendingHostPermissionOrigins = new Map();
+    const storageKeySubscribers = new Map();
     const HOST_PERMISSION_REQUEST_TIMEOUT_MS = 120000;
 
     if (!runtimeApi) {
@@ -16,6 +17,7 @@
     }
 
     setupRuntimeMessageBridge();
+    setupStorageChangeBridge();
     refreshGrantedHostPermissions();
 
     globalThis.__BCAMPX_HOST__ = {
@@ -26,6 +28,7 @@
         hasHostPermission,
         storageGet,
         storageSet,
+        subscribeStorageKey,
     };
     if (document.documentElement) {
         document.documentElement.setAttribute("data-bcampx-host", "webextension");
@@ -159,6 +162,57 @@
             handleHostPermissionResultMessage(message);
             return undefined;
         });
+    }
+
+    function setupStorageChangeBridge() {
+        const storage = runtimeApi.storage;
+        if (
+            !storage ||
+            !storage.onChanged ||
+            typeof storage.onChanged.addListener !== "function"
+        ) {
+            return;
+        }
+
+        storage.onChanged.addListener((changes, areaName) => {
+            if (areaName && areaName !== "local") {
+                return;
+            }
+
+            Object.entries(changes || {}).forEach(([key, change]) => {
+                const subscribers = storageKeySubscribers.get(key);
+                if (!subscribers || !subscribers.size) {
+                    return;
+                }
+
+                subscribers.forEach((callback) => {
+                    try {
+                        callback(change ? change.newValue : undefined);
+                    } catch (_error) {}
+                });
+            });
+        });
+    }
+
+    function subscribeStorageKey(key, callback) {
+        const normalizedKey = String(key || "").trim();
+        if (!normalizedKey || typeof callback !== "function") {
+            return () => {};
+        }
+
+        let subscribers = storageKeySubscribers.get(normalizedKey);
+        if (!subscribers) {
+            subscribers = new Set();
+            storageKeySubscribers.set(normalizedKey, subscribers);
+        }
+
+        subscribers.add(callback);
+        return () => {
+            subscribers.delete(callback);
+            if (!subscribers.size) {
+                storageKeySubscribers.delete(normalizedKey);
+            }
+        };
     }
 
     function handleHostPermissionResultMessage(message) {

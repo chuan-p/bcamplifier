@@ -94,6 +94,70 @@
 
         <li
           class="music-grid-item square"
+          data-item-id="album-666"
+          data-band-id="654"
+        >
+          <a href="https://fixture.bandcamp.com/album/no-buy-release">
+            <div class="art">
+              <img
+                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Crect width='320' height='320' fill='%23e5e7eb'/%3E%3Ctext x='48' y='170' font-family='Arial' font-size='34' fill='%23111827'%3ENo buy%3C/text%3E%3C/svg%3E"
+                alt=""
+              />
+            </div>
+            <p class="title">No Buy Release</p>
+          </a>
+        </li>
+
+        <li
+          class="music-grid-item square"
+          data-item-id="album-555"
+          data-band-id="654"
+        >
+          <a href="https://fixture.bandcamp.com/album/owned-release">
+            <div class="art">
+              <img
+                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Crect width='320' height='320' fill='%23ddd6fe'/%3E%3Ctext x='54' y='170' font-family='Arial' font-size='34' fill='%23111827'%3EOwned%3C/text%3E%3C/svg%3E"
+                alt=""
+              />
+            </div>
+            <p class="title">Owned Release</p>
+          </a>
+        </li>
+
+        <li
+          class="music-grid-item square"
+          data-item-id="album-333"
+          data-band-id="654"
+        >
+          <a href="https://fixture.bandcamp.com/album/name-price-release">
+            <div class="art">
+              <img
+                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Crect width='320' height='320' fill='%23bfdbfe'/%3E%3Ctext x='64' y='170' font-family='Arial' font-size='34' fill='%23111827'%3ENYP%3C/text%3E%3C/svg%3E"
+                alt=""
+              />
+            </div>
+            <p class="title">Name Price Release</p>
+          </a>
+        </li>
+
+        <li
+          class="music-grid-item square"
+          data-item-id="album-444"
+          data-band-id="654"
+        >
+          <a href="https://fixture.bandcamp.com/album/free-release">
+            <div class="art">
+              <img
+                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Crect width='320' height='320' fill='%23bbf7d0'/%3E%3Ctext x='64' y='170' font-family='Arial' font-size='34' fill='%23111827'%3EFree%3C/text%3E%3C/svg%3E"
+                alt=""
+              />
+            </div>
+            <p class="title">Free Release</p>
+          </a>
+        </li>
+
+        <li
+          class="music-grid-item square"
           data-item-id="track-222"
           data-band-id="654"
         >
@@ -109,6 +173,7 @@
             <p class="title">Synthetic Track</p>
           </a>
         </li>
+
       </ol>
     </main>
 
@@ -116,6 +181,10 @@
       (() => {
         const albumUrl = "https://fixture.bandcamp.com/album/synthetic-release";
         const trackUrl = "https://fixture.bandcamp.com/track/synthetic-track";
+        const namePriceUrl = "https://fixture.bandcamp.com/album/name-price-release";
+        const freeUrl = "https://fixture.bandcamp.com/album/free-release";
+        const ownedUrl = "https://fixture.bandcamp.com/album/owned-release";
+        const noBuyUrl = "https://fixture.bandcamp.com/album/no-buy-release";
         const releaseHtml = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -138,6 +207,18 @@
     ></div>
     <div id="band-name-location"><span class="location">Shanghai</span></div>
     <div class="tralbum-about"><p>A synthetic release for the label music fixture.</p></div>
+    <ul>
+      <li class="buyItem digital">
+        <h4>
+          <button class="download-link buy-link" type="button">Buy Digital Album</button>
+          <span class="nobreak">
+            <span class="base-text-color">$7</span>
+            <span class="buyItemExtra secondaryText">USD</span>
+            <span class="buyItemExtra buyItemNyp secondaryText">or more</span>
+          </span>
+        </h4>
+      </li>
+    </ul>
   </body>
 </html>`;
         const trackHtml = releaseHtml
@@ -147,6 +228,38 @@
           .replace(
             '"trackinfo":[',
             '"trackinfo":[{"title":"Synthetic Track","track_id":"222","file":{"mp3-128":"https://example.com/synthetic-track.mp3"},"duration":99}],"_fixtureUnused":[',
+          );
+        const namePriceHtml = releaseHtml
+          .replaceAll("Synthetic Release", "Name Price Release")
+          .replace('"id":321', '"id":333')
+          .replace(
+            /<h4>[\s\S]*?<\/h4>/,
+            '<h4><button class="download-link buy-link" type="button">Buy Digital Album</button> <span class="buyItemNyp secondaryText">name your price</span></h4>',
+          );
+        const freeHtml = releaseHtml
+          .replaceAll("Synthetic Release", "Free Release")
+          .replace('"id":321', '"id":444')
+          .replace(
+            /<h4>[\s\S]*?<\/h4>/,
+            '<h4><button class="download-link buy-link" type="button">Free Download</button></h4>',
+          );
+        const ownedHtml = releaseHtml
+          .replaceAll("Synthetic Release", "Owned Release")
+          .replace('"id":321', '"id":555')
+          .replace(
+            /<li class="buyItem digital">[\s\S]*?<\/li>/,
+            '<li class="you-own-this digital"><div class="bd">Includes unlimited streaming via the free Bandcamp app, plus high-quality download in MP3, FLAC and more. <a class="you-own-this-link" target="_blank" href="https://bandcamp.com/fixturefan">You own this</a> <script>$(".buyItem .bd").last().bcTruncate(TruncateProfile.get("buyItem"), "more", "less");<\\/script> <button class="download-link buy-link" type="button">Send as Gift</button></div></li>',
+          );
+        const noBuyHtml = releaseHtml
+          .replaceAll("Synthetic Release", "No Buy Release")
+          .replace('"id":321', '"id":666')
+          .replace(
+            '"current":{"title":"No Buy Release","release_date":"2024-01-02","about":"A synthetic release for the label music fixture.","id":666,"type":"album","band_id":654}',
+            '"current":{"title":"No Buy Release","release_date":"2024-01-02","about":"A synthetic release for the label music fixture.","id":666,"type":"album","band_id":654,"download_pref":1,"minimum_price":0,"minimum_price_nonzero":null}',
+          )
+          .replace(
+            /<li class="buyItem digital">[\s\S]*?<\/li>/,
+            "",
           );
         const storage = new Map();
 
@@ -158,6 +271,18 @@
             }
             if (url === trackUrl) {
               return trackHtml;
+            }
+            if (url === namePriceUrl) {
+              return namePriceHtml;
+            }
+            if (url === freeUrl) {
+              return freeHtml;
+            }
+            if (url === ownedUrl) {
+              return ownedHtml;
+            }
+            if (url === noBuyUrl) {
+              return noBuyHtml;
             }
             throw new Error(`Unexpected fixture request for ${url}`);
           },
@@ -284,6 +409,36 @@
         document.documentElement.setAttribute(
           "data-bcampx-label-feed-card-count",
           String(document.querySelectorAll(".bcampx-label-feed-card").length),
+        );
+        const ownedBuyButton = document.querySelector(
+          '.bcampx-label-feed-card [data-bcampx-digital-price="you own this"]',
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-owned-buy-text",
+          ownedBuyButton ? ownedBuyButton.textContent.trim() : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-owned-buy-disabled",
+          String(Boolean(ownedBuyButton && ownedBuyButton.disabled)),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-owned-buy-url",
+          ownedBuyButton
+            ? ownedBuyButton.getAttribute("data-bcampx-digital-ownership-url") || ""
+            : "",
+        );
+        const noBuyCard = document.querySelector(
+          '[data-bcampx-release-url="https://fixture.bandcamp.com/album/no-buy-release"]',
+        );
+        const noBuyButton =
+          noBuyCard && noBuyCard.querySelector("[data-bcampx-release-action='buy']");
+        document.documentElement.setAttribute(
+          "data-bcampx-no-buy-text",
+          noBuyButton ? noBuyButton.textContent.trim() : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-no-buy-has-price",
+          String(Boolean(noBuyButton && noBuyButton.hasAttribute("data-bcampx-digital-price"))),
         );
 
         const firstTrackButton = document.querySelector(

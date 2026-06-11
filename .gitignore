@@ -1,7 +1,14 @@
 .codex/
+.codex-temp-*
+
 dist/
 node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.crx
+*.pem
+
 .DS_Store
-.codex-temp-*
 attached-image-bg-*.png
 label-music-feed-*.png

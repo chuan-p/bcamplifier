@@ -333,6 +333,17 @@
                 ".featured-items .featured-item, .featured-grid .featured-item, .featured-item",
             ),
         );
+        const excluded = [
+            "#sidebar",
+            "aside",
+            '[role="complementary"]',
+            ".sidebar",
+            ".cart",
+            "#cart",
+            '[class*="cart"]',
+            '[class*="Cart"]',
+            ".checkout",
+        ].join(",");
         const gridItems = Array.from(
             document.querySelectorAll(
                 [
@@ -342,7 +353,7 @@
                     "[data-item-id^='track-']",
                 ].join(", "),
             ),
-        );
+        ).filter((item) => !item.closest(excluded));
 
         featuredItems.forEach((item) => {
             addArtistMusicReleaseCandidate(
@@ -366,28 +377,6 @@
             );
         });
 
-        Array.from(document.querySelectorAll(RELEASE_LINK_SELECTOR)).forEach(
-            (link) => {
-                if (link.closest(".bcampx-label-feed, #menubar-vm, #menubar")) {
-                    return;
-                }
-
-                const item =
-                    link.closest(
-                        ".music-grid-item, [data-item-id^='album-'], [data-item-id^='track-']",
-                    ) || link;
-                addArtistMusicReleaseCandidate(
-                    candidates,
-                    seen,
-                    item,
-                    link,
-                    item.matches && item.matches(".music-grid-item")
-                        ? "grid"
-                        : "link",
-                    candidatesByKey,
-                );
-            },
-        );
 
         return candidates;
     }
@@ -630,6 +619,20 @@
             return;
         }
 
+        const releaseUrl = card.getAttribute(
+            "data-bcampx-release-url",
+        );
+        if (releaseUrl && !isOwnedDigitalPrice(data.digitalPrice)) {
+            const nativeLink = document.querySelector(
+                'a.you-own-this-link[href="' +
+                    CSS.escape(releaseUrl) +
+                    '"]',
+            );
+            if (nativeLink) {
+                data.digitalPrice = "you own this";
+            }
+        }
+
         const isOwned = isOwnedDigitalPrice(data.digitalPrice);
         const ownershipUrl = cleanText(data.digitalOwnershipUrl || "");
         action.textContent = getDigitalBuyActionLabel(data.digitalPrice);
@@ -656,6 +659,7 @@
             action.removeAttribute("data-bcampx-digital-price");
         }
     }
+
 
     function getCompactDigitalPrice(priceText) {
         const text = cleanText(priceText || "");

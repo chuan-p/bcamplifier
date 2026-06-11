@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.8 - 2026-06-11
+
+### Added
+
+- Respect user login session when scraping release pages (`credentials: "include"`) so that "You own this" is correctly detected for owned releases in artist page cards.
+- "You own this" link detection on artist page custom cards using `CSS.escape` selector matching.
+- Auto-fill minimum price setting (`autoFillMinimumPrice`) for the buy dialog.
+- Feed card buy buttons now show price text (e.g. "buy now ($7)") from cached release data and intercept clicks to open the buy dialog.
+- Release page buy button auto-fill: clicking any format's `.buyItem` fills the dialog's price input.
+- Artist page detection now also matches `/audio` paths.
+
+### Fixed
+
+- Extension `requestHtml` now passes `credentials: "include"` instead of `"omit"` when fetching through the background script, fixing ownership detection for extension users.
+
+## 0.2.7 - 2026-06-11
+
 ## 0.2.7 - 2026-06-11
 
 ### Added

@@ -20,6 +20,7 @@
         autoExpandTracks: false,
         enableTrackRowActions: true,
         continuousMode: false,
+        autoFillMinimumPrice: false,
         maxConcurrentFetches: 3,
     };
 
@@ -187,6 +188,8 @@
         setupOwnedReleaseCollectionHandoff();
         void applyPendingOwnedReleaseCollectionSearch();
 
+        setupReleasePageBuyAutofill();
+
         if (STATE.initialized || !isFeedEnhancerPage()) {
             if (STATE.initialized) {
                 markDebugState("data-bcampx-init-state", "already-initialized");
@@ -254,6 +257,10 @@
             settings.continuousMode,
             false,
         );
+        CONFIG.autoFillMinimumPrice = coerceBooleanSetting(
+            settings.autoFillMinimumPrice,
+            false,
+        );
     }
 
     function coerceBooleanSetting(value, fallback) {
@@ -276,6 +283,7 @@
         return {
             enableTrackRowActions: !!CONFIG.enableTrackRowActions,
             continuousMode: !!CONFIG.continuousMode,
+            autoFillMinimumPrice: !!CONFIG.autoFillMinimumPrice,
         };
     }
 
@@ -1287,6 +1295,67 @@
         return "other";
     }
 
+    function setupReleasePageBuyAutofill() {
+        void loadUserSettings();
+
+        document.addEventListener("click", (event) => {
+            if (!CONFIG.autoFillMinimumPrice) {
+                return;
+            }
+
+            const formatItem = event.target.closest(".buyItem");
+            if (!formatItem) {
+                return;
+            }
+
+            const price = extractFormatPrice(formatItem);
+            if (!price) {
+                return;
+            }
+
+            const waitForDialog = (tries = 0) => {
+                if (tries > 40) {
+                    return;
+                }
+
+                const priceInput = document.querySelector(".ui-dialog #userPrice");
+                if (priceInput) {
+                    priceInput.value = price;
+                    priceInput.dispatchEvent(new Event("input", { bubbles: true }));
+                    priceInput.dispatchEvent(new Event("change", { bubbles: true }));
+                    return;
+                }
+
+                if (document.querySelector(".ui-dialog")) {
+                    setTimeout(() => waitForDialog(tries + 1), 150);
+                }
+            };
+
+            setTimeout(() => waitForDialog(), 300);
+        });
+    }
+
+    function extractFormatPrice(buyItem) {
+        if (!buyItem) {
+            return "";
+        }
+
+        const text = cleanText(buyItem.textContent || "");
+        if (/name your price|free download|you own this/i.test(text)) {
+            return "";
+        }
+
+        const basePrice = cleanText(
+            buyItem.querySelector(".base-text-color")?.textContent || "",
+        );
+        if (!basePrice) {
+            return "";
+        }
+
+        const match = basePrice.match(/(\d+(?:\.\d+)?)/);
+        return match ? match[1] : "";
+    }
+
     function setupOwnedReleaseCollectionHandoff() {
         if (!isReleasePage()) {
             return;
@@ -1576,7 +1645,7 @@
         if (
             !(
                 path === "/" ||
-                /(^|\/)music\/?$/.test(path)
+                /(^|\/)(music|audio)\/?$/.test(path)
             )
         ) {
             return false;
@@ -1792,8 +1861,35 @@
         } catch (_error) {}
     }
 
-    function runTrackBuyDialogHelper() {
+    async function runTrackBuyDialogHelper() {
         clearTrackActionHelperHash();
+
+        // Helper page skips normal init, load settings manually
+        await loadUserSettings();
+
+        const getKnownPrice = () => {
+            const buyItem = document.querySelector(
+                ".buyItem.digital, .you-own-this.digital",
+            );
+            if (!buyItem) {
+                return "";
+            }
+
+            const fullText = cleanText(buyItem.textContent || "");
+            if (/name your price|free download|you own this/i.test(fullText)) {
+                return "";
+            }
+
+            const basePrice = cleanText(
+                buyItem.querySelector(".base-text-color")?.textContent || "",
+            );
+            if (!basePrice) {
+                return "";
+            }
+
+            const match = basePrice.match(/(\d+(?:\.\d+)?)/);
+            return match ? match[1] : "";
+        };
 
         const openBuyDialog = () => {
             const buyButton = Array.from(
@@ -1817,6 +1913,14 @@
             if (!priceInput) {
                 return false;
             }
+            try {
+               const knownPrice = CONFIG.autoFillMinimumPrice ? getKnownPrice() : "";
+              if (knownPrice) {
+                    priceInput.value = knownPrice;
+                    priceInput.dispatchEvent(new Event("input", { bubbles: true }));
+                    priceInput.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+            } catch (_error) {}
 
             try {
                 priceInput.focus();
@@ -4037,10 +4141,12 @@
             );
             renderSupportedSlot(meta, text, toggle, data, releaseUrl);
             shell.classList.toggle("bcampx--expanded", false);
+            updateFeedCardBuyButton(shell, data, releaseUrl);
             return;
         }
 
         renderStandardReleaseContent(meta, data, releaseUrl);
+        updateFeedCardBuyButton(shell, data, releaseUrl);
 
         if (!hasVisibleEnhancements(data)) {
             applyEmptyReleaseState(shell, meta, text, toggle, releaseUrl);
@@ -4048,6 +4154,53 @@
         }
 
         applyStandardReleaseShellState(shell, text, toggle, data);
+    }
+
+    function updateFeedCardBuyButton(shell, data, releaseUrl) {
+        if (!data || !releaseUrl) {
+            return;
+        }
+
+        const card = shell.closest(FEED_CARD_ROOT_SELECTOR);
+        if (!card) {
+            return;
+        }
+
+        const buyLinks = Array.from(
+            card.querySelectorAll(RELEASE_LINK_SELECTOR),
+        );
+        const buyLink = buyLinks.find((link) => {
+            const text = cleanText(link.textContent || "").toLowerCase();
+            return /buy now|pre.order|hear more|free download/i.test(text);
+        });
+        if (!buyLink) {
+            return;
+        }
+
+        const nativeText = cleanText(buyLink.textContent || "").toLowerCase();
+        if (/^you own this$|^free download$/i.test(nativeText)) {
+            return;
+        }
+
+        const actionText = getDigitalBuyActionLabel(data.digitalPrice);
+        buyLink.textContent = actionText;
+
+        buyLink.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const text = cleanText(buyLink.textContent || "");
+            if (
+                /^hear more$/i.test(text) ||
+                /you own this/i.test(text) ||
+                /free download/i.test(text)
+            ) {
+                window.open(releaseUrl, "_blank", "noopener,noreferrer");
+                return;
+            }
+
+            openTrackBuyWindow(releaseUrl);
+        });
     }
 
     function renderStandardReleaseContent(meta, data, releaseUrl) {
@@ -6016,6 +6169,13 @@
             onChange: handleTrackRowActionsSettingChange,
         });
 
+        const autoFillPriceSetting = createPlayerSettingsToggleRow({
+            label: "Auto-fill minimum price",
+            description: "Automatically fill the minimum price into the buy dialog. Turn off to enter a custom price.",
+            checked: CONFIG.autoFillMinimumPrice,
+            onChange: handleAutoFillMinimumPriceSettingChange,
+        });
+
         const continuousModeSetting = createPlayerSettingsToggleRow({
             label: "Continuous mode",
             description: "When one release finishes, keep going to the next playable release in the feed.",
@@ -6039,6 +6199,7 @@
 
         settingsMenu.append(
             trackRowActionsSetting.row,
+            autoFillPriceSetting.row,
             continuousModeSetting.row,
             settingsFooter,
         );
@@ -6424,6 +6585,9 @@
             ui.trackRowActionsSettingInput.checked =
                 !!CONFIG.enableTrackRowActions;
         }
+        if (ui.autoFillPriceSettingInput) {
+            ui.autoFillPriceSettingInput.checked = !!CONFIG.autoFillMinimumPrice;
+        }
         if (ui.continuousModeSettingInput) {
             ui.continuousModeSettingInput.checked = !!CONFIG.continuousMode;
         }
@@ -6465,6 +6629,13 @@
         const checked = !!(event && event.target && event.target.checked);
         CONFIG.enableTrackRowActions = checked;
         refreshRenderedTrackActionButtons();
+        syncPlayerSettingsMenu();
+        void persistUserSettings();
+    }
+
+    function handleAutoFillMinimumPriceSettingChange(event) {
+        const checked = !!(event && event.target && event.target.checked);
+        CONFIG.autoFillMinimumPrice = checked;
         syncPlayerSettingsMenu();
         void persistUserSettings();
     }

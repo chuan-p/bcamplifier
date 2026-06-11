@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamplifier
 // @namespace    https://github.com/chuan-p/bcamplifier
-// @version      0.2.7
+// @version      0.2.8
 // @description  Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.
 // @author       chuan
 // @match        https://bandcamp.com/feed*
@@ -27,7 +27,7 @@
 
     const PLAYER_SHELL_CSS = ".bcampx-player-shell {\n        position: fixed;\n        left: 50%;\n        bottom: 18px;\n        width: min(920px, calc(100vw - 36px));\n        transform: translateX(-50%);\n        pointer-events: auto;\n        padding: 14px;\n        border: 1px solid rgba(190, 198, 204, 0.68);\n        border-radius: 18px;\n        background: rgba(247, 247, 247, 0.98);\n        box-shadow: 0 18px 40px rgba(36, 28, 20, 0.12);\n        color: #2f2f2f;\n        overflow: visible;\n        isolation: isolate;\n        font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        backdrop-filter: blur(6px);\n        -webkit-backdrop-filter: blur(6px);\n      }\n\n      .bcampx-player-controls {\n        display: flex;\n        gap: 8px;\n        align-items: center;\n        margin-bottom: 10px;\n      }\n\n      .bcampx-player-button {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        min-width: 80px;\n        min-height: 38px;\n        padding: 8px 12px;\n        border: solid 1px #dedede;\n        border-radius: 999px;\n        background-color: #fbfcfd;\n        background-image: none;\n        color: #408294;\n        font: 700 13px/1 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        white-space: nowrap;\n        text-align: center;\n        outline: none;\n        box-shadow: none;\n      }\n\n      .bcampx-player-button:disabled {\n        opacity: 0.4;\n        cursor: not-allowed;\n      }\n\n      .bcampx-player-button--circle {\n        width: 38px;\n        min-width: 38px;\n        min-height: 38px;\n        padding: 0;\n      }\n\n      .bcampx-player-button--circle svg {\n        width: 18px;\n        height: 18px;\n        display: block;\n        flex: 0 0 auto;\n      }\n\n      .bcampx-player-settings {\n        position: relative;\n        margin-left: auto;\n        display: flex;\n        align-items: center;\n        flex: 0 0 auto;\n      }\n\n      .bcampx-player-settings-toggle {\n        color: #408294;\n        border-color: #dedede;\n        background-color: #fbfcfd;\n      }\n\n      .bcampx-player-settings-toggle svg {\n        width: 19px;\n        height: 19px;\n      }\n\n      .bcampx-player-settings-toggle:hover {\n        border-color: #b8c6cf;\n        background-color: #f3f7f9;\n        color: #408294;\n      }\n\n      .bcampx-player-settings-menu {\n        position: absolute;\n        bottom: calc(100% + 8px);\n        right: 0;\n        z-index: 20;\n        min-width: 220px;\n        padding: 12px 13px;\n        border: 1px solid rgba(190, 198, 204, 0.9);\n        border-radius: 12px;\n        background: rgba(251, 252, 253, 0.98);\n        box-shadow: 0 14px 32px rgba(36, 28, 20, 0.14);\n        color: #2f2f2f;\n        max-height: min(55vh, 420px);\n        overflow: auto;\n      }\n\n      .bcampx-player-settings-row {\n        display: flex;\n        align-items: flex-start;\n        justify-content: space-between;\n        gap: 10px;\n        padding: 8px 0;\n        cursor: pointer;\n      }\n\n      .bcampx-player-settings-row + .bcampx-player-settings-row {\n        border-top: 1px solid rgba(222, 222, 222, 0.85);\n      }\n\n      .bcampx-player-settings-copy {\n        display: flex;\n        flex-direction: column;\n        gap: 3px;\n        min-width: 0;\n      }\n\n      .bcampx-player-settings-label {\n        color: #2f2f2f;\n        font: 700 13px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-player-settings-description {\n        color: #666;\n        font: 500 12px/1.4 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-player-settings-checkbox {\n        margin: 2px 0 0;\n        inline-size: 14px;\n        block-size: 14px;\n        accent-color: #408294;\n        flex: 0 0 auto;\n      }\n\n      .bcampx-player-settings-footer {\n        margin-top: 8px;\n        padding-top: 10px;\n        border-top: 1px solid rgba(222, 222, 222, 0.85);\n        color: #777;\n        font: 500 11px/1.45 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-player-settings-footer-link {\n        color: #408294;\n        text-decoration: none;\n      }\n\n      .bcampx-player-settings-footer-link:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx-player-button:hover {\n        text-decoration: none;\n        background-color: #f3f7f9;\n      }\n\n      .bcampx-player-favorite {\n        color: #408294;\n        position: relative;\n        transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, background-image 120ms ease;\n      }\n\n      .bcampx-player-favorite-outline,\n      .bcampx-player-favorite-fill {\n        transition: opacity 120ms ease;\n      }\n\n      .bcampx-player-favorite-fill {\n        opacity: 0;\n      }\n\n    .bcampx-player-favorite.active {\n      border: solid 1px #e06d2f;\n      background-color: #e06d2f;\n      background-image: none;\n      color: #fff;\n    }\n\n      .bcampx-player-favorite.active.bcampx-player-favorite--owned {\n        border: solid 1px #CB2D26;\n        background-color: #CB2D26;\n        background-image: none;\n        color: #fff;\n      }\n\n      .bcampx-player-favorite.active.bcampx-player-favorite--owned:disabled {\n       opacity: 1;\n       cursor: default;\n     }\n\n      .bcampx-player-favorite.active.bcampx-player-favorite--owned:hover {\n        border-color: #CB2D26;\n        background-color: #CB2D26;\n        color: #fff;\n      }\n\n    .bcampx-player-favorite.active:hover,\n     .bcampx-player-button--circle:hover {\n        border-color: #b8c6cf;\n        background-color: #f3f7f9;\n        color: #408294;\n      }\n\n      .bcampx-player-favorite.active:hover {\n        border-color: #d66428;\n        background-color: #d66428;\n        color: #fff;\n      }\n\n      .bcampx-player-favorite.active .bcampx-player-favorite-outline {\n        opacity: 0;\n      }\n\n      .bcampx-player-favorite.active .bcampx-player-favorite-fill {\n        opacity: 1;\n      }\n\n      .bcampx-player-meta {\n        display: flex;\n        justify-content: space-between;\n        align-items: baseline;\n        gap: 12px;\n        margin-bottom: 8px;\n      }\n\n      .bcampx-player-now {\n        display: inline-block;\n        margin-bottom: 5px;\n        font-size: 12px;\n        line-height: 1;\n        letter-spacing: 0.05em;\n        text-transform: uppercase;\n        color: #777;\n      }\n\n      .bcampx-player-track {\n        display: block;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #2f2f2f;\n        font: 700 16px/1.04 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: left;\n        cursor: pointer;\n      }\n\n      .bcampx-player-track:hover,\n      .bcampx-player-store:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx-player-store {\n        color: #6b6b6b;\n        text-decoration: none;\n        font: 500 13px/1.05 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: right;\n        white-space: nowrap;\n      }\n\n      .bcampx-player-native {\n        margin-top: 2px;\n        background: transparent;\n      }\n\n      .bcampx-player-audio {\n        width: 100%;\n        height: 40px;\n        border-radius: 10px;\n        display: block !important;\n        visibility: visible !important;\n        opacity: 1 !important;\n        position: static !important;\n        pointer-events: auto !important;\n      }\n\n      @media (max-width: 820px) {\n        .bcampx-player-shell {\n          left: 50%;\n          bottom: 10px;\n          width: min(920px, calc(100vw - 20px));\n          transform: translateX(-50%);\n          padding: 10px 12px;\n          border-radius: 16px;\n        }\n\n        .bcampx-player-controls {\n          gap: 6px;\n          margin-bottom: 8px;\n        }\n\n        .bcampx-player-button {\n          min-height: 34px;\n          min-width: 74px;\n          padding: 7px 10px;\n          font-size: 12px;\n        }\n\n        .bcampx-player-button--circle {\n          width: 34px;\n          min-width: 34px;\n          min-height: 34px;\n        }\n\n        .bcampx-player-button--circle svg {\n          width: 17px;\n          height: 17px;\n        }\n\n        .bcampx-player-settings-menu {\n          min-width: 200px;\n          padding: 11px 12px;\n        }\n\n        .bcampx-player-settings-toggle svg {\n          width: 18px;\n          height: 18px;\n        }\n\n        .bcampx-player-meta {\n          gap: 8px;\n          margin-bottom: 7px;\n        }\n\n        .bcampx-player-track {\n          font-size: 15px;\n          line-height: 1.03;\n        }\n\n        .bcampx-player-store,\n        .bcampx-player-now {\n          font-size: 11px;\n        }\n\n        .bcampx-player-now {\n          margin-bottom: 4px;\n        }\n\n        .bcampx-player-audio {\n          height: 36px;\n        }\n      }\n";
     const ENHANCEMENT_CSS = ".bcampx {\n        box-sizing: border-box;\n        margin: 6px 0 0;\n        padding: 0;\n        max-width: 360px;\n        color: #444;\n        font: 12px/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n      }\n\n      .bcampx * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed {\n        box-sizing: border-box;\n        width: 100%;\n        max-width: 940px;\n        margin: 0 0 28px;\n        padding: 0;\n      }\n\n      .bcampx-label-feed__list {\n        margin: 0;\n        padding: 0;\n        list-style: none;\n      }\n\n      .bcampx-label-feed-page--enhanced .label-band-selector.fade-in-on-load {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-native-offscreen {\n        position: absolute !important;\n        left: -10000px !important;\n        top: auto !important;\n        width: 1px !important;\n        height: 1px !important;\n        max-width: 1px !important;\n        max-height: 1px !important;\n        overflow: hidden !important;\n        opacity: 0 !important;\n        pointer-events: none !important;\n      }\n\n      .bcampx-label-feed-card {\n        box-sizing: border-box;\n        display: block;\n        width: 100%;\n        min-height: 150px;\n        content-visibility: auto;\n        contain-intrinsic-size: auto 260px;\n        margin: 0 0 16px;\n        padding: 15px 18px;\n        border: 1px solid rgba(0, 0, 0, 0.12);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.92);\n        color: #333;\n        font: 400 13px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed-card .bcampx-label-feed-card__story-title {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a {\n        color: #4085b6 !important;\n        font: inherit !important;\n        font-weight: 600 !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper {\n        display: grid;\n        grid-template-columns: 200px minmax(180px, 1fr) minmax(220px, 280px);\n        gap: 18px;\n        align-items: start;\n      }\n\n      .bcampx-label-feed-card .art img {\n        display: block;\n        width: 200px;\n        height: 200px;\n        object-fit: cover;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper-col1,\n      .bcampx-label-feed-card .tralbum-wrapper-col2 {\n        min-width: 0;\n      }\n\n      .bcampx-label-feed-card .item-link {\n        color: #222 !important;\n        font: 700 15px/1.25 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .item-link:hover,\n      .bcampx-label-feed-card .buy-link:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .itemsubtext {\n        margin-top: 4px !important;\n        color: #777 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n      }\n\n      .bcampx-label-feed-card .buy-link {\n        display: inline-block;\n        margin-top: 8px !important;\n        border: 0 !important;\n        background: transparent !important;\n        padding: 0 !important;\n        color: #4085b6 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n        cursor: pointer !important;\n      }\n\n      .bcampx-label-feed-card .buy-link:disabled,\n      .bcampx-label-feed-card .buy-link:disabled:hover {\n        color: #777 !important;\n        cursor: default !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-owners {\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot {\n        width: 100%;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot.bcampx--expanded {\n        content-visibility: auto;\n        contain-intrinsic-size: auto 360px;\n      }\n\n      .bcampx-label-feed-toggle {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: auto;\n        height: 22px;\n        min-height: 22px;\n        margin: 0 8px 10px 0;\n        padding: 1px;\n        border: 1px solid rgba(0, 0, 0, 0.13);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.9);\n        box-shadow: none;\n        color: #777;\n        cursor: pointer;\n        vertical-align: middle;\n      }\n\n      .bcampx-label-feed-toggle__icon {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: 22px;\n        height: 18px;\n        border-radius: 2px;\n        color: #777;\n      }\n\n      .bcampx-label-feed-toggle__icon + .bcampx-label-feed-toggle__icon {\n        margin-left: 2px;\n      }\n\n      .bcampx-label-feed-toggle--feed .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle svg {\n        display: block;\n      }\n\n      .bcampx-label-feed-toggle--floating {\n        position: fixed;\n        left: 14px;\n        bottom: 14px;\n        z-index: 2147483645;\n        margin: 0;\n        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);\n      }\n\n      .bcampx-label-feed-toggle--inline {\n        position: static;\n      }\n\n      .bcampx-label-feed-toggle--navbar {\n        margin: 0 0 0 auto;\n        align-self: center;\n      }\n\n      #band-navbar.bcampx-label-feed-navbar-host {\n        display: flex;\n        align-items: center;\n        gap: 0;\n      }\n\n      .bcampx-label-feed-toggle:hover {\n        border-color: rgba(64, 133, 182, 0.3);\n        color: #266a99;\n        background: rgba(255, 255, 255, 0.96);\n      }\n\n      .bcampx-label-feed-toggle:hover .bcampx-label-feed-toggle__icon {\n        color: #266a99;\n        background: rgba(64, 133, 182, 0.08);\n      }\n\n      .bcampx-label-feed-toggle--feed:hover .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original:hover .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle:focus-visible {\n        outline: 2px solid #4085b6;\n        outline-offset: 2px;\n      }\n\n      @media (max-width: 560px) {\n        .bcampx-label-feed {\n          max-width: none;\n        }\n\n        .bcampx-label-feed-card {\n          padding: 14px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper {\n          grid-template-columns: 128px minmax(0, 1fr);\n          gap: 12px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper-col2 {\n          grid-column: 1 / -1;\n          padding-top: 4px;\n        }\n\n        .bcampx-label-feed-card .art img {\n          width: 128px;\n          height: 128px;\n        }\n\n        .bcampx-label-feed-toggle {\n          margin-right: 8px;\n        }\n\n        .bcampx-label-feed-toggle--floating {\n          left: 10px;\n          bottom: 10px;\n          margin: 0;\n        }\n      }\n\n      .bcampx__meta {\n        display: block;\n        color: #555;\n        padding-top: 4px;\n      }\n\n      .bcampx__summary {\n        display: flex;\n        align-items: center;\n        gap: 10px;\n        margin-top: 4px;\n        color: #777;\n      }\n\n      .bcampx--supported-slot {\n        max-width: none;\n        margin: 0;\n        padding: 0;\n      }\n\n      .bcampx--supported-slot .bcampx__meta {\n        padding: 0;\n        max-width: none;\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx__slot-panel {\n        padding: 0;\n        border-left: 0;\n      }\n\n      .bcampx__summary-text {\n        min-width: 0;\n      }\n\n      .bcampx__merge-note {\n        margin: 8px 0 12px;\n        color: #8a8a8a;\n        font: 400 12px/1.34 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: left;\n      }\n\n      .bcampx__merge-fan {\n        color: #6d6d6d;\n        font-weight: 600;\n      }\n\n      .bcampx__merge-copy {\n        color: #8a8a8a;\n      }\n\n      .bcampx__merge-track-button {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        cursor: pointer;\n      }\n\n      .bcampx__merge-track-button:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button.bcampx__track-link--active {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button:disabled {\n        cursor: progress;\n        opacity: 0.75;\n      }\n\n      .bcampx__toggle {\n        cursor: pointer;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        text-decoration: underline;\n      }\n\n      .bcampx__toggle:disabled {\n        cursor: progress;\n        opacity: 0.68;\n      }\n\n      .bcampx__facts {\n        color: #666;\n      }\n\n      .bcampx__slot-header {\n        margin: 0 0 7px;\n        color: #757575;\n        font-size: 10px;\n        line-height: 1.2;\n        font-weight: 600;\n        letter-spacing: 0.09em;\n        text-transform: uppercase;\n      }\n\n      .bcampx__slot-subhead {\n        margin: 8px 0 0;\n        color: #949494;\n        font-size: 11px;\n        font-weight: 400;\n      }\n\n      .bcampx__description {\n        margin: 6px 0 0;\n        color: #333;\n        white-space: pre-line;\n      }\n\n      .bcampx__tracks {\n        display: none;\n        margin: 6px 0 0 18px;\n        padding: 0;\n      }\n\n      .bcampx--expanded .bcampx__tracks {\n        display: block;\n      }\n\n      .bcampx__tracks li {\n        margin: 2px 0;\n      }\n\n      .bcampx__tracks--slot {\n        display: block;\n        margin: 0;\n        padding-left: 0;\n        list-style: none;\n        counter-reset: bcampxTrackNumber;\n        color: #4a4a4a;\n        font-size: 12px;\n        font-weight: 400;\n      }\n\n      .bcampx__tracks--slot li {\n        display: grid;\n        grid-template-columns: 18px minmax(0, 1fr) auto;\n        column-gap: 7px;\n        align-items: start;\n        margin: 0;\n        padding: 2px 0 5px;\n        line-height: 1.28;\n        border-top: 0;\n      }\n\n      .bcampx__tracks--slot li:first-child {\n        border-top: 0;\n        padding-top: 0;\n      }\n\n      .bcampx__tracks--slot.bcampx__tracks--collapsed .bcampx__track-item--extra {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li::before {\n        counter-increment: bcampxTrackNumber;\n        content: counter(bcampxTrackNumber) \".\";\n        color: #aaaaaa;\n        font-variant-numeric: tabular-nums;\n        align-self: start;\n        justify-self: start;\n        padding-top: 1px;\n      }\n\n      .bcampx__track-item--purchased::before {\n        color: #4085b6;\n        font-weight: 400;\n      }\n\n      .bcampx__track-link {\n        cursor: pointer;\n        display: block;\n        width: 100%;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: inherit;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        min-width: 0;\n        margin: 0;\n      }\n\n      .bcampx__track-link:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-link--active {\n        color: #4085b6;\n        font-weight: 400;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-item--purchased .bcampx__track-link {\n        color: #333;\n        font-weight: 400;\n      }\n\n      .bcampx__track-duration {\n        color: #a0a0a0;\n        font-size: 11px;\n        font-variant-numeric: tabular-nums;\n        white-space: nowrap;\n        padding-top: 1px;\n        text-align: right;\n        opacity: 0.88;\n        align-self: start;\n      }\n\n      .bcampx__track-end {\n        display: flex;\n        justify-content: flex-end;\n        align-items: flex-start;\n        min-width: 42px;\n      }\n\n      .bcampx__track-actions {\n        display: none;\n        align-items: center;\n        gap: 6px;\n        margin-top: -1px;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-duration,\n      .bcampx__track-item--show-actions .bcampx__track-duration {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-actions,\n      .bcampx__track-item--show-actions .bcampx__track-actions {\n        display: flex;\n      }\n\n      .bcampx__track-action {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 10px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-transform: lowercase;\n      }\n\n      .bcampx__track-action:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-action:disabled {\n        cursor: default;\n        opacity: 0.7;\n      }\n\n      .bcampx__track-action--pending,\n      .bcampx__track-action--flash {\n        color: #4085b6;\n      }\n\n      .bcampx__track-action-frame {\n        position: fixed;\n        width: 1px;\n        height: 1px;\n        opacity: 0;\n        pointer-events: none;\n        left: -9999px;\n        top: -9999px;\n        border: 0;\n      }\n\n      .bcampx__track-link:disabled {\n        cursor: default;\n        opacity: 0.55;\n      }\n\n\n      .bcampx__description--slot {\n        margin-top: 10px;\n        color: #757575;\n        font-size: 12px;\n        line-height: 1.4;\n        white-space: normal;\n      }\n\n      .bcampx__description-block {\n        display: block;\n        margin-top: 10px;\n        padding-top: 0;\n        border-top: 0;\n      }\n\n      .bcampx__description--slot p {\n        margin: 0 0 5px;\n      }\n\n      .bcampx__description--slot p:last-child {\n        margin-bottom: 0;\n      }\n\n      .bcampx__description--slot.bcampx__description--collapsed {\n        max-height: calc(1.35em * 4);\n        overflow: hidden;\n      }\n\n      .bcampx__description--slot a {\n        color: #4085b6;\n        text-decoration: none;\n      }\n\n      .bcampx__description--slot a:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__slot-expand {\n        display: inline-block;\n        margin-top: 3px;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 11px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-decoration: none;\n      }\n\n\n      .bcampx__slot-expand:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      #track_play_waypoint {\n        display: none !important;\n      }\n\n      .bcampx__waypoint-toggle {\n        position: absolute;\n        right: -18px;\n        top: 50%;\n        transform: translateY(-50%);\n        min-width: 62px;\n        padding: 6px 14px;\n        border: 1px solid rgba(255, 255, 255, 0.65);\n        border-radius: 999px;\n        background: rgba(120, 120, 120, 0.92);\n        color: #fff;\n        font: 600 12px/1 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n        cursor: pointer;\n        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);\n        z-index: 4;\n      }\n\n      .bcampx__waypoint-toggle:hover {\n        background: rgba(105, 105, 105, 0.98);\n      }\n\n      .bcampx__waypoint-toggle--paused {\n        background: rgba(132, 132, 132, 0.9);\n      }\n\n\n      .bcampx__link {\n        display: inline-block;\n        margin-top: 8px;\n        color: #4085b6;\n        text-decoration: none;\n        font-size: 13px;\n        font-weight: 600;\n      }\n\n      .bcampx__link:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action {\n        display: inline-block;\n        margin: 8px 10px 0 0;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font-size: 13px;\n        font-weight: 600;\n        cursor: pointer;\n      }\n\n      .bcampx__action:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action:disabled {\n        cursor: default;\n        opacity: 0.6;\n        text-decoration: none;\n      }\n\n      .bcampx__error,\n      .bcampx__empty {\n        margin: 0 0 6px;\n        color: #66757f;\n      }\n\n      .bcampx--loading {\n        opacity: 0.78;\n      }\n";
-    const SCRIPT_VERSION = "0.2.7";
+    const SCRIPT_VERSION = "0.2.8";
 
     const CONFIG = {
         autoFetchOnVisible: true,
@@ -43,6 +43,7 @@
         autoExpandTracks: false,
         enableTrackRowActions: true,
         continuousMode: false,
+        autoFillMinimumPrice: false,
         maxConcurrentFetches: 3,
     };
 
@@ -321,6 +322,8 @@
         setupOwnedReleaseCollectionHandoff();
         void applyPendingOwnedReleaseCollectionSearch();
 
+        setupReleasePageBuyAutofill();
+
         if (STATE.initialized || !isFeedEnhancerPage()) {
             if (STATE.initialized) {
                 markDebugState("data-bcampx-init-state", "already-initialized");
@@ -388,6 +391,10 @@
             settings.continuousMode,
             false,
         );
+        CONFIG.autoFillMinimumPrice = coerceBooleanSetting(
+            settings.autoFillMinimumPrice,
+            false,
+        );
     }
 
     function coerceBooleanSetting(value, fallback) {
@@ -410,6 +417,7 @@
         return {
             enableTrackRowActions: !!CONFIG.enableTrackRowActions,
             continuousMode: !!CONFIG.continuousMode,
+            autoFillMinimumPrice: !!CONFIG.autoFillMinimumPrice,
         };
     }
 
@@ -1546,6 +1554,17 @@
                 ".featured-items .featured-item, .featured-grid .featured-item, .featured-item",
             ),
         );
+        const excluded = [
+            "#sidebar",
+            "aside",
+            '[role="complementary"]',
+            ".sidebar",
+            ".cart",
+            "#cart",
+            '[class*="cart"]',
+            '[class*="Cart"]',
+            ".checkout",
+        ].join(",");
         const gridItems = Array.from(
             document.querySelectorAll(
                 [
@@ -1555,7 +1574,7 @@
                     "[data-item-id^='track-']",
                 ].join(", "),
             ),
-        );
+        ).filter((item) => !item.closest(excluded));
 
         featuredItems.forEach((item) => {
             addArtistMusicReleaseCandidate(
@@ -1579,28 +1598,6 @@
             );
         });
 
-        Array.from(document.querySelectorAll(RELEASE_LINK_SELECTOR)).forEach(
-            (link) => {
-                if (link.closest(".bcampx-label-feed, #menubar-vm, #menubar")) {
-                    return;
-                }
-
-                const item =
-                    link.closest(
-                        ".music-grid-item, [data-item-id^='album-'], [data-item-id^='track-']",
-                    ) || link;
-                addArtistMusicReleaseCandidate(
-                    candidates,
-                    seen,
-                    item,
-                    link,
-                    item.matches && item.matches(".music-grid-item")
-                        ? "grid"
-                        : "link",
-                    candidatesByKey,
-                );
-            },
-        );
 
         return candidates;
     }
@@ -1843,6 +1840,20 @@
             return;
         }
 
+        const releaseUrl = card.getAttribute(
+            "data-bcampx-release-url",
+        );
+        if (releaseUrl && !isOwnedDigitalPrice(data.digitalPrice)) {
+            const nativeLink = document.querySelector(
+                'a.you-own-this-link[href="' +
+                    CSS.escape(releaseUrl) +
+                    '"]',
+            );
+            if (nativeLink) {
+                data.digitalPrice = "you own this";
+            }
+        }
+
         const isOwned = isOwnedDigitalPrice(data.digitalPrice);
         const ownershipUrl = cleanText(data.digitalOwnershipUrl || "");
         action.textContent = getDigitalBuyActionLabel(data.digitalPrice);
@@ -1869,6 +1880,7 @@
             action.removeAttribute("data-bcampx-digital-price");
         }
     }
+
 
     function getCompactDigitalPrice(priceText) {
         const text = cleanText(priceText || "");
@@ -2274,6 +2286,67 @@
         return "other";
     }
 
+    function setupReleasePageBuyAutofill() {
+        void loadUserSettings();
+
+        document.addEventListener("click", (event) => {
+            if (!CONFIG.autoFillMinimumPrice) {
+                return;
+            }
+
+            const formatItem = event.target.closest(".buyItem");
+            if (!formatItem) {
+                return;
+            }
+
+            const price = extractFormatPrice(formatItem);
+            if (!price) {
+                return;
+            }
+
+            const waitForDialog = (tries = 0) => {
+                if (tries > 40) {
+                    return;
+                }
+
+                const priceInput = document.querySelector(".ui-dialog #userPrice");
+                if (priceInput) {
+                    priceInput.value = price;
+                    priceInput.dispatchEvent(new Event("input", { bubbles: true }));
+                    priceInput.dispatchEvent(new Event("change", { bubbles: true }));
+                    return;
+                }
+
+                if (document.querySelector(".ui-dialog")) {
+                    setTimeout(() => waitForDialog(tries + 1), 150);
+                }
+            };
+
+            setTimeout(() => waitForDialog(), 300);
+        });
+    }
+
+    function extractFormatPrice(buyItem) {
+        if (!buyItem) {
+            return "";
+        }
+
+        const text = cleanText(buyItem.textContent || "");
+        if (/name your price|free download|you own this/i.test(text)) {
+            return "";
+        }
+
+        const basePrice = cleanText(
+            buyItem.querySelector(".base-text-color")?.textContent || "",
+        );
+        if (!basePrice) {
+            return "";
+        }
+
+        const match = basePrice.match(/(\d+(?:\.\d+)?)/);
+        return match ? match[1] : "";
+    }
+
     function setupOwnedReleaseCollectionHandoff() {
         if (!isReleasePage()) {
             return;
@@ -2563,7 +2636,7 @@
         if (
             !(
                 path === "/" ||
-                /(^|\/)music\/?$/.test(path)
+                /(^|\/)(music|audio)\/?$/.test(path)
             )
         ) {
             return false;
@@ -2779,8 +2852,35 @@
         } catch (_error) {}
     }
 
-    function runTrackBuyDialogHelper() {
+    async function runTrackBuyDialogHelper() {
         clearTrackActionHelperHash();
+
+        // Helper page skips normal init, load settings manually
+        await loadUserSettings();
+
+        const getKnownPrice = () => {
+            const buyItem = document.querySelector(
+                ".buyItem.digital, .you-own-this.digital",
+            );
+            if (!buyItem) {
+                return "";
+            }
+
+            const fullText = cleanText(buyItem.textContent || "");
+            if (/name your price|free download|you own this/i.test(fullText)) {
+                return "";
+            }
+
+            const basePrice = cleanText(
+                buyItem.querySelector(".base-text-color")?.textContent || "",
+            );
+            if (!basePrice) {
+                return "";
+            }
+
+            const match = basePrice.match(/(\d+(?:\.\d+)?)/);
+            return match ? match[1] : "";
+        };
 
         const openBuyDialog = () => {
             const buyButton = Array.from(
@@ -2804,6 +2904,14 @@
             if (!priceInput) {
                 return false;
             }
+            try {
+               const knownPrice = CONFIG.autoFillMinimumPrice ? getKnownPrice() : "";
+              if (knownPrice) {
+                    priceInput.value = knownPrice;
+                    priceInput.dispatchEvent(new Event("input", { bubbles: true }));
+                    priceInput.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+            } catch (_error) {}
 
             try {
                 priceInput.focus();
@@ -5229,7 +5337,7 @@
                 getExternalHostApi().requestHtml(
                     url,
                     getHostRequestOptions({
-                        credentials: "omit",
+                        credentials: "include",
                         headers: {
                             Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                         },
@@ -6068,10 +6176,12 @@
             );
             renderSupportedSlot(meta, text, toggle, data, releaseUrl);
             shell.classList.toggle("bcampx--expanded", false);
+            updateFeedCardBuyButton(shell, data, releaseUrl);
             return;
         }
 
         renderStandardReleaseContent(meta, data, releaseUrl);
+        updateFeedCardBuyButton(shell, data, releaseUrl);
 
         if (!hasVisibleEnhancements(data)) {
             applyEmptyReleaseState(shell, meta, text, toggle, releaseUrl);
@@ -6079,6 +6189,53 @@
         }
 
         applyStandardReleaseShellState(shell, text, toggle, data);
+    }
+
+    function updateFeedCardBuyButton(shell, data, releaseUrl) {
+        if (!data || !releaseUrl) {
+            return;
+        }
+
+        const card = shell.closest(FEED_CARD_ROOT_SELECTOR);
+        if (!card) {
+            return;
+        }
+
+        const buyLinks = Array.from(
+            card.querySelectorAll(RELEASE_LINK_SELECTOR),
+        );
+        const buyLink = buyLinks.find((link) => {
+            const text = cleanText(link.textContent || "").toLowerCase();
+            return /buy now|pre.order|hear more|free download/i.test(text);
+        });
+        if (!buyLink) {
+            return;
+        }
+
+        const nativeText = cleanText(buyLink.textContent || "").toLowerCase();
+        if (/^you own this$|^free download$/i.test(nativeText)) {
+            return;
+        }
+
+        const actionText = getDigitalBuyActionLabel(data.digitalPrice);
+        buyLink.textContent = actionText;
+
+        buyLink.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const text = cleanText(buyLink.textContent || "");
+            if (
+                /^hear more$/i.test(text) ||
+                /you own this/i.test(text) ||
+                /free download/i.test(text)
+            ) {
+                window.open(releaseUrl, "_blank", "noopener,noreferrer");
+                return;
+            }
+
+            openTrackBuyWindow(releaseUrl);
+        });
     }
 
     function renderStandardReleaseContent(meta, data, releaseUrl) {
@@ -8047,6 +8204,13 @@
             onChange: handleTrackRowActionsSettingChange,
         });
 
+        const autoFillPriceSetting = createPlayerSettingsToggleRow({
+            label: "Auto-fill minimum price",
+            description: "Automatically fill the minimum price into the buy dialog. Turn off to enter a custom price.",
+            checked: CONFIG.autoFillMinimumPrice,
+            onChange: handleAutoFillMinimumPriceSettingChange,
+        });
+
         const continuousModeSetting = createPlayerSettingsToggleRow({
             label: "Continuous mode",
             description: "When one release finishes, keep going to the next playable release in the feed.",
@@ -8070,6 +8234,7 @@
 
         settingsMenu.append(
             trackRowActionsSetting.row,
+            autoFillPriceSetting.row,
             continuousModeSetting.row,
             settingsFooter,
         );
@@ -8455,6 +8620,9 @@
             ui.trackRowActionsSettingInput.checked =
                 !!CONFIG.enableTrackRowActions;
         }
+        if (ui.autoFillPriceSettingInput) {
+            ui.autoFillPriceSettingInput.checked = !!CONFIG.autoFillMinimumPrice;
+        }
         if (ui.continuousModeSettingInput) {
             ui.continuousModeSettingInput.checked = !!CONFIG.continuousMode;
         }
@@ -8496,6 +8664,13 @@
         const checked = !!(event && event.target && event.target.checked);
         CONFIG.enableTrackRowActions = checked;
         refreshRenderedTrackActionButtons();
+        syncPlayerSettingsMenu();
+        void persistUserSettings();
+    }
+
+    function handleAutoFillMinimumPriceSettingChange(event) {
+        const checked = !!(event && event.target && event.target.checked);
+        CONFIG.autoFillMinimumPrice = checked;
         syncPlayerSettingsMenu();
         void persistUserSettings();
     }

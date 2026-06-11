@@ -221,7 +221,7 @@
                 getExternalHostApi().requestHtml(
                     url,
                     getHostRequestOptions({
-                        credentials: "omit",
+                        credentials: "include",
                         headers: {
                             Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                         },

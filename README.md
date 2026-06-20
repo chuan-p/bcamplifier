@@ -12,6 +12,8 @@
 
 Bandcamplifier is an open source userscript and browser extension that improves the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts. Made by [chuan](https://www.instagram.com/chuan_p/) with heavy use of Codex.
 
+![Bandcamplifier storefront screenshot](assets/store/store-screenshot-real-02.png)
+
 ## Highlights
 
 - Enriches feed cards with release metadata loaded from linked album or track pages

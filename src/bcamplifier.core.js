@@ -6221,11 +6221,18 @@
         now.className = "bcampx-player-now";
         now.textContent = "Now Playing";
 
-        const trackLink = document.createElement("button");
-        trackLink.type = "button";
+        const trackLink = document.createElement("div");
         trackLink.className = "bcampx-player-track";
-        trackLink.textContent = "Select a preview track";
-        trackLink.addEventListener("click", scrollToActiveTrackCard);
+        trackLink.setAttribute("role", "button");
+        trackLink.setAttribute("tabindex", "0");
+        trackLink.setAttribute("aria-label", "Scroll to current track");
+        trackLink.addEventListener("click", handlePlayerTrackTitleClick);
+        trackLink.addEventListener("keydown", handlePlayerTrackTitleKeydown);
+
+        const trackTitle = document.createElement("span");
+        trackTitle.className = "bcampx-player-track__title";
+        trackTitle.textContent = "Select a preview track";
+        trackLink.append(trackTitle);
 
         metaPrimary.append(now, trackLink);
 
@@ -6259,6 +6266,7 @@
             trackRowActionsSettingInput: trackRowActionsSetting.input,
             continuousModeSettingInput: continuousModeSetting.input,
             trackLink,
+            trackTitle,
             storeLink,
             nativeAudio,
         };
@@ -6316,7 +6324,7 @@
             setFavoriteButtonState(ui.favoriteButton, favoriteState.active);
         }
         ui.releaseButton.disabled = !releaseUrl || releaseUrl === "#";
-        ui.trackLink.textContent =
+        ui.trackTitle.textContent =
             `${data.artist || ""}${data.artist && track.title ? " - " : ""}${track.title || data.title || ""}` ||
             "Select a preview track";
         ui.storeLink.textContent =
@@ -6327,6 +6335,53 @@
         attachSharedAudioToPlayer(ui.nativeAudio, audio);
         syncFavoriteButtonState();
         syncPlayerSettingsMenu();
+    }
+
+    function handlePlayerTrackTitleClick(event) {
+        if (isPlayerTrackTitleSelectionActive(event.currentTarget)) {
+            return;
+        }
+
+        scrollToActiveTrackCard();
+    }
+
+    function handlePlayerTrackTitleKeydown(event) {
+        if (event.key !== "Enter" && event.key !== " ") {
+            return;
+        }
+
+        event.preventDefault();
+        scrollToActiveTrackCard();
+    }
+
+    function isPlayerTrackTitleSelectionActive(root) {
+        const selectionRoot =
+            root && root.getRootNode && root.getRootNode();
+        const selection =
+            selectionRoot &&
+            typeof selectionRoot.getSelection === "function"
+                ? selectionRoot.getSelection()
+                : typeof window.getSelection === "function"
+                  ? window.getSelection()
+                  : null;
+        if (!selection || selection.isCollapsed) {
+            return false;
+        }
+
+        return (
+            isSelectionNodeInside(root, selection.anchorNode) ||
+            isSelectionNodeInside(root, selection.focusNode)
+        );
+    }
+
+    function isSelectionNodeInside(root, node) {
+        if (!root || !node) {
+            return false;
+        }
+
+        const element =
+            node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+        return Boolean(element && root.contains(element));
     }
 
     function getPlayerFavoriteState(releaseUrl) {

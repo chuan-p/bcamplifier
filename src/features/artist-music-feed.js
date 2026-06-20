@@ -225,7 +225,85 @@
 
         if (nextView === "feed" && feed) {
             scheduleScan(feed);
+            scheduleArtistMusicFeedVisibleFetch(feed);
         }
+    }
+
+    function scheduleArtistMusicFeedVisibleFetch(feed) {
+        window.setTimeout(() => {
+            fetchVisibleArtistMusicFeedCards(feed);
+        }, CONFIG.scanDebounceMs + 40);
+    }
+
+    function fetchVisibleArtistMusicFeedCards(feed) {
+        if (!(feed instanceof Element) || feed.hidden) {
+            return;
+        }
+
+        const viewportHeight =
+            window.innerHeight || document.documentElement.clientHeight || 0;
+        const viewportWidth =
+            window.innerWidth || document.documentElement.clientWidth || 0;
+        const preloadMargin = getArtistMusicFeedPreloadMargin();
+
+        Array.from(feed.querySelectorAll(".bcampx-label-feed-card")).forEach(
+            (card) => {
+                if (
+                    !isArtistMusicFeedCardVisible(
+                        card,
+                        viewportWidth,
+                        viewportHeight,
+                        preloadMargin,
+                    )
+                ) {
+                    return;
+                }
+
+                const releaseUrl = cleanText(
+                    card.getAttribute("data-bcampx-release-url") || "",
+                );
+                if (!releaseUrl) {
+                    return;
+                }
+
+                const controller = ensureCardController(card, releaseUrl);
+                if (
+                    controller &&
+                    !controller.loaded &&
+                    !controller.loading
+                ) {
+                    controller.fetchAndRender({ auto: true });
+                }
+            },
+        );
+    }
+
+    function getArtistMusicFeedPreloadMargin() {
+        const match = String(CONFIG.observerRootMargin || "").match(/(-?\d+)px/);
+        return match ? Math.max(0, Number(match[1])) : 0;
+    }
+
+    function isArtistMusicFeedCardVisible(
+        card,
+        viewportWidth,
+        viewportHeight,
+        preloadMargin,
+    ) {
+        if (!(card instanceof Element)) {
+            return false;
+        }
+
+        const rect = card.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+            return false;
+        }
+
+        return (
+            rect.bottom >= -preloadMargin &&
+            rect.right >= 0 &&
+            rect.top <= viewportHeight + preloadMargin &&
+            rect.left <= viewportWidth
+        );
     }
 
     function setArtistMusicNativeSectionHidden(node, hidden, mode = "display") {

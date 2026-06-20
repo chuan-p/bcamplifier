@@ -255,6 +255,12 @@
         cursor: pointer;
       }
 
+      .bcampx-player-track__title {
+        cursor: pointer;
+        user-select: text;
+        -webkit-user-select: text;
+      }
+
       .bcampx-player-track:hover,
       .bcampx-player-store:hover {
         text-decoration: underline;

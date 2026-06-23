@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.9 - 2026-06-23
+
+### Improved
+
+- Make the shared player title behave like a native selectable link while preserving click-to-scroll behavior.
+- Reduce shared player DOM churn during playback updates.
+- Keep artist/label feed scans local to the feed container and ignore Bandcamplifier's own UI mutations during page scanning.
+
+### Fixed
+
+- Preserve text selection in the shared player during playback events.
+
 ## 0.2.8 - 2026-06-11
 
 ### Added

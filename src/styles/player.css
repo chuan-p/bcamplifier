@@ -252,13 +252,11 @@
         color: #2f2f2f;
         font: 700 16px/1.04 "Helvetica Neue", Helvetica, Arial, sans-serif;
         text-align: left;
-        cursor: pointer;
-      }
-
-      .bcampx-player-track__title {
+        text-decoration: none;
         cursor: pointer;
         user-select: text;
         -webkit-user-select: text;
+        -webkit-user-drag: none;
       }
 
       .bcampx-player-track:hover,

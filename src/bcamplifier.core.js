@@ -120,6 +120,15 @@
         ".fan-feed-item",
     ].join(",");
 
+    const INTERNAL_MUTATION_SELECTOR = [
+        "#bcampx-player-host",
+        ".bcampx",
+        ".bcampx__helper-status",
+        ".bcampx-label-feed-toggle",
+        ".bcampx-label-feed-navbar-host",
+        ".bcampx-player-audio",
+    ].join(",");
+
     const CARD_SELECTOR = [
         "article",
         "li",
@@ -316,12 +325,6 @@
             "ended",
         ], syncActiveTrackButton);
         STATE.sharedAudio.addEventListener("ended", handleSharedAudioEnded);
-        addAudioEventListeners(STATE.sharedAudio, [
-            "timeupdate",
-            "loadedmetadata",
-            "durationchange",
-            "volumechange",
-        ], syncPlayerShell);
         STATE.sharedAudio.addEventListener("play", () =>
             announcePlaybackStart("feed-preview"),
         );
@@ -2475,6 +2478,10 @@
                         return;
                     }
 
+                    if (isBcampxInternalMutationNode(node)) {
+                        return;
+                    }
+
                     shouldInvalidateMemo = true;
                     if (node.matches(FEED_CARD_ROOT_SELECTOR)) {
                         scheduleScan(node);
@@ -2520,9 +2527,11 @@
 
     function scheduleScan(root = null) {
         if (root instanceof Element) {
-            const story = getStoryRoot(root);
-            if (story instanceof Element) {
-                STATE.pendingScanRoots.add(story);
+            const roots = getScanRootsForElement(root);
+            if (roots.length) {
+                roots.forEach((scanRoot) => {
+                    STATE.pendingScanRoots.add(scanRoot);
+                });
             } else {
                 STATE.pendingFullScan = true;
             }
@@ -2534,6 +2543,41 @@
         STATE.scanTimer = window.setTimeout(
             scanForCards,
             CONFIG.scanDebounceMs,
+        );
+    }
+
+    function getScanRootsForElement(root) {
+        if (!(root instanceof Element)) {
+            return [];
+        }
+
+        const story = getStoryRoot(root);
+        if (story instanceof Element) {
+            return [story];
+        }
+
+        if (!root.querySelectorAll) {
+            return [];
+        }
+
+        return Array.from(root.querySelectorAll(FEED_CARD_ROOT_SELECTOR));
+    }
+
+    function isBcampxInternalMutationNode(node) {
+        if (!(node instanceof Element)) {
+            return false;
+        }
+
+        if (
+            node.matches(FEED_CARD_ROOT_SELECTOR) ||
+            node.querySelector(FEED_CARD_ROOT_SELECTOR)
+        ) {
+            return false;
+        }
+
+        return Boolean(
+            node.matches(INTERNAL_MUTATION_SELECTOR) ||
+                node.closest(INTERNAL_MUTATION_SELECTOR),
         );
     }
 
@@ -5766,32 +5810,44 @@
     }
 
     function syncCoverPlaybackState() {
-        if (STATE.coverPlaybackStateNode) {
-            STATE.coverPlaybackStateNode.classList.remove("playing", "paused");
-            STATE.coverPlaybackStateNode = null;
-        }
-
         const card = getConnectedActiveTrackCard();
         if (!card) {
+            clearCoverPlaybackStateNode();
             return;
         }
 
         const stateNode = findCoverPlaybackStateNodeForCard(card);
         if (!stateNode) {
+            clearCoverPlaybackStateNode();
             return;
+        }
+
+        const audio = ensureSharedAudio();
+        if (!audio) {
+            clearCoverPlaybackStateNode();
+            return;
+        }
+
+        if (
+            STATE.coverPlaybackStateNode &&
+            STATE.coverPlaybackStateNode !== stateNode
+        ) {
+            STATE.coverPlaybackStateNode.classList.remove("playing", "paused");
         }
 
         STATE.coverPlaybackStateNode = stateNode;
-        const audio = ensureSharedAudio();
-        if (!audio) {
+        const activeClass = audio.paused ? "paused" : "playing";
+        toggleClassIfChanged(stateNode, "paused", activeClass === "paused");
+        toggleClassIfChanged(stateNode, "playing", activeClass === "playing");
+    }
+
+    function clearCoverPlaybackStateNode() {
+        if (!STATE.coverPlaybackStateNode) {
             return;
         }
 
-        if (audio.paused) {
-            stateNode.classList.add("paused");
-        } else {
-            stateNode.classList.add("playing");
-        }
+        STATE.coverPlaybackStateNode.classList.remove("playing", "paused");
+        STATE.coverPlaybackStateNode = null;
     }
 
     function findCoverPlaybackStateNodeForCard(card) {
@@ -6221,18 +6277,13 @@
         now.className = "bcampx-player-now";
         now.textContent = "Now Playing";
 
-        const trackLink = document.createElement("div");
+        const trackLink = document.createElement("a");
         trackLink.className = "bcampx-player-track";
-        trackLink.setAttribute("role", "button");
-        trackLink.setAttribute("tabindex", "0");
+        trackLink.href = "#";
+        trackLink.draggable = false;
         trackLink.setAttribute("aria-label", "Scroll to current track");
-        trackLink.addEventListener("click", handlePlayerTrackTitleClick);
-        trackLink.addEventListener("keydown", handlePlayerTrackTitleKeydown);
-
-        const trackTitle = document.createElement("span");
-        trackTitle.className = "bcampx-player-track__title";
-        trackTitle.textContent = "Select a preview track";
-        trackLink.append(trackTitle);
+        trackLink.textContent = "Select a preview track";
+        trackLink.addEventListener("click", handlePlayerTrackLinkClick);
 
         metaPrimary.append(now, trackLink);
 
@@ -6266,7 +6317,6 @@
             trackRowActionsSettingInput: trackRowActionsSetting.input,
             continuousModeSettingInput: continuousModeSetting.input,
             trackLink,
-            trackTitle,
             storeLink,
             nativeAudio,
         };
@@ -6281,11 +6331,12 @@
         const audio = ensureSharedAudio();
         const hasTrack = Boolean(STATE.activeTrack && STATE.activeReleaseData);
 
-        ui.shell.hidden = !hasTrack;
+        setBooleanPropertyIfChanged(ui.shell, "hidden", !hasTrack);
         if (!hasTrack && STATE.playerSettingsOpen) {
             closePlayerSettingsMenu();
         }
-        document.documentElement.classList.toggle(
+        toggleClassIfChanged(
+            document.documentElement,
             "bcampx-player-active",
             hasTrack,
         );
@@ -6296,102 +6347,127 @@
         const track = STATE.activeTrack;
         const data = STATE.activeReleaseData || {};
         const releaseUrl = STATE.activeReleaseUrl || "#";
-        const canGoPrev =
-            findAdjacentPlayableTrackIndex(
-                STATE.activeTrackList,
-                STATE.activeTrackIndex,
-                -1,
-            ) >= 0 ||
-            (CONFIG.continuousMode && hasNeighborPlayableRelease(-1));
-        const canGoNext =
-            findAdjacentPlayableTrackIndex(
-                STATE.activeTrackList,
-                STATE.activeTrackIndex,
-                1,
-            ) >= 0 ||
-            (CONFIG.continuousMode && hasNeighborPlayableRelease(1));
+        const navigationState = getPlayerNavigationState();
         ensureArtistMusicPlayerWishlistState(releaseUrl);
         const favoriteState = getPlayerFavoriteState(releaseUrl);
-        ui.prevButton.disabled = !canGoPrev;
-        ui.nextButton.disabled = !canGoNext;
-        ui.favoriteButton.hidden = favoriteState.hidden;
-        ui.favoriteButton.disabled = favoriteState.disabled;
-        ui.favoriteButton.classList.toggle(
-            "bcampx-player-button--pending",
-            Boolean(favoriteState.pending),
+        setBooleanPropertyIfChanged(
+            ui.prevButton,
+            "disabled",
+            !navigationState.canGoPrev,
         );
-        if (favoriteState.hasState) {
-            setFavoriteButtonState(ui.favoriteButton, favoriteState.active);
-        }
-        ui.releaseButton.disabled = !releaseUrl || releaseUrl === "#";
-        ui.trackTitle.textContent =
+        setBooleanPropertyIfChanged(
+            ui.nextButton,
+            "disabled",
+            !navigationState.canGoNext,
+        );
+        applyPlayerFavoriteState(ui.favoriteButton, favoriteState);
+        setBooleanPropertyIfChanged(
+            ui.releaseButton,
+            "disabled",
+            !releaseUrl || releaseUrl === "#",
+        );
+        setTextContentIfChanged(
+            ui.trackLink,
             `${data.artist || ""}${data.artist && track.title ? " - " : ""}${track.title || data.title || ""}` ||
-            "Select a preview track";
-        ui.storeLink.textContent =
+                "Select a preview track",
+        );
+        setTextContentIfChanged(
+            ui.storeLink,
             data.title && data.artist
                 ? `${data.title} / ${data.artist}`
-                : data.title || data.artist || "No track selected";
+                : data.title || data.artist || "No track selected",
+        );
         ui.storeLink.href = releaseUrl;
         attachSharedAudioToPlayer(ui.nativeAudio, audio);
-        syncFavoriteButtonState();
-        syncPlayerSettingsMenu();
     }
 
-    function handlePlayerTrackTitleClick(event) {
-        if (isPlayerTrackTitleSelectionActive(event.currentTarget)) {
-            return;
+    function setTextContentIfChanged(node, text) {
+        if (node && node.textContent !== text) {
+            node.textContent = text;
         }
-
-        scrollToActiveTrackCard();
     }
 
-    function handlePlayerTrackTitleKeydown(event) {
-        if (event.key !== "Enter" && event.key !== " ") {
-            return;
+    function setAttributeIfChanged(node, name, value) {
+        if (node && node.getAttribute(name) !== value) {
+            node.setAttribute(name, value);
         }
+    }
 
+    function setBooleanPropertyIfChanged(node, name, value) {
+        if (node && Boolean(node[name]) !== Boolean(value)) {
+            node[name] = Boolean(value);
+        }
+    }
+
+    function toggleClassIfChanged(node, className, active) {
+        if (
+            node &&
+            node.classList &&
+            node.classList.contains(className) !== Boolean(active)
+        ) {
+            node.classList.toggle(className, Boolean(active));
+        }
+    }
+
+    function handlePlayerTrackLinkClick(event) {
         event.preventDefault();
         scrollToActiveTrackCard();
     }
 
-    function isPlayerTrackTitleSelectionActive(root) {
-        const selectionRoot =
-            root && root.getRootNode && root.getRootNode();
-        const selection =
-            selectionRoot &&
-            typeof selectionRoot.getSelection === "function"
-                ? selectionRoot.getSelection()
-                : typeof window.getSelection === "function"
-                  ? window.getSelection()
-                  : null;
-        if (!selection || selection.isCollapsed) {
-            return false;
+    function getPlayerNavigationState() {
+        const hasPreviousTrack =
+            findAdjacentPlayableTrackIndex(
+                STATE.activeTrackList,
+                STATE.activeTrackIndex,
+                -1,
+            ) >= 0;
+        const hasNextTrack =
+            findAdjacentPlayableTrackIndex(
+                STATE.activeTrackList,
+                STATE.activeTrackIndex,
+                1,
+            ) >= 0;
+        if (
+            !CONFIG.continuousMode ||
+            (hasPreviousTrack && hasNextTrack)
+        ) {
+            return {
+                canGoPrev: hasPreviousTrack,
+                canGoNext: hasNextTrack,
+            };
         }
 
-        return (
-            isSelectionNodeInside(root, selection.anchorNode) ||
-            isSelectionNodeInside(root, selection.focusNode)
-        );
-    }
-
-    function isSelectionNodeInside(root, node) {
-        if (!root || !node) {
-            return false;
-        }
-
-        const element =
-            node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-        return Boolean(element && root.contains(element));
+        const neighborState = getNeighborPlaybackAvailability();
+        return {
+            canGoPrev: hasPreviousTrack || neighborState.hasPrevious,
+            canGoNext: hasNextTrack || neighborState.hasNext,
+        };
     }
 
     function getPlayerFavoriteState(releaseUrl) {
-        if (!isArtistMusicPage()) {
+        if (
+            STATE.activeReleaseData &&
+            isOwnedDigitalPrice(STATE.activeReleaseData.digitalPrice)
+        ) {
             return {
                 hidden: false,
-                disabled: !findActiveWishlistControl(),
-                hasState: false,
-                active: false,
+                disabled: true,
+                hasState: true,
+                active: true,
                 pending: false,
+                owned: true,
+            };
+        }
+
+        if (!isArtistMusicPage()) {
+            const wishlistControl = findActiveWishlistControl();
+            return {
+                hidden: false,
+                disabled: !wishlistControl,
+                hasState: true,
+                active: isWishlistActive(wishlistControl),
+                pending: false,
+                owned: false,
             };
         }
 
@@ -6416,6 +6492,7 @@
             hasState: true,
             active: hasCachedState ? Boolean(cachedState.active) : false,
             pending: hasPendingAction,
+            owned: false,
         };
     }
 
@@ -6596,9 +6673,10 @@
             return;
         }
 
-        button.classList.toggle("active", active);
-        button.setAttribute("aria-pressed", active ? "true" : "false");
-        button.setAttribute(
+        toggleClassIfChanged(button, "active", active);
+        setAttributeIfChanged(button, "aria-pressed", active ? "true" : "false");
+        setAttributeIfChanged(
+            button,
             "aria-label",
             active ? "Remove from wishlist" : "Add to wishlist",
         );
@@ -6630,21 +6708,37 @@
         }
 
         const open = !!STATE.playerSettingsOpen;
-        ui.settingsButton.setAttribute("aria-expanded", open ? "true" : "false");
-        ui.settingsButton.setAttribute(
+        setAttributeIfChanged(
+            ui.settingsButton,
+            "aria-expanded",
+            open ? "true" : "false",
+        );
+        setAttributeIfChanged(
+            ui.settingsButton,
             "aria-label",
             open ? "Close settings" : "Open settings",
         );
-        ui.settingsMenu.hidden = !open;
+        setBooleanPropertyIfChanged(ui.settingsMenu, "hidden", !open);
         if (ui.trackRowActionsSettingInput) {
-            ui.trackRowActionsSettingInput.checked =
-                !!CONFIG.enableTrackRowActions;
+            setBooleanPropertyIfChanged(
+                ui.trackRowActionsSettingInput,
+                "checked",
+                !!CONFIG.enableTrackRowActions,
+            );
         }
         if (ui.autoFillPriceSettingInput) {
-            ui.autoFillPriceSettingInput.checked = !!CONFIG.autoFillMinimumPrice;
+            setBooleanPropertyIfChanged(
+                ui.autoFillPriceSettingInput,
+                "checked",
+                !!CONFIG.autoFillMinimumPrice,
+            );
         }
         if (ui.continuousModeSettingInput) {
-            ui.continuousModeSettingInput.checked = !!CONFIG.continuousMode;
+            setBooleanPropertyIfChanged(
+                ui.continuousModeSettingInput,
+                "checked",
+                !!CONFIG.continuousMode,
+            );
         }
     }
 
@@ -6914,6 +7008,68 @@
         return neighbors;
     }
 
+    function getNeighborPlaybackAvailability() {
+        const currentCard = getStoryRoot(STATE.activeTrackCard) || STATE.activeTrackCard;
+        if (!(currentCard instanceof Element)) {
+            return { hasPrevious: false, hasNext: false };
+        }
+
+        const collectionGridPlayback = findCollectionGridCard(currentCard);
+        const cards = collectionGridPlayback
+            ? getCollectionGridPlaybackCards(currentCard)
+            : getStoryCardsFromRoots([document]);
+        const currentIndex = cards.indexOf(currentCard);
+        if (currentIndex < 0) {
+            return { hasPrevious: false, hasNext: false };
+        }
+
+        return {
+            hasPrevious: hasNeighborPlaybackCandidate(
+                cards,
+                currentIndex,
+                -1,
+                collectionGridPlayback,
+            ),
+            hasNext: hasNeighborPlaybackCandidate(
+                cards,
+                currentIndex,
+                1,
+                collectionGridPlayback,
+            ),
+        };
+    }
+
+    function hasNeighborPlaybackCandidate(
+        cards,
+        currentIndex,
+        offset,
+        collectionGridPlayback,
+    ) {
+        const step = offset > 0 ? 1 : -1;
+        const activeReleaseUrl = normalizeReleaseUrl(STATE.activeReleaseUrl || "");
+        for (
+            let index = currentIndex + step;
+            index >= 0 && index < cards.length;
+            index += step
+        ) {
+            const card = cards[index];
+            if (
+                collectionGridPlayback
+                    ? !isCollectionGridPlaybackCandidate(card)
+                    : !isContinuousPlaybackCandidate(card)
+            ) {
+                continue;
+            }
+
+            const releaseUrl = normalizeReleaseUrl(getCardPrimaryReleaseUrl(card));
+            if (releaseUrl && releaseUrl !== activeReleaseUrl) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     function getCollectionGridPlaybackCards(card) {
         const grid = card && card.closest(".collection-grid");
         if (!grid) {
@@ -7058,6 +7214,10 @@
             return;
         }
 
+        if (audio.parentElement === container) {
+            return;
+        }
+
         audio.controls = true;
         audio.preload = "metadata";
         audio.classList.add("bcampx-player-audio");
@@ -7169,48 +7329,42 @@
         return Boolean(node.offsetParent || node.getClientRects().length);
     }
 
-   function syncFavoriteButtonState() {
-       const ui = STATE.playerUi;
-       if (!ui || !ui.favoriteButton) {
-           return;
-       }
-
-        ui.favoriteButton.classList.remove(
-            "bcampx-player-favorite--owned",
-        );
-
-       if (
-           STATE.activeReleaseData &&
-           isOwnedDigitalPrice(STATE.activeReleaseData.digitalPrice)
-       ) {
-           ui.favoriteButton.hidden = false;
-           ui.favoriteButton.disabled = true;
-           ui.favoriteButton.classList.remove("bcampx-player-button--pending");
-            ui.favoriteButton.classList.add(
-                "bcampx-player-favorite--owned",
-            );
-           setFavoriteButtonState(ui.favoriteButton, true);
-           return;
-       }
-
-        if (isArtistMusicPage()) {
-            ensureArtistMusicPlayerWishlistState(STATE.activeReleaseUrl || "");
-            const state = getPlayerFavoriteState(STATE.activeReleaseUrl || "");
-            ui.favoriteButton.hidden = state.hidden;
-            ui.favoriteButton.disabled = state.disabled;
-            ui.favoriteButton.classList.toggle(
-                "bcampx-player-button--pending",
-                Boolean(state.pending),
-            );
-            if (state.hasState) {
-                setFavoriteButtonState(ui.favoriteButton, state.active);
-            }
+    function syncFavoriteButtonState() {
+        const ui = STATE.playerUi;
+        if (!ui || !ui.favoriteButton) {
             return;
         }
 
-        const wishlistControl = findActiveWishlistControl();
-        const active = isWishlistActive(wishlistControl);
-        setFavoriteButtonState(ui.favoriteButton, active);
+        if (isArtistMusicPage()) {
+            ensureArtistMusicPlayerWishlistState(STATE.activeReleaseUrl || "");
+        }
+
+        applyPlayerFavoriteState(
+            ui.favoriteButton,
+            getPlayerFavoriteState(STATE.activeReleaseUrl || ""),
+        );
+    }
+
+    function applyPlayerFavoriteState(button, state) {
+        if (!button || !state) {
+            return;
+        }
+
+        toggleClassIfChanged(
+            button,
+            "bcampx-player-favorite--owned",
+            Boolean(state.owned),
+        );
+        setBooleanPropertyIfChanged(button, "hidden", state.hidden);
+        setBooleanPropertyIfChanged(button, "disabled", state.disabled);
+        toggleClassIfChanged(
+            button,
+            "bcampx-player-button--pending",
+            Boolean(state.pending),
+        );
+        if (state.hasState) {
+            setFavoriteButtonState(button, state.active);
+        }
     }
 
     function toggleActiveWishlist() {
@@ -7317,9 +7471,13 @@
 
         const audio = ensureSharedAudio();
         const isPaused = !audio || audio.paused;
-        button.textContent = isPaused ? "Play" : "Pause";
-        button.setAttribute("aria-label", isPaused ? "Play" : "Pause");
-        button.classList.toggle("bcampx__waypoint-toggle--paused", isPaused);
+        setTextContentIfChanged(button, isPaused ? "Play" : "Pause");
+        setAttributeIfChanged(
+            button,
+            "aria-label",
+            isPaused ? "Play" : "Pause",
+        );
+        toggleClassIfChanged(button, "bcampx__waypoint-toggle--paused", isPaused);
     }
 
     function injectStyles() {

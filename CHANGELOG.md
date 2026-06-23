@@ -11,6 +11,7 @@
 ### Fixed
 
 - Preserve text selection in the shared player during playback events.
+- Restore Space key activation for the shared player title link.
 
 ## 0.2.8 - 2026-06-11
 

@@ -8397,6 +8397,7 @@
         trackLink.setAttribute("aria-label", "Scroll to current track");
         trackLink.textContent = "Select a preview track";
         trackLink.addEventListener("click", handlePlayerTrackLinkClick);
+        trackLink.addEventListener("keydown", handlePlayerTrackLinkKeydown);
 
         metaPrimary.append(now, trackLink);
 
@@ -8523,6 +8524,15 @@
     }
 
     function handlePlayerTrackLinkClick(event) {
+        event.preventDefault();
+        scrollToActiveTrackCard();
+    }
+
+    function handlePlayerTrackLinkKeydown(event) {
+        if (event.key !== " " && event.key !== "Spacebar") {
+            return;
+        }
+
         event.preventDefault();
         scrollToActiveTrackCard();
     }

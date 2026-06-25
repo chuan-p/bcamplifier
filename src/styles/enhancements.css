@@ -19,6 +19,18 @@
         padding: 0;
       }
 
+      #collection-grid > .bcampx-label-feed,
+      #wishlist-grid > .bcampx-label-feed,
+      #collection-search-grid > .bcampx-label-feed,
+      #wishlist-search-grid > .bcampx-label-feed {
+        margin-right: auto;
+        margin-left: auto;
+      }
+
+      #grids > .grid > .bcampx-label-feed--other-fan {
+        margin-top: 20px;
+      }
+
       .bcampx-label-feed__list {
         margin: 0;
         padding: 0;
@@ -113,9 +125,32 @@
         font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif !important;
       }
 
+      .bcampx-label-feed-card__supporter-count {
+        margin-top: 5px;
+        color: #6a6a6a;
+        font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      .bcampx-label-feed-card__supporter-refresh {
+        margin: 0 0 0 6px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #4085b6;
+        font: inherit;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+
+      .bcampx-label-feed-card__supporter-refresh:disabled {
+        color: #999;
+        cursor: progress;
+        text-decoration: none;
+      }
+
       .bcampx-label-feed-card .buy-link {
         display: inline-block;
-        margin-top: 8px !important;
+        margin-top: 7px !important;
         border: 0 !important;
         background: transparent !important;
         padding: 0 !important;

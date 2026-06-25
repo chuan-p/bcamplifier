@@ -165,18 +165,8 @@
       (() => {
         const canonicalReleaseUrl =
           "https://fixture.bandcamp.com/album/synthetic-release";
-        const embeddedPlayerUrl =
-          "https://bandcamp.com/EmbeddedPlayer/v=2/album=321/size=large/tracklist=false/artwork=small/";
-        const embeddedPlayerHtml = `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta property="og:url" content="${canonicalReleaseUrl}" />
-  </head>
-  <body>
-    <input id="shareurl" value="${canonicalReleaseUrl}" />
-  </body>
-</html>`;
+        const customReleaseUrl =
+          "https://shop.fixture.example:__PORT__/album/synthetic-release";
         const releaseHtml = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -199,7 +189,7 @@
 </html>`;
 
         const responseBodies = new Map([
-          [embeddedPlayerUrl, embeddedPlayerHtml],
+          [customReleaseUrl, releaseHtml],
           [canonicalReleaseUrl, releaseHtml],
         ]);
         const storage = new Map();

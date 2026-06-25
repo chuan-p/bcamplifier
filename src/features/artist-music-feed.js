@@ -1,26 +1,42 @@
     async function buildArtistMusicFeed() {
-        if (STATE.artistMusicFeedBuilt || !isArtistMusicPage()) {
+        if (STATE.artistMusicFeedBuilt || STATE.artistMusicFeedBuilding) {
             return false;
         }
 
-        const releases = collectArtistMusicReleaseCandidates();
+        const feedContext = getReleaseGridFeedContext();
+        if (!feedContext) {
+            return false;
+        }
+
+        const releases = collectReleaseGridFeedCandidates(feedContext);
         if (!releases.length) {
             markDebugState("data-bcampx-label-feed-state", "empty");
             return false;
         }
 
-        const sourceGrid = findArtistMusicSourceGrid();
+        const sourceGrid = feedContext.sourceGrid;
         if (!sourceGrid || !sourceGrid.parentNode) {
             markDebugState("data-bcampx-label-feed-state", "missing-source");
             return false;
         }
 
+        STATE.artistMusicFeedBuilding = true;
         const feed = document.createElement("section");
         feed.className = "bcampx-label-feed";
-        feed.setAttribute("aria-label", "Bandcamp release feed");
+        feed.setAttribute("aria-label", feedContext.ariaLabel);
+        feed.setAttribute("data-bcampx-feed-kind", feedContext.kind);
+        if (
+            /^fan-/.test(feedContext.kind) &&
+            !isCurrentFanProfileOwner()
+        ) {
+            feed.classList.add("bcampx-label-feed--other-fan");
+        }
 
-        const list = document.createElement("ol");
+        // Bandcamp's fan-page infinite loader appends releases to every nearby
+        // <ol>, so this list must not look like a native collection grid.
+        const list = document.createElement("div");
         list.className = "bcampx-label-feed__list";
+        list.setAttribute("role", "list");
         releases.forEach((release) => {
             list.appendChild(createArtistMusicFeedCard(release));
         });
@@ -33,20 +49,720 @@
         STATE.artistMusicFeedNode = feed;
         STATE.artistMusicSourceGridNode = sourceGrid;
         STATE.artistMusicFeaturedNodes = findArtistMusicFeaturedNodes();
+        if (/^fan-/.test(feedContext.kind)) {
+            STATE.artistMusicFanDirtyGrids.delete(sourceGrid);
+        }
 
-        sourceGrid.parentNode.insertBefore(feed, sourceGrid);
+        mountReleaseGridFeed(feed, feedContext);
         document.body.classList.add("bcampx-label-feed-page");
         ensureArtistMusicViewToggle();
         applyArtistMusicFeedView(STATE.artistMusicFeedView);
         STATE.artistMusicFeedBuilt = true;
+        STATE.artistMusicFeedBuilding = false;
+        setupArtistMusicSourceGridObserver(sourceGrid);
+        setupFanCollectionTabObserver();
 
         markDebugState("data-bcampx-label-feed-state", "ready");
         markDebugState("data-bcampx-label-feed-count", String(releases.length));
+        markDebugState("data-bcampx-label-feed-kind", feedContext.kind);
+        markDebugState("data-bcampx-page-kind", feedContext.kind);
         markDebugState(
             "data-bcampx-label-feed-visible-count",
             String(releases.length),
         );
+        if (/^fan-/.test(feedContext.kind)) {
+            scheduleFanCollectionFeedContextSync();
+        }
         return true;
+    }
+
+    function isCurrentFanProfileOwner() {
+        const pageData = parseJsonAttribute(
+            document.querySelector("#pagedata[data-blob]"),
+            "data-blob",
+        );
+        const fanData = pageData && pageData.fan_data;
+        const currentFan = pageData && pageData.current_fan;
+
+        if (fanData && fanData.is_own_page === true) {
+            return true;
+        }
+
+        const profileFanId = Number(fanData && fanData.fan_id);
+        const currentFanId = Number(currentFan && currentFan.fan_id);
+        return Boolean(
+            profileFanId > 0 &&
+                currentFanId > 0 &&
+                profileFanId === currentFanId,
+        );
+    }
+
+    function setupFanCollectionTabObserver() {
+        if (
+            !("MutationObserver" in window) ||
+            !isBandcampFanCollectionPageUrl(window.location.href)
+        ) {
+            return;
+        }
+
+        const observerRoot =
+            document.querySelector("#grids") ||
+            document.querySelector(".grid-tabs-anchor") ||
+            null;
+        if (!(observerRoot instanceof Element)) {
+            return;
+        }
+        if (
+            STATE.artistMusicFanTabObserver &&
+            STATE.artistMusicFanTabObserver.__bcampxRoot === observerRoot &&
+            observerRoot.isConnected
+        ) {
+            return;
+        }
+        if (STATE.artistMusicFanTabObserver) {
+            STATE.artistMusicFanTabObserver.disconnect();
+        }
+
+        STATE.artistMusicFanTabObserver = new MutationObserver((mutations) => {
+            if (mutations.some(hasFanCollectionContextMutation)) {
+                scheduleFanCollectionFeedContextSync();
+            }
+        });
+        STATE.artistMusicFanTabObserver.__bcampxRoot = observerRoot;
+        STATE.artistMusicFanTabObserver.observe(observerRoot, {
+            attributes: true,
+            attributeFilter: ["class"],
+            childList: true,
+            subtree: true,
+        });
+        window.removeEventListener(
+            "popstate",
+            scheduleFanCollectionFeedContextSync,
+        );
+        window.addEventListener("popstate", scheduleFanCollectionFeedContextSync);
+    }
+
+    function hasFanCollectionContextMutation(mutation) {
+        if (!mutation) {
+            return false;
+        }
+
+        if (mutation.type === "attributes") {
+            const target = mutation.target;
+            return Boolean(
+                target instanceof Element &&
+                    target.matches(
+                        "#grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
+                    ),
+            );
+        }
+
+        if (mutation.type !== "childList") {
+            return false;
+        }
+
+        const target = mutation.target;
+        if (
+            target instanceof Element &&
+            target.matches("#grids, .collection-tabs, .grid-tabs-anchor")
+        ) {
+            return true;
+        }
+
+        return [...mutation.addedNodes, ...mutation.removedNodes].some(
+            (node) =>
+                node instanceof Element &&
+                (node.matches(
+                    "#grids, #grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
+                ) ||
+                    node.querySelector(
+                        "#grids, #grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
+                    )),
+        );
+    }
+
+    function scheduleFanCollectionFeedContextSync() {
+        if (!STATE.initialized || STATE.artistMusicFanTabSyncTimer) {
+            return;
+        }
+
+        STATE.artistMusicFanTabSyncTimer = 1;
+        const run = () => {
+            STATE.artistMusicFanTabSyncTimer = 0;
+            reconcileFanCollectionFeedContext();
+        };
+        if (typeof window.queueMicrotask === "function") {
+            window.queueMicrotask(run);
+        } else {
+            Promise.resolve().then(run);
+        }
+    }
+
+    function reconcileFanCollectionFeedContext() {
+        const context = getReleaseGridFeedContext();
+        const feed = STATE.artistMusicFeedNode;
+        if (!context) {
+            suspendFanCollectionFeedContext();
+            return;
+        }
+        if (!(feed instanceof Element)) {
+            void buildArtistMusicFeed();
+            return;
+        }
+        if (
+            !/^fan-/.test(context.kind) ||
+            !(context.sourceGrid instanceof Element) ||
+            STATE.artistMusicFeedBuilding
+        ) {
+            return;
+        }
+
+        const currentKind = cleanText(
+            feed.getAttribute("data-bcampx-feed-kind") || "",
+        );
+        const expectedParent =
+            context.sourceGrid.closest(".grid") || context.sourceGrid.parentElement;
+        if (
+            STATE.artistMusicSourceGridNode === context.sourceGrid &&
+            currentKind === context.kind &&
+            feed.parentElement === expectedParent &&
+            feed.getAttribute("data-bcampx-context-suspended") !== "true"
+        ) {
+            return;
+        }
+
+        const previousSourceGrid = STATE.artistMusicSourceGridNode;
+        if (previousSourceGrid instanceof Element) {
+            setArtistMusicNativeSectionHidden(
+                previousSourceGrid,
+                false,
+                "offscreen",
+            );
+            previousSourceGrid.setAttribute(
+                "data-bcampx-label-feed-source-hidden",
+                "false",
+            );
+        }
+
+        const list = feed.querySelector(".bcampx-label-feed__list");
+        const sourceGridChanged =
+            previousSourceGrid !== context.sourceGrid;
+        if (sourceGridChanged) {
+            stashFanCollectionFeedCards(previousSourceGrid, list);
+        }
+
+        STATE.artistMusicSourceGridNode = context.sourceGrid;
+        feed.setAttribute("data-bcampx-feed-kind", context.kind);
+        feed.setAttribute("aria-label", context.ariaLabel);
+        feed.removeAttribute("data-bcampx-context-suspended");
+        mountReleaseGridFeed(feed, context);
+        const restoredCards =
+            sourceGridChanged &&
+            restoreFanCollectionFeedCards(context.sourceGrid, list);
+        if (sourceGridChanged && !restoredCards) {
+            rebuildReleaseGridFeed(context);
+        }
+        setupArtistMusicSourceGridObserver(context.sourceGrid);
+        if (STATE.artistMusicToggleNode) {
+            STATE.artistMusicToggleNode.hidden = false;
+        }
+        applyArtistMusicFeedView(STATE.artistMusicFeedView, {
+            skipFeedWork: restoredCards || !sourceGridChanged,
+        });
+        if (
+            (!sourceGridChanged ||
+                STATE.artistMusicFanDirtyGrids.has(context.sourceGrid)) &&
+            (restoredCards || !sourceGridChanged)
+        ) {
+            syncArtistMusicFeedFromSourceGrid();
+        }
+
+        markDebugState("data-bcampx-label-feed-kind", context.kind);
+        markDebugState("data-bcampx-page-kind", context.kind);
+    }
+
+    function stashFanCollectionFeedCards(sourceGrid, list) {
+        if (
+            !(sourceGrid instanceof Element) ||
+            !(list instanceof Element)
+        ) {
+            return;
+        }
+
+        STATE.artistMusicFanCardsByGrid.set(
+            sourceGrid,
+            Array.from(list.children),
+        );
+    }
+
+    function restoreFanCollectionFeedCards(sourceGrid, list) {
+        if (
+            !(sourceGrid instanceof Element) ||
+            !(list instanceof Element)
+        ) {
+            return false;
+        }
+
+        const cards = STATE.artistMusicFanCardsByGrid.get(sourceGrid);
+        if (!Array.isArray(cards)) {
+            return false;
+        }
+
+        list.replaceChildren(...cards);
+        cards.forEach((card) => syncTrackButtonsForCard(card));
+        return true;
+    }
+
+    function markFanCollectionGridDirtyFromMutation(mutation) {
+        if (
+            !mutation ||
+            !isBandcampFanCollectionPageUrl(window.location.href)
+        ) {
+            return;
+        }
+
+        const target =
+            mutation.target instanceof Element
+                ? mutation.target
+                : mutation.target && mutation.target.parentElement;
+        const sourceGrid =
+            target &&
+            (target.matches(".collection-grid")
+                ? target
+                : target.closest(".collection-grid"));
+        if (sourceGrid instanceof Element) {
+            STATE.artistMusicFanDirtyGrids.add(sourceGrid);
+        }
+    }
+
+    function suspendFanCollectionFeedContext() {
+        const feed = STATE.artistMusicFeedNode;
+        if (!(feed instanceof Element) || !/^fan-/.test(
+            cleanText(feed.getAttribute("data-bcampx-feed-kind") || ""),
+        )) {
+            return;
+        }
+
+        const sourceGrid = STATE.artistMusicSourceGridNode;
+        if (sourceGrid instanceof Element) {
+            setArtistMusicNativeSectionHidden(sourceGrid, false, "offscreen");
+            sourceGrid.setAttribute(
+                "data-bcampx-label-feed-source-hidden",
+                "false",
+            );
+        }
+        if (STATE.artistMusicSourceGridObserver) {
+            STATE.artistMusicSourceGridObserver.disconnect();
+        }
+        if (STATE.artistMusicFeedSyncTimer) {
+            window.clearTimeout(STATE.artistMusicFeedSyncTimer);
+            STATE.artistMusicFeedSyncTimer = 0;
+        }
+        if (STATE.artistMusicVisibleFetchTimer) {
+            window.clearTimeout(STATE.artistMusicVisibleFetchTimer);
+            STATE.artistMusicVisibleFetchTimer = 0;
+        }
+
+        feed.hidden = true;
+        feed.setAttribute("data-bcampx-context-suspended", "true");
+        if (STATE.artistMusicToggleNode) {
+            STATE.artistMusicToggleNode.hidden = true;
+        }
+        document.body.classList.remove(
+            "bcampx-label-feed-page--enhanced",
+            "bcampx-label-feed-page--original",
+        );
+        markDebugState("data-bcampx-page-kind", "fan-other");
+    }
+
+    function rebuildReleaseGridFeed(context) {
+        const feed = STATE.artistMusicFeedNode;
+        const list =
+            feed && feed.querySelector(".bcampx-label-feed__list");
+        if (!list) {
+            return;
+        }
+
+        const releases = collectReleaseGridFeedCandidates(context);
+        const cards = releases.map((release) =>
+            createArtistMusicFeedCard(release),
+        );
+        list.replaceChildren(...cards);
+        if (context.sourceGrid instanceof Element) {
+            STATE.artistMusicFanDirtyGrids.delete(context.sourceGrid);
+        }
+
+        markDebugState(
+            "data-bcampx-label-feed-count",
+            String(cards.length),
+        );
+        markDebugState(
+            "data-bcampx-label-feed-visible-count",
+            String(cards.length),
+        );
+
+        cards.forEach((card) => scheduleScan(card));
+        if (STATE.artistMusicFeedView === "feed") {
+            scheduleArtistMusicFeedVisibleFetch(feed);
+        }
+    }
+
+    function mountReleaseGridFeed(feed, feedContext) {
+        const sourceGrid = feedContext && feedContext.sourceGrid;
+        if (!(feed instanceof Element) || !(sourceGrid instanceof Element)) {
+            return;
+        }
+
+        if (feedContext && /^fan-/.test(feedContext.kind)) {
+            const activeGrid = sourceGrid.closest(".grid");
+            const nativeContentRoot =
+                activeGrid &&
+                Array.from(activeGrid.children).find(
+                    (node) => node instanceof Element && node.contains(sourceGrid),
+                );
+            if (activeGrid && nativeContentRoot) {
+                activeGrid.insertBefore(feed, nativeContentRoot);
+                feed.setAttribute(
+                    "data-bcampx-mounted-outside-native-content",
+                    "true",
+                );
+                return;
+            }
+        }
+
+        sourceGrid.parentNode.insertBefore(feed, sourceGrid);
+    }
+
+    function setupArtistMusicSourceGridObserver(sourceGrid) {
+        if (!("MutationObserver" in window) || !(sourceGrid instanceof Element)) {
+            return;
+        }
+
+        if (STATE.artistMusicSourceGridObserver) {
+            STATE.artistMusicSourceGridObserver.disconnect();
+        }
+
+        STATE.artistMusicSourceGridObserver = new MutationObserver(() => {
+            STATE.artistMusicFanDirtyGrids.add(sourceGrid);
+            scheduleArtistMusicFeedSync();
+        });
+        STATE.artistMusicSourceGridObserver.observe(sourceGrid, {
+            attributes: true,
+            attributeFilter: [
+                "data-playerdata",
+                "data-itemid",
+                "data-tralbumid",
+                "data-tralbumtype",
+                "data-title",
+                "href",
+            ],
+            childList: true,
+            subtree: true,
+        });
+    }
+
+    function scheduleArtistMusicFeedSync() {
+        if (!STATE.artistMusicFeedBuilt || !STATE.artistMusicFeedNode) {
+            return;
+        }
+
+        if (STATE.artistMusicFeedSyncTimer) {
+            return;
+        }
+
+        STATE.artistMusicFeedSyncTimer = window.setTimeout(
+            () => {
+                STATE.artistMusicFeedSyncTimer = 0;
+                syncArtistMusicFeedFromSourceGrid();
+            },
+            0,
+        );
+    }
+
+    function syncArtistMusicFeedFromSourceGrid() {
+        if (!STATE.artistMusicFeedBuilt || !STATE.artistMusicFeedNode) {
+            return;
+        }
+
+        const context = getReleaseGridFeedContext();
+        const feedKind = cleanText(
+            STATE.artistMusicFeedNode.getAttribute(
+                "data-bcampx-feed-kind",
+            ) || "",
+        );
+        if (
+            /^fan-/.test(feedKind) &&
+            (!context ||
+                STATE.artistMusicFeedNode.getAttribute(
+                    "data-bcampx-context-suspended",
+                ) === "true")
+        ) {
+            return;
+        }
+        if (
+            context &&
+            context.sourceGrid &&
+            STATE.artistMusicSourceGridNode !== context.sourceGrid
+        ) {
+            scheduleFanCollectionFeedContextSync();
+            return;
+        }
+
+        const sourceGrid = STATE.artistMusicSourceGridNode;
+        const list = STATE.artistMusicFeedNode.querySelector(
+            ".bcampx-label-feed__list",
+        );
+        if (!sourceGrid || !list) {
+            return;
+        }
+        incrementDebugCounter("data-bcampx-label-feed-sync-run-count");
+
+        const feedContext = {
+            kind:
+                STATE.artistMusicFeedNode.getAttribute(
+                    "data-bcampx-feed-kind",
+                ) || "artist-music",
+            sourceGrid,
+        };
+        const candidates = collectReleaseGridFeedCandidates(feedContext);
+        const existingCards = Array.from(
+            list.querySelectorAll(
+                ".bcampx-label-feed-card[data-bcampx-release-url]",
+            ),
+        );
+        const existingCardsByUrl = new Map();
+        existingCards.forEach((card) => {
+            const releaseUrl = normalizeReleaseUrl(
+                card.getAttribute("data-bcampx-release-url") || "",
+            );
+            if (releaseUrl && !existingCardsByUrl.has(releaseUrl)) {
+                existingCardsByUrl.set(releaseUrl, card);
+            }
+        });
+
+        const nextCards = [];
+        const nextUrls = new Set();
+        const appendedCards = [];
+
+        candidates.forEach((release) => {
+            if (!release || !release.releaseUrl) {
+                return;
+            }
+
+            const releaseUrl = normalizeReleaseUrl(release.releaseUrl);
+            if (!releaseUrl || nextUrls.has(releaseUrl)) {
+                return;
+            }
+
+            nextUrls.add(releaseUrl);
+            const existingCard = existingCardsByUrl.get(releaseUrl);
+            if (existingCard) {
+                updateArtistMusicFeedCardSource(existingCard, release);
+                nextCards.push(existingCard);
+                return;
+            }
+
+            const newCard = createArtistMusicFeedCard(release);
+            nextCards.push(newCard);
+            appendedCards.push(newCard);
+        });
+        const currentCards = Array.from(list.children);
+        const cardOrderChanged =
+            currentCards.length !== nextCards.length ||
+            nextCards.some((card, index) => currentCards[index] !== card);
+        if (cardOrderChanged) {
+            list.replaceChildren(...nextCards);
+        }
+
+        markDebugState(
+            "data-bcampx-label-feed-count",
+            String(nextCards.length),
+        );
+        markDebugState(
+            "data-bcampx-label-feed-visible-count",
+            String(nextCards.length),
+        );
+        markDebugState(
+            "data-bcampx-label-feed-sync-count",
+            String(appendedCards.length),
+        );
+
+        appendedCards.forEach((card) => scheduleScan(card));
+        rearmArtistMusicFeedCardObservers(STATE.artistMusicFeedNode);
+        if (appendedCards.length || cardOrderChanged) {
+            window.setTimeout(
+                () =>
+                    rearmArtistMusicFeedCardObservers(
+                        STATE.artistMusicFeedNode,
+                    ),
+                CONFIG.scanDebounceMs + 20,
+            );
+        }
+        if (STATE.artistMusicFeedView === "feed") {
+            scheduleArtistMusicFeedVisibleFetch(STATE.artistMusicFeedNode);
+        }
+        if (STATE.artistMusicLoadMoreScrollPending) {
+            if (appendedCards.length) {
+                STATE.artistMusicLoadMoreScrollPending = false;
+                scrollToNewArtistMusicFeedCards(appendedCards);
+            }
+        }
+        if (sourceGrid instanceof Element) {
+            STATE.artistMusicFanDirtyGrids.delete(sourceGrid);
+        }
+    }
+
+    function updateArtistMusicFeedCardSource(card, release) {
+        if (!(card instanceof Element) || !release) {
+            return;
+        }
+
+        card.__bcampxArtistMusicRelease = release;
+        if (release.bandId) {
+            card.setAttribute("data-bcampx-band-id", release.bandId);
+        } else {
+            card.removeAttribute("data-bcampx-band-id");
+        }
+
+        if (!release.initialData) {
+            return;
+        }
+
+        const controller = getCardController(card);
+        updateArtistMusicCardBuyAction(
+            card,
+            controller && controller.data
+                ? controller.data
+                : release.initialData,
+        );
+    }
+
+    function handleArtistMusicNativeLoadMoreClick(event) {
+        if (
+            STATE.artistMusicFeedView !== "feed" ||
+            !STATE.artistMusicFeedBuilt ||
+            !STATE.artistMusicSourceGridNode ||
+            !event ||
+            !(event.target instanceof Element)
+        ) {
+            return;
+        }
+
+        const button = event.target.closest(".expand-container .show-more");
+        if (!button || !isArtistMusicNativeLoadMoreButton(button)) {
+            return;
+        }
+
+        STATE.artistMusicLoadMoreScrollPending = true;
+        markDebugState("data-bcampx-label-feed-load-more-clicked", "true");
+    }
+
+    function isArtistMusicNativeLoadMoreButton(button) {
+        const sourceGrid = STATE.artistMusicSourceGridNode;
+        const nativeGrid =
+            sourceGrid &&
+            (sourceGrid.closest(".grid") ||
+                sourceGrid.closest(".collection-items") ||
+                sourceGrid.parentElement);
+        return Boolean(nativeGrid && nativeGrid.contains(button));
+    }
+
+    function scrollToNewArtistMusicFeedCards(cards) {
+        const firstCard = (cards || []).find(
+            (card) => card instanceof Element && card.isConnected,
+        );
+        if (!firstCard) {
+            return;
+        }
+
+        window.setTimeout(() => {
+            if (!firstCard.isConnected) {
+                return;
+            }
+
+            scrollElementIntoViewBelowPageChrome(firstCard);
+            markDebugState("data-bcampx-label-feed-load-more-scrolled", "true");
+        }, 0);
+    }
+
+    function scrollElementIntoViewBelowPageChrome(node) {
+        if (!(node instanceof Element)) {
+            return;
+        }
+
+        const rect = node.getBoundingClientRect();
+        const offset = getArtistMusicPageChromeOffset();
+        window.scrollTo({
+            top: Math.max(0, window.scrollY + rect.top - offset),
+            behavior: "auto",
+        });
+    }
+
+    function getArtistMusicPageChromeOffset() {
+        const topChromeBottom = Array.from(document.body.children)
+            .map((node) => {
+                if (!(node instanceof Element)) {
+                    return 0;
+                }
+
+                const style = window.getComputedStyle(node);
+                if (
+                    style.position !== "fixed" &&
+                    style.position !== "sticky"
+                ) {
+                    return 0;
+                }
+
+                const rect = node.getBoundingClientRect();
+                if (rect.top > 4 || rect.bottom <= 0 || rect.height > 180) {
+                    return 0;
+                }
+
+                return rect.bottom;
+            })
+            .reduce((max, value) => Math.max(max, value), 0);
+
+        return Math.max(12, Math.ceil(topChromeBottom + 12));
+    }
+
+    function getReleaseGridFeedContext() {
+        if (isArtistMusicPage()) {
+            const sourceGrid = findArtistMusicSourceGrid();
+            return sourceGrid
+                ? {
+                      kind: "artist-music",
+                      ariaLabel: "Bandcamp release feed",
+                      sourceGrid,
+                  }
+                : null;
+        }
+
+        if (isFanCollectionPage()) {
+            const sourceGrid = findFanCollectionActiveGrid();
+            const kind = getFanCollectionFeedKind(sourceGrid);
+            return sourceGrid
+                ? {
+                      kind,
+                      ariaLabel: kind === "fan-wishlist"
+                          ? "Bandcamp wishlist feed"
+                          : "Bandcamp collection feed",
+                      sourceGrid,
+                  }
+                : null;
+        }
+
+        return null;
+    }
+
+    function getFanCollectionFeedKind(sourceGrid) {
+        const grid = sourceGrid && sourceGrid.closest(".grid");
+        if (grid && /^(wishlist|wishlist-search)-grid$/.test(grid.id)) {
+            return "fan-wishlist";
+        }
+        if (grid && /^(collection|collection-search)-grid$/.test(grid.id)) {
+            return "fan-collection";
+        }
+        return isFanWishlistPage() ? "fan-wishlist" : "fan-collection";
     }
 
     function ensureArtistMusicViewToggle() {
@@ -172,7 +888,8 @@
     function findArtistMusicViewToggleTarget() {
         return (
             document.querySelector(".label-band-selector.fade-in-on-load") ||
-            document.querySelector(".label-band-selector")
+            document.querySelector(".label-band-selector") ||
+            document.querySelector(".collection-tabs")
         );
     }
 
@@ -182,7 +899,7 @@
         await storageSet(ARTIST_MUSIC_VIEW_KEY, nextView);
     }
 
-    function applyArtistMusicFeedView(view) {
+    function applyArtistMusicFeedView(view, options = {}) {
         const nextView = view === "original" ? "original" : "feed";
         const feed = STATE.artistMusicFeedNode;
         const sourceGrid = STATE.artistMusicSourceGridNode;
@@ -224,13 +941,52 @@
         markDebugState("data-bcampx-label-feed-view", nextView);
 
         if (nextView === "feed" && feed) {
-            scheduleScan(feed);
-            scheduleArtistMusicFeedVisibleFetch(feed);
+            if (!options.skipFeedWork) {
+                scheduleScan(feed);
+                rearmArtistMusicFeedCardObservers(feed);
+                window.setTimeout(
+                    () => rearmArtistMusicFeedCardObservers(feed),
+                    CONFIG.scanDebounceMs + 20,
+                );
+                scheduleArtistMusicFeedVisibleFetch(feed);
+            }
         }
     }
 
+    function rearmArtistMusicFeedCardObservers(feed) {
+        if (
+            !(feed instanceof Element) ||
+            feed.hidden ||
+            !STATE.observer
+        ) {
+            return;
+        }
+
+        Array.from(feed.querySelectorAll(".bcampx-label-feed-card")).forEach(
+            (card) => {
+                const controller = getCardController(card);
+                if (
+                    !controller ||
+                    controller.loaded ||
+                    controller.loading
+                ) {
+                    return;
+                }
+
+                STATE.observer.unobserve(card);
+                STATE.observer.observe(card);
+                card.setAttribute(OBSERVED_ATTR, "true");
+            },
+        );
+    }
+
     function scheduleArtistMusicFeedVisibleFetch(feed) {
-        window.setTimeout(() => {
+        if (STATE.artistMusicVisibleFetchTimer) {
+            return;
+        }
+
+        STATE.artistMusicVisibleFetchTimer = window.setTimeout(() => {
+            STATE.artistMusicVisibleFetchTimer = 0;
             fetchVisibleArtistMusicFeedCards(feed);
         }, CONFIG.scanDebounceMs + 40);
     }
@@ -402,6 +1158,14 @@
         );
     }
 
+    function collectReleaseGridFeedCandidates(feedContext) {
+        if (feedContext && /^fan-/.test(feedContext.kind)) {
+            return collectFanCollectionReleaseCandidates(feedContext);
+        }
+
+        return collectArtistMusicReleaseCandidates();
+    }
+
     function collectArtistMusicReleaseCandidates() {
         const seen = new Set();
         const candidatesByKey = new Map();
@@ -457,6 +1221,300 @@
 
 
         return candidates;
+    }
+
+    function collectFanCollectionReleaseCandidates(feedContext) {
+        const seen = new Set();
+        const candidatesByKey = new Map();
+        const candidates = [];
+        const sourceGrid = feedContext && feedContext.sourceGrid;
+        const items = Array.from(
+            (sourceGrid || document).querySelectorAll(
+                "li.collection-item-container[data-playerdata], li.collection-item-container",
+            ),
+        );
+
+        items.forEach((item) => {
+            addFanCollectionReleaseCandidate(
+                candidates,
+                seen,
+                item,
+                candidatesByKey,
+                feedContext && feedContext.kind,
+            );
+        });
+
+        return candidates;
+    }
+
+    function addFanCollectionReleaseCandidate(
+        candidates,
+        seen,
+        item,
+        candidatesByKey,
+        feedKind,
+    ) {
+        if (!(item instanceof Element)) {
+            return;
+        }
+
+        const playerData = parseJsonAttribute(item, "data-playerdata") || {};
+        const itemType = normalizeReleaseItemType(
+            item.getAttribute("data-tralbumtype") ||
+                item.getAttribute("data-itemtype") ||
+                "",
+        );
+        const releaseUrl = getFanCollectionReleaseUrl(item, playerData, itemType);
+        if (!releaseUrl) {
+            return;
+        }
+
+        const title = getFanCollectionReleaseTitle(item, playerData, itemType, releaseUrl);
+        const artist = getFanCollectionReleaseArtist(item, playerData);
+        const itemId = getArtistMusicReleaseItemId(item);
+        const release = {
+            releaseUrl,
+            title,
+            artist,
+            artUrl: getArtistMusicReleaseArtUrl(item),
+            itemId,
+            itemType: itemType || normalizeReleaseItemType("", releaseUrl),
+            bandId: getArtistMusicReleaseBandId(item),
+            sourceItem: item,
+            gridItem: item,
+            featuredItem: null,
+            playerData,
+            initialData: buildFanCollectionInitialReleaseData(
+                item,
+                playerData,
+                releaseUrl,
+                title,
+                artist,
+                feedKind,
+            ),
+        };
+        const dedupeKeys = getArtistMusicReleaseDedupeKeys(release);
+        const existingKey = dedupeKeys.find((key) => seen.has(key));
+        if (existingKey) {
+            mergeArtistMusicReleaseCandidate(
+                candidatesByKey.get(existingKey),
+                item,
+                "grid",
+            );
+            return;
+        }
+
+        dedupeKeys.forEach((key) => {
+            seen.add(key);
+            candidatesByKey.set(key, release);
+        });
+        candidates.push(release);
+    }
+
+    function getFanCollectionReleaseUrl(item, playerData, itemType) {
+        const albumUrl = cleanText(playerData && playerData.album && playerData.album.url);
+        const trackUrl = cleanText(playerData && playerData.url);
+        const linkUrl = normalizeReleaseUrl(
+            item.querySelector(RELEASE_LINK_SELECTOR)?.href || "",
+        );
+
+        return normalizeReleaseUrl(
+            itemType === "track"
+                ? trackUrl || linkUrl || albumUrl
+                : albumUrl || linkUrl || trackUrl,
+        );
+    }
+
+    function getFanCollectionReleaseTitle(item, playerData, itemType, releaseUrl) {
+        const playerTitle =
+            itemType === "album"
+                ? playerData && playerData.album && playerData.album.title
+                : playerData && playerData.title;
+        return (
+            cleanText(playerTitle || "") ||
+            getArtistMusicReleaseTitle(
+                item,
+                item.querySelector(RELEASE_LINK_SELECTOR),
+                releaseUrl,
+            )
+        );
+    }
+
+    function getFanCollectionReleaseArtist(item, playerData) {
+        return (
+            cleanText(playerData && playerData.artist_name) ||
+            getArtistMusicReleaseArtist(item)
+        );
+    }
+
+    function buildFanCollectionInitialReleaseData(
+        item,
+        playerData,
+        releaseUrl,
+        title,
+        artist,
+        feedKind,
+    ) {
+        const track = createFanCollectionPreviewTrack(playerData);
+        const isCollection = feedKind === "fan-collection";
+        const supporterCountLabel = getFanCollectionSupporterCountLabel(item);
+        const hasNativeSupporterCount = Boolean(supporterCountLabel);
+        return normalizeReleaseData({
+            url: releaseUrl,
+            title,
+            artist,
+            artUrl: getArtistMusicReleaseArtUrl(item),
+            digitalPrice: getFanCollectionDigitalPrice(playerData),
+            digitalDownloadUrl: isCollection
+                ? getFanCollectionDownloadUrl(item)
+                : "",
+            isPreorder: Boolean(
+                playerData &&
+                    (playerData.is_preorder === true ||
+                        (playerData.album &&
+                            playerData.album.is_preorder === true)),
+            ),
+            tracks: track ? [track] : [],
+            supporterCount: getFanCollectionSupporterCount(item, playerData),
+            supporterCountIsExact: hasNativeSupporterCount,
+            supporterMoreAvailable: false,
+            supporterCountLabel,
+            supporterCountAuthoritative: hasNativeSupporterCount,
+            supporterItemId: getArtistMusicReleaseItemId(item),
+            supporterItemType: normalizeSupporterItemType(
+                item.getAttribute("data-tralbumtype") ||
+                    item.getAttribute("data-itemtype") ||
+                    "",
+            ),
+        });
+    }
+
+    function getFanCollectionDownloadUrl(item) {
+        const directLink =
+            item && item.querySelector(".redownload-item a[href]");
+        const menuLink =
+            item &&
+            Array.from(
+                item.querySelectorAll(".contextual-menu-expanded a[href]"),
+            ).find((link) => /^download\b/i.test(cleanText(link.textContent || "")));
+        const link = directLink || menuLink;
+        return cleanText((link && link.href) || "");
+    }
+
+    function createFanCollectionPreviewTrack(playerData) {
+        if (!playerData || typeof playerData !== "object") {
+            return null;
+        }
+
+        return createTrackData(
+            playerData.title || "",
+            playerData.id || "",
+            playerData.stream_url || "",
+            playerData.duration || "",
+            playerData.url || "",
+        );
+    }
+
+    function getFanCollectionDigitalPrice(playerData) {
+        const itemPrice = formatFanCollectionPrice(
+            playerData && playerData.price,
+        );
+        const albumPrice = formatFanCollectionPrice(
+            playerData && playerData.album && playerData.album.price,
+        );
+        if (playerData && playerData.is_owned) {
+            return "you own this";
+        }
+        if (playerData && playerData.album && playerData.album.is_owned) {
+            return "you own this";
+        }
+        if (playerData && playerData.is_free_download) {
+            return "free download";
+        }
+        if (playerData && playerData.album && playerData.album.is_free_download) {
+            return "free download";
+        }
+        return itemPrice || albumPrice;
+    }
+
+    function formatFanCollectionPrice(price) {
+        if (!price || typeof price !== "object" || price.is_money !== true) {
+            return "";
+        }
+
+        const amount = Number(price.amount);
+        const currency = cleanText(price.currency || "");
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return "";
+        }
+
+        return cleanText(`${currency} ${amount}`);
+    }
+
+    function getFanCollectionSupporterCount(item, playerData = null) {
+        const rawCount = getFanCollectionRawSupporterCount(item, playerData);
+        if (rawCount > 0) {
+            return rawCount;
+        }
+
+        const text = getFanCollectionSupporterCountLabel(item);
+        const match = text.match(
+            /(\d(?:[\d.,'’\s\u00a0\u202f]*\d)?)/,
+        );
+        if (!match) {
+            return 0;
+        }
+
+        const digits = match[1].replace(/\D/g, "");
+        const count = Number(digits);
+        if (!digits || !Number.isSafeInteger(count) || count <= 0) {
+            return 0;
+        }
+
+        return count;
+    }
+
+    function getFanCollectionRawSupporterCount(item, playerData) {
+        const album =
+            playerData && typeof playerData.album === "object"
+                ? playerData.album
+                : null;
+        const candidates = [
+            playerData && playerData.collectors_count,
+            playerData && playerData.collector_count,
+            playerData && playerData.supporter_count,
+            playerData && playerData.collection_count,
+            playerData && playerData.num_collectors,
+            album && album.collectors_count,
+            album && album.collector_count,
+            album && album.supporter_count,
+            album && album.collection_count,
+            album && album.num_collectors,
+            item && item.getAttribute("data-collectors-count"),
+            item && item.getAttribute("data-supporter-count"),
+        ];
+
+        for (const candidate of candidates) {
+            if (
+                typeof candidate !== "number" &&
+                !/^\d+$/.test(cleanText(candidate))
+            ) {
+                continue;
+            }
+            const count = Number(candidate);
+            if (Number.isSafeInteger(count) && count > 0) {
+                return count;
+            }
+        }
+
+        return 0;
+    }
+
+    function getFanCollectionSupporterCountLabel(item) {
+        return cleanText(
+            item.querySelector(".collected-by .collected-by-header")
+                ?.textContent || "",
+        );
     }
 
     function addArtistMusicReleaseCandidate(
@@ -581,6 +1639,22 @@
             item_type: release.itemType || undefined,
             item_url: release.releaseUrl,
             item_title: release.title || undefined,
+            featured_track:
+                release.playerData && release.playerData.id
+                    ? release.playerData.id
+                    : undefined,
+            featured_track_title:
+                release.playerData && release.playerData.title
+                    ? release.playerData.title
+                    : undefined,
+            featured_track_duration:
+                release.playerData && release.playerData.duration
+                    ? release.playerData.duration
+                    : undefined,
+            featured_track_url:
+                release.playerData && release.playerData.url
+                    ? release.playerData.url
+                    : undefined,
         };
 
         const headline = document.createElement("div");
@@ -602,6 +1676,9 @@
         const body = document.createElement("div");
         body.className = "story-body";
         body.setAttribute("data-item-json", JSON.stringify(itemJson));
+        if (release.playerData) {
+            body.setAttribute("data-playerdata", JSON.stringify(release.playerData));
+        }
 
         const wrapper = document.createElement("div");
         wrapper.className = "tralbum-wrapper";
@@ -636,6 +1713,13 @@
         action.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
+            const downloadUrl = cleanText(
+                action.getAttribute("data-bcampx-digital-download-url") || "",
+            );
+            if (downloadUrl) {
+                window.location.assign(downloadUrl);
+                return;
+            }
             const actionText = cleanText(action.textContent || "");
             if (/^hear more$/i.test(actionText)) {
                 const releaseUrl = action.getAttribute("data-bcampx-release-url") || "";
@@ -657,9 +1741,30 @@
                 );
                 return;
             }
-            executeTrackAction("basket", release.releaseUrl, action);
+            openTrackBuyWindow(release.releaseUrl);
         });
         content.appendChild(action);
+
+        const supporterCount = document.createElement("div");
+        supporterCount.className = "bcampx-label-feed-card__supporter-count";
+        supporterCount.hidden = true;
+        const supporterCountText = document.createElement("span");
+        supporterCountText.className =
+            "bcampx-label-feed-card__supporter-count-text";
+        const supporterCountRefresh = document.createElement("button");
+        supporterCountRefresh.type = "button";
+        supporterCountRefresh.className =
+            "bcampx-label-feed-card__supporter-refresh";
+        supporterCountRefresh.textContent = "refresh";
+        supporterCountRefresh.title = "Refresh exact collection count";
+        supporterCountRefresh.hidden = true;
+        supporterCountRefresh.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void refreshArtistMusicCardSupporterCount(card);
+        });
+        supporterCount.append(supporterCountText, supporterCountRefresh);
+        content.appendChild(supporterCount);
 
         const supportedSlot = document.createElement("div");
         supportedSlot.className = "tralbum-wrapper-col2 tralbum-owners";
@@ -673,6 +1778,9 @@
         body.appendChild(wrapper);
         innards.appendChild(body);
         card.append(headline, innards);
+        if (release.initialData) {
+            updateArtistMusicCardBuyAction(card, release.initialData);
+        }
 
         return card;
     }
@@ -691,6 +1799,10 @@
         if (!card || !data) {
             return;
         }
+
+        applyArtistMusicNativeCardData(card, data);
+        updateArtistMusicCardSupporterCount(card, data);
+        scheduleArtistMusicCardExactSupporterCount(card, data);
 
         const action = card.querySelector("[data-bcampx-release-action='buy']");
         if (!action) {
@@ -713,10 +1825,15 @@
 
         const isOwned = isOwnedDigitalPrice(data.digitalPrice);
         const ownershipUrl = cleanText(data.digitalOwnershipUrl || "");
-        action.textContent = getDigitalBuyActionLabel(data.digitalPrice);
-        action.disabled = isOwned && !ownershipUrl;
+        const downloadUrl = cleanText(data.digitalDownloadUrl || "");
+        action.textContent = downloadUrl
+            ? "download"
+            : getDigitalBuyActionLabel(data.digitalPrice, data.isPreorder);
+        action.disabled = !downloadUrl && isOwned && !ownershipUrl;
         action.classList.toggle("bcampx-label-feed-card__buy-button--owned", isOwned);
-        action.title = isOwned
+        action.title = downloadUrl
+            ? "Download this release"
+            : isOwned
             ? ownershipUrl
                 ? "Find this release in your collection"
                 : "This release is already in your collection"
@@ -731,11 +1848,280 @@
         } else {
             action.removeAttribute("data-bcampx-digital-ownership-url");
         }
+        if (downloadUrl) {
+            action.setAttribute("data-bcampx-digital-download-url", downloadUrl);
+        } else {
+            action.removeAttribute("data-bcampx-digital-download-url");
+        }
         if (data.digitalPrice) {
             action.setAttribute("data-bcampx-digital-price", data.digitalPrice);
         } else {
             action.removeAttribute("data-bcampx-digital-price");
         }
+    }
+
+    function applyArtistMusicNativeCardData(card, data) {
+        const release = card && card.__bcampxArtistMusicRelease;
+        const nativeData = release && release.initialData;
+        if (!nativeData || !data) {
+            return;
+        }
+
+        const downloadUrl = cleanText(nativeData.digitalDownloadUrl || "");
+        if (downloadUrl) {
+            data.digitalDownloadUrl = downloadUrl;
+            data.digitalPrice = "you own this";
+        }
+
+        if (nativeData.supporterCountAuthoritative === true) {
+            data.supporterCount = nativeData.supporterCount;
+            data.supporterCountIsExact = true;
+            data.supporterMoreAvailable = false;
+            data.supporterNextToken = "";
+            data.supporterCountLabel = cleanText(
+                nativeData.supporterCountLabel || "",
+            );
+            data.supporterCountAuthoritative = true;
+        }
+    }
+
+    function updateArtistMusicCardSupporterCount(card, data) {
+        const node =
+            card &&
+            card.querySelector(".bcampx-label-feed-card__supporter-count");
+        if (!node || !data) {
+            return;
+        }
+
+        if (!CONFIG.showCollectionCounts) {
+            hideArtistMusicCardSupporterCount(node);
+            return;
+        }
+
+        const count = Number(data.supporterCount || 0);
+        if (!Number.isFinite(count) || count <= 0) {
+            hideArtistMusicCardSupporterCount(node);
+            return;
+        }
+
+        const countText =
+            node.querySelector(".bcampx-label-feed-card__supporter-count-text") ||
+            node;
+        const refreshButton = node.querySelector(
+            ".bcampx-label-feed-card__supporter-refresh",
+        );
+        const showRefresh =
+            data.supporterCountIsExact !== true &&
+            data.supporterMoreAvailable === true;
+        const refreshPending = card.hasAttribute(
+            "data-bcampx-supporter-count-pending",
+        );
+
+        node.hidden = false;
+        countText.textContent =
+            cleanText(data.supporterCountLabel || "") ||
+            formatArtistMusicSupporterCount(
+                count,
+                data.supporterCountIsExact === true,
+            );
+        if (refreshButton) {
+            refreshButton.hidden = !showRefresh;
+            refreshButton.textContent = showRefresh
+                ? refreshPending
+                    ? "..."
+                    : "refresh"
+                : "";
+            refreshButton.disabled = refreshPending;
+        }
+        node.setAttribute("data-bcampx-supporter-count", String(Math.floor(count)));
+        node.setAttribute(
+            "data-bcampx-supporter-count-exact",
+            data.supporterCountIsExact === true ? "true" : "false",
+        );
+    }
+
+    function scheduleArtistMusicCardExactSupporterCount(card, data) {
+        if (
+            !CONFIG.showCollectionCounts ||
+            !card ||
+            !data ||
+            data.supporterCountAuthoritative === true ||
+            data.supporterCountIsExact === true ||
+            !data.supporterMoreAvailable ||
+            card.hasAttribute(
+                "data-bcampx-supporter-count-auto-attempted",
+            ) ||
+            card.hasAttribute("data-bcampx-supporter-count-pending")
+        ) {
+            return;
+        }
+
+        card.setAttribute(
+            "data-bcampx-supporter-count-auto-attempted",
+            "true",
+        );
+        card.setAttribute("data-bcampx-supporter-count-pending", "true");
+        updateArtistMusicCardSupporterRefreshPending(card, true);
+        void getExactReleaseSupporterCount(data)
+            .then((result) => {
+                if (!result || !result.count) {
+                    return;
+                }
+
+                applyArtistMusicSupporterCountResult(card, data, result);
+                if (card.isConnected) {
+                    updateArtistMusicCardSupporterCount(card, data);
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (card) {
+                    card.removeAttribute("data-bcampx-supporter-count-pending");
+                }
+                if (card && card.isConnected) {
+                    updateArtistMusicCardSupporterCount(card, data);
+                }
+            });
+    }
+
+    function refreshArtistMusicCardSupporterCount(card) {
+        if (
+            !CONFIG.showCollectionCounts ||
+            !card ||
+            card.hasAttribute("data-bcampx-supporter-count-pending")
+        ) {
+            return Promise.resolve(null);
+        }
+
+        const controller = getCardController(card);
+        const data = controller && controller.data;
+        if (
+            !data ||
+            data.supporterCountAuthoritative === true ||
+            data.supporterCountIsExact === true ||
+            data.supporterMoreAvailable !== true
+        ) {
+            return Promise.resolve(null);
+        }
+
+        card.setAttribute("data-bcampx-supporter-count-pending", "true");
+        updateArtistMusicCardSupporterRefreshPending(card, true);
+        return getExactReleaseSupporterCount(data, {
+            forceRefresh: true,
+            ignoreLimit: true,
+        })
+            .then((result) => {
+                if (!result || !result.count) {
+                    return result;
+                }
+
+                applyArtistMusicSupporterCountResult(card, data, result);
+                if (card.isConnected) {
+                    updateArtistMusicCardSupporterCount(card, data);
+                }
+                return result;
+            })
+            .catch(() => null)
+            .finally(() => {
+                if (card) {
+                    card.removeAttribute("data-bcampx-supporter-count-pending");
+                }
+                if (card && card.isConnected) {
+                    updateArtistMusicCardSupporterCount(card, data);
+                }
+            });
+    }
+
+    function applyArtistMusicSupporterCountResult(card, data, result) {
+        data.supporterCount = result.count;
+        data.supporterCountIsExact = result.isExact === true;
+        data.supporterMoreAvailable = result.moreAvailable === true;
+        data.supporterNextToken = cleanText(result.nextToken || "");
+
+        const controller = getCardController(card);
+        if (controller && controller.data) {
+            controller.data.supporterCount = data.supporterCount;
+            controller.data.supporterCountIsExact =
+                data.supporterCountIsExact;
+            controller.data.supporterMoreAvailable =
+                data.supporterMoreAvailable;
+            controller.data.supporterNextToken = data.supporterNextToken;
+        }
+    }
+
+    function updateArtistMusicCardSupporterRefreshPending(card, pending) {
+        const button =
+            card &&
+            card.querySelector(".bcampx-label-feed-card__supporter-refresh");
+        if (!button) {
+            return;
+        }
+
+        button.disabled = !!pending;
+        if (button.hidden && !pending) {
+            button.textContent = "";
+            return;
+        }
+        button.textContent = pending ? "..." : "refresh";
+    }
+
+    function formatArtistMusicSupporterCount(count, isExact) {
+        const normalizedCount = Math.max(0, Math.floor(Number(count) || 0));
+        const maxExactCount = Math.max(
+            0,
+            Math.floor(Number(CONFIG.maxSupporterExactCount) || 0),
+        );
+        const displayCount =
+            !isExact && maxExactCount > 0
+                ? Math.min(normalizedCount, maxExactCount)
+                : normalizedCount;
+        const suffix = displayCount === 1 ? "collection" : "collections";
+        const marker =
+            !isExact && normalizedCount >= displayCount ? "+" : "";
+        return `appears in ${displayCount}${marker} ${suffix}`;
+    }
+
+    function hideArtistMusicCardSupporterCount(node) {
+        node.hidden = true;
+        const countText =
+            node.querySelector(".bcampx-label-feed-card__supporter-count-text") ||
+            node;
+        const refreshButton = node.querySelector(
+            ".bcampx-label-feed-card__supporter-refresh",
+        );
+        countText.textContent = "";
+        if (refreshButton) {
+            refreshButton.hidden = true;
+            refreshButton.disabled = false;
+            refreshButton.textContent = "";
+        }
+        node.removeAttribute("data-bcampx-supporter-count");
+        node.removeAttribute("data-bcampx-supporter-count-exact");
+    }
+
+    function refreshArtistMusicCollectionCounts() {
+        if (!STATE.artistMusicFeedNode) {
+            return;
+        }
+
+        Array.from(
+            STATE.artistMusicFeedNode.querySelectorAll(".bcampx-label-feed-card"),
+        ).forEach((card) => {
+            const controller = getCardController(card);
+            const data = controller && controller.data;
+            if (!data) {
+                const node = card.querySelector(
+                    ".bcampx-label-feed-card__supporter-count",
+                );
+                if (node && !CONFIG.showCollectionCounts) {
+                    hideArtistMusicCardSupporterCount(node);
+                }
+                return;
+            }
+
+            updateArtistMusicCardSupporterCount(card, data);
+            scheduleArtistMusicCardExactSupporterCount(card, data);
+        });
     }
 
 
@@ -760,13 +2146,17 @@
         return text.replace(/\s+or more$/i, "");
     }
 
-   function getDigitalBuyActionLabel(priceText) {
+   function getDigitalBuyActionLabel(priceText, isPreorder = false) {
        const compactPrice = getCompactDigitalPrice(priceText);
        if (isOwnedDigitalPrice(compactPrice)) {
            return "you own this";
         }
        if (/^free download$/i.test(compactPrice)) {
            return "free download";
+        }
+
+        if (isPreorder) {
+            return compactPrice ? `pre-order (${compactPrice})` : "pre-order";
         }
 
         return compactPrice ? `buy now (${compactPrice})` : "hear more";
@@ -805,7 +2195,13 @@
         const clone = titleNode.cloneNode(true);
         clone
             .querySelectorAll(
-                ".artist-override, .artist, .item-artist, .collection-item-artist",
+                [
+                    ".artist-override",
+                    ".artist",
+                    ".item-artist",
+                    ".collection-item-artist",
+                    ".collection-item-gift-given-title",
+                ].join(", "),
             )
             .forEach((node) => node.remove());
         return normalizedText(clone);
@@ -817,8 +2213,10 @@
             ".artist, .item-artist, .collection-item-artist",
         );
         return (
-            (artistOverride ? normalizedText(artistOverride) : "") ||
-            (artistNode ? normalizedText(artistNode) : "") ||
+            cleanText(
+                (artistOverride ? normalizedText(artistOverride) : "") ||
+                    (artistNode ? normalizedText(artistNode) : ""),
+            ).replace(/^by\s+/i, "") ||
             getArtistMusicBandName()
         );
     }
@@ -838,6 +2236,15 @@
     }
 
     function getArtistMusicReleaseItemId(item) {
+        const direct = firstPositiveNumber(
+            item.getAttribute("data-tralbumid"),
+            item.getAttribute("data-itemid"),
+            item.getAttribute("data-trackid"),
+        );
+        if (direct) {
+            return direct;
+        }
+
         const raw = cleanText(item.getAttribute("data-item-id") || "");
         const match = raw.match(/(?:album|track)-(\d+)/i);
         return match && match[1] ? Number(match[1]) : 0;
@@ -851,6 +2258,7 @@
         return cleanText(
             item.getAttribute("data-band-id") ||
                 item.getAttribute("data-band") ||
+                item.getAttribute("data-bandid") ||
                 "",
         );
     }

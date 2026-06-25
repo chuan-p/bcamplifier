@@ -205,6 +205,10 @@
     <div
       data-tralbum='{"current":{"title":"Synthetic Release","release_date":"2024-01-02","about":"A synthetic release for the label music fixture.","id":321,"type":"album","band_id":654},"album_title":"Synthetic Release","artist":"Fixture Artist","album_release_date":"2024-01-02","trackinfo":[{"title":"Track One","track_id":"1","file":{"mp3-128":"https://example.com/track-one.mp3"},"duration":123,"title_link":"https://fixture.bandcamp.com/track/track-one"},{"title":"Track Two","track_id":"2","file":{"mp3-128":"https://example.com/track-two.mp3"},"duration":156,"title_link":"https://fixture.bandcamp.com/track/track-two"}]}'
     ></div>
+    <div
+      id="collectors-data"
+      data-blob='{"thumbs":[{"fan_id":101,"username":"one","token":"token-one"},{"fan_id":102,"username":"two","token":"token-two"}],"reviews":[{"fan_id":103,"username":"three"}],"shown_reviews":[{"fan_id":103,"username":"three"}],"more_thumbs_available":true}'
+    ></div>
     <div id="band-name-location"><span class="location">Shanghai</span></div>
     <div class="tralbum-about"><p>A synthetic release for the label music fixture.</p></div>
     <ul>
@@ -233,8 +237,12 @@
           .replaceAll("Synthetic Release", "Name Price Release")
           .replace('"id":321', '"id":333')
           .replace(
+            '"type":"album","band_id":654}',
+            '"type":"album","band_id":654,"is_preorder":true}',
+          )
+          .replace(
             /<h4>[\s\S]*?<\/h4>/,
-            '<h4><button class="download-link buy-link" type="button">Buy Digital Album</button> <span class="buyItemNyp secondaryText">name your price</span></h4>',
+            '<h4><button class="download-link buy-link" type="button">Pre-order Digital Album</button> <span class="buyItemNyp secondaryText">name your price</span></h4>',
           );
         const freeHtml = releaseHtml
           .replaceAll("Synthetic Release", "Free Release")
@@ -262,6 +270,8 @@
             "",
           );
         const storage = new Map();
+        globalThis.__fixtureSupporterRequestCount = 0;
+        storage.set("bcampx:userSettings", { showCollectionCounts: true });
 
         globalThis.__BCAMPX_HOST__ = {
           kind: "webextension",
@@ -286,7 +296,34 @@
             }
             throw new Error(`Unexpected fixture request for ${url}`);
           },
-          requestJson: async () => ({ ok: true }),
+          requestJson: async (url, options = {}) => {
+            if (url === "https://fixture.bandcamp.com/api/tralbumcollectors/2/thumbs") {
+              const body = JSON.parse(options.data || "{}");
+              if (
+                body.tralbum_type === "a" &&
+                body.tralbum_id === 321
+              ) {
+                globalThis.__fixtureSupporterRequestCount += 1;
+                const requestCount = globalThis.__fixtureSupporterRequestCount;
+                if (requestCount === 1) {
+                  throw new Error("Synthetic transient supporter request failure");
+                }
+                const pageNumber = requestCount - 1;
+                const pageSize = pageNumber < 5 ? 80 : 7;
+                const start = 104 + (pageNumber - 1) * 80;
+                return {
+                  results: Array.from({ length: pageSize }, (_, index) => ({
+                    fan_id: start + index,
+                    username: `fan-${start + index}`,
+                    token: `token-page-${pageNumber}-${index + 1}`,
+                  })),
+                  more_available: pageNumber < 5,
+                };
+              }
+              return { results: [], more_available: false };
+            }
+            return { ok: true };
+          },
           storageGet: async (key, fallback) =>
             storage.has(key) ? storage.get(key) : fallback,
           storageSet: async (key, value) => {
@@ -301,6 +338,10 @@
         const toggle = document.querySelector(".bcampx-label-feed-toggle");
         const feed = document.querySelector(".bcampx-label-feed");
         const grid = document.querySelector("#music-grid");
+        document.documentElement.setAttribute(
+          "data-bcampx-label-feed-list-tag",
+          document.querySelector(".bcampx-label-feed__list")?.tagName || "",
+        );
         if (!toggle || !feed || !grid) {
           return;
         }
@@ -440,6 +481,48 @@
           "data-bcampx-no-buy-has-price",
           String(Boolean(noBuyButton && noBuyButton.hasAttribute("data-bcampx-digital-price"))),
         );
+        const albumCard = document.querySelector(
+          '[data-bcampx-release-url="https://fixture.bandcamp.com/album/synthetic-release"]',
+        );
+        const supporterCount =
+          albumCard &&
+          albumCard.querySelector(".bcampx-label-feed-card__supporter-count");
+        document.documentElement.setAttribute(
+          "data-bcampx-supporter-count-before-refresh",
+          supporterCount ? supporterCount.textContent.trim() : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-supporter-count-before-refresh-exact",
+          supporterCount
+            ? supporterCount.getAttribute("data-bcampx-supporter-count-exact") || ""
+            : "",
+        );
+        const supporterRefresh =
+          albumCard &&
+          albumCard.querySelector(".bcampx-label-feed-card__supporter-refresh");
+        document.documentElement.setAttribute(
+          "data-bcampx-supporter-refresh-visible",
+          String(Boolean(supporterRefresh && !supporterRefresh.hidden)),
+        );
+        if (supporterRefresh) {
+          supporterRefresh.click();
+          window.setTimeout(() => {
+            document.documentElement.setAttribute(
+              "data-bcampx-supporter-count-text",
+              supporterCount ? supporterCount.textContent.trim() : "",
+            );
+            document.documentElement.setAttribute(
+              "data-bcampx-supporter-count-exact",
+              supporterCount
+                ? supporterCount.getAttribute("data-bcampx-supporter-count-exact") || ""
+                : "",
+            );
+            document.documentElement.setAttribute(
+              "data-bcampx-supporter-request-count",
+              String(globalThis.__fixtureSupporterRequestCount),
+            );
+          }, 500);
+        }
 
         const firstTrackButton = document.querySelector(
           ".bcampx-label-feed .bcampx__track-link",
@@ -469,7 +552,7 @@
             }
           }, 200);
         }
-      }, 1400);
+      }, 1800);
     </script>
   </body>
 </html>

@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fixture Fan | Bandcamp</title>
+  </head>
+  <body>
+    <div
+      id="grid-tabs-sticky"
+      style="position: sticky; top: 0; height: 64px"
+    ></div>
+    <div
+      id="pagedata"
+      data-blob='{"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42}}'
+      hidden
+    ></div>
+
+    <div class="collection-tabs">
+      <ol>
+        <li data-tab="collection" data-grid-id="collection-grid">collection</li>
+        <li data-tab="wishlist" data-grid-id="wishlist-grid">wishlist</li>
+        <li class="active" data-tab="followers" data-grid-id="followers-grid">
+          followers
+        </li>
+        <li data-tab="following" data-grid-id="following-grid">following</li>
+      </ol>
+    </div>
+
+    <div id="grids">
+      <div id="collection-grid" class="grid">
+        <div class="collection-items">
+          <ol class="collection-grid"></ol>
+        </div>
+      </div>
+      <div id="wishlist-grid" class="grid">
+        <div class="collection-items">
+          <ol class="collection-grid"></ol>
+        </div>
+      </div>
+      <div id="collection-search-grid" class="grid">
+        <div class="collection-items">
+          <ol class="collection-grid"></ol>
+        </div>
+      </div>
+      <div id="wishlist-search-grid" class="grid">
+        <div class="collection-items">
+          <ol class="collection-grid"></ol>
+        </div>
+      </div>
+      <div id="followers-grid" class="grid active">
+        <p>Fixture followers</p>
+      </div>
+      <div id="following-grid" class="grid">
+        <p>Fixture following</p>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const storage = new Map([
+          ["bcampx:userSettings", { showCollectionCounts: true }],
+          ["bcampx:artistMusicView", "feed"],
+          [
+            "bcampx:release:https://fixture.bandcamp.com/album/release-4",
+            {
+              url: "https://fixture.bandcamp.com/album/release-4",
+              title: "Release 4",
+              artist: "Artist 4",
+              hasBodyDescriptionSource: false,
+              tracks: [
+                {
+                  title: "Track 4",
+                  trackId: "4",
+                  streamUrl: "https://expired.example.com/4.mp3",
+                  duration: "2:00",
+                  titleLink:
+                    "https://fixture.bandcamp.com/album/release-4/track-4",
+                },
+                {
+                  title: "Track 4B",
+                  trackId: "404",
+                  streamUrl: "https://expired.example.com/404.mp3",
+                  duration: "2:30",
+                  titleLink:
+                    "https://fixture.bandcamp.com/album/release-4/track-4b",
+                },
+              ],
+              schemaVersion: 17,
+              fetchedAt: Date.now() - 60 * 60 * 1000,
+            },
+          ],
+        ]);
+        globalThis.__fixtureReleaseRequestCount = 0;
+        globalThis.__fixtureSupporterRequestCount = 0;
+        globalThis.Dom = {
+          scrollToElement: (target, offset) => {
+            const card =
+              target &&
+              target.closest &&
+              target.closest(
+                ".bcampx-label-feed-card[data-bcampx-release-url]",
+              );
+            const trackButton =
+              target &&
+              (target.matches?.(".bcampx__track-link")
+                ? target
+                : target.querySelector?.(".bcampx__track-link"));
+            document.documentElement.setAttribute(
+              "data-bcampx-player-scroll-release",
+              card
+                ? card.getAttribute("data-bcampx-release-url") || ""
+                : "",
+            );
+            document.documentElement.setAttribute(
+              "data-bcampx-player-scroll-track",
+              trackButton ? trackButton.dataset.trackId || "" : "",
+            );
+            document.documentElement.setAttribute(
+              "data-bcampx-player-scroll-offset",
+              String(offset),
+            );
+          },
+        };
+
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async (url) => {
+            globalThis.__fixtureReleaseRequestCount += 1;
+            const id = Number(url.match(/release-(\d+)/)?.[1] || 1);
+            if (id === 4) {
+              await new Promise((resolve) =>
+                window.setTimeout(resolve, 700),
+              );
+            }
+            const trackInfo =
+              id === 4
+                ? `[
+                    {"title":"Track 4","track_id":4,"file":{"mp3-128":"https://example.com/4.mp3"},"duration":120},
+                    {"title":"Track 4B","track_id":404,"file":{"mp3-128":"https://example.com/404.mp3"},"duration":150}
+                  ]`
+                : `[{"title":"Track ${id}","track_id":${id},"file":{"mp3-128":"https://example.com/${id}.mp3"},"duration":120}]`;
+            return `<!DOCTYPE html>
+              <div id="pagedata" data-blob='{"identities":{"fan":{"id":42}},"fan_tralbum_data":{"is_wishlisted":true}}'></div>
+              <div data-tralbum='{"current":{"id":${id},"type":"album","title":"Release ${id}","band_id":${1000 + id}},"artist":"Artist ${id}","trackinfo":${trackInfo}}'></div>
+              <div id="collectors-data" data-blob='{"thumbs":[{"fan_id":1},{"fan_id":2},{"fan_id":3}],"reviews":[],"shown_reviews":[],"more_thumbs_available":false}'></div>
+              <div class="tralbum-tags">tags: <a href="/tag/fan-tag-${id}">fan-tag-${id}</a> <a href="/tag/collection-fixture">collection-fixture</a></div>
+              <li class="buyItem digital"><span class="base-text-color">$5</span></li>`;
+          },
+          requestJson: async () => {
+            globalThis.__fixtureSupporterRequestCount += 1;
+            return { results: [], more_available: false };
+          },
+          storageGet: async (key, fallback) =>
+            storage.has(key) ? storage.get(key) : fallback,
+          storageSet: async (key, value) => {
+            storage.set(key, value);
+          },
+        };
+
+        globalThis.__makeFanFixtureItem = (id, options = {}) => {
+          const item = document.createElement("li");
+          const releaseUrl = `https://fixture.bandcamp.com/album/release-${id}`;
+          item.className = "collection-item-container";
+          item.setAttribute("data-itemid", String(id));
+          item.setAttribute("data-tralbumid", String(id));
+          item.setAttribute("data-tralbumtype", "a");
+          item.setAttribute("data-bandid", String(1000 + id));
+          item.setAttribute(
+            "data-playerdata",
+            JSON.stringify({
+              album: {
+                id,
+                title: `Release ${id}`,
+                url: releaseUrl,
+                is_owned: Boolean(options.owned),
+                price: { amount: 5, currency: "USD", is_money: true },
+              },
+              id,
+              title: `Track ${id}`,
+              artist_name: `Artist ${id}`,
+              url: `${releaseUrl}/track-${id}`,
+              stream_url: `https://example.com/${id}.mp3`,
+              duration: 120,
+            }),
+          );
+          item.innerHTML = `
+            <a class="item-link" href="${releaseUrl}">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" />
+              <span class="collection-item-title">Release ${id}</span>
+              <span class="collection-item-artist">by Artist ${id}</span>
+            </a>
+            ${
+              options.download
+                ? `<span class="redownload-item"><a href="https://bandcamp.com/download/${id}">download</a></span>`
+                : ""
+            }
+            ${
+              options.countLabel
+                ? `<div class="collected-by"><div class="collected-by-header">${options.countLabel}</div></div>`
+                : ""
+            }`;
+          return item;
+        };
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+    <script>
+      (async () => {
+        const wait = (ms) =>
+          new Promise((resolve) => window.setTimeout(resolve, ms));
+        const setActiveGrid = (id) => {
+          document.querySelectorAll("#grids > .grid").forEach((grid) => {
+            grid.classList.toggle("active", grid.id === id);
+          });
+          document.querySelectorAll("[data-grid-id]").forEach((tab) => {
+            tab.classList.toggle(
+              "active",
+              tab.getAttribute("data-grid-id") === id,
+            );
+          });
+        };
+        document.querySelectorAll("[data-grid-id]").forEach((tab) => {
+          tab.addEventListener("click", () => {
+            setActiveGrid(tab.getAttribute("data-grid-id"));
+          });
+        });
+        const feedUrls = () =>
+          Array.from(
+            document.querySelectorAll(
+              ".bcampx-label-feed-card[data-bcampx-release-url]",
+            ),
+          ).map((card) => card.getAttribute("data-bcampx-release-url"));
+        const waitForStableBackgroundWork = async () => {
+          let previous = "";
+          let stableSamples = 0;
+          for (let attempt = 0; attempt < 30; attempt += 1) {
+            const current = [
+              globalThis.__fixtureReleaseRequestCount,
+              document.documentElement.getAttribute(
+                "data-bcampx-scan-count",
+              ) || "0",
+              document.documentElement.getAttribute(
+                "data-bcampx-label-feed-sync-run-count",
+              ) || "0",
+            ].join(":");
+            stableSamples =
+              current === previous ? stableSamples + 1 : 0;
+            if (stableSamples >= 4) {
+              return;
+            }
+            previous = current;
+            await wait(100);
+          }
+        };
+
+        await wait(150);
+        document.documentElement.setAttribute(
+          "data-bcampx-followers-toggle-absent",
+          String(!document.querySelector(".bcampx-label-feed-toggle")),
+        );
+
+        const collection = document.querySelector(
+          "#collection-grid .collection-grid",
+        );
+        collection.append(
+          __makeFanFixtureItem(1, {
+            owned: true,
+            download: true,
+            countLabel: "appears in 1.234 other collections",
+          }),
+          __makeFanFixtureItem(2, {
+            owned: true,
+            download: true,
+            countLabel: "appears in 12 other collections",
+          }),
+        );
+        setActiveGrid("collection-grid");
+        await wait(900);
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-card-count",
+          String(feedUrls().length),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-toggle-visible",
+          String(
+            Boolean(
+              document.querySelector(".bcampx-label-feed-toggle:not([hidden])"),
+            ),
+          ),
+        );
+        const initialCollectionCard = document.querySelector(
+          '.bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-1"]',
+        );
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const text = initialCollectionCard
+            ?.querySelector(".bcampx-label-feed-card__tags")
+            ?.textContent.trim();
+          if (text) {
+            break;
+          }
+          await wait(100);
+        }
+        document.documentElement.setAttribute(
+          "data-bcampx-localized-dot-count",
+          initialCollectionCard
+            ?.querySelector(".bcampx-label-feed-card__supporter-count")
+            ?.getAttribute("data-bcampx-supporter-count") || "",
+        );
+        const collectionTags =
+          initialCollectionCard &&
+          initialCollectionCard.querySelector(".bcampx-label-feed-card__tags");
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-release-tags",
+          collectionTags ? collectionTags.textContent.trim() : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-release-tags-in-col1",
+          String(
+            Boolean(
+              collectionTags &&
+                collectionTags.parentElement &&
+                collectionTags.parentElement.classList.contains(
+                  "tralbum-wrapper-col1",
+                ),
+            ),
+          ),
+        );
+
+        const search = document.querySelector(
+          "#collection-search-grid .collection-grid",
+        );
+        search.append(__makeFanFixtureItem(1));
+        setActiveGrid("collection-search-grid");
+        await wait(500);
+        document.documentElement.setAttribute(
+          "data-bcampx-search-first",
+          feedUrls().join(","),
+        );
+
+        search.replaceChildren(__makeFanFixtureItem(3));
+        await wait(500);
+        document.documentElement.setAttribute(
+          "data-bcampx-search-reconciled",
+          feedUrls().join(","),
+        );
+
+        const wishlist = document.querySelector(
+          "#wishlist-grid .collection-grid",
+        );
+        wishlist.append(
+          __makeFanFixtureItem(4, {
+            countLabel: "appears in 1 234 collections",
+          }),
+          ...Array.from({ length: 12 }, (_, index) =>
+            __makeFanFixtureItem(index + 5),
+          ),
+        );
+        setActiveGrid("wishlist-grid");
+        await wait(350);
+        const earlyWishlistCard = document.querySelector(
+          '.bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-4"]',
+        );
+        const earlyWishlistTracks = earlyWishlistCard
+          ? Array.from(
+              earlyWishlistCard.querySelectorAll(".bcampx__track-link"),
+            )
+          : [];
+        document.documentElement.setAttribute(
+          "data-bcampx-cached-tracklist-early-count",
+          String(earlyWishlistTracks.length),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-cached-native-stream",
+          earlyWishlistTracks[0]?.dataset.streamUrl || "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-cached-stale-stream-cleared",
+          String(
+            Boolean(
+              earlyWishlistTracks[1] &&
+                !earlyWishlistTracks[1].dataset.streamUrl,
+            ),
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-loading-summary",
+          earlyWishlistCard
+            ? earlyWishlistCard
+                .querySelector(".bcampx__summary-text")
+                ?.textContent.trim() || ""
+            : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-loading-state",
+          String(
+            Boolean(
+              earlyWishlistCard &&
+                earlyWishlistCard.querySelector(
+                  ".bcampx[data-bcampx-loading-extra-context='true']",
+                ),
+            ),
+          ),
+        );
+        const slotLoading = earlyWishlistCard
+          ? earlyWishlistCard.querySelector(".bcampx__slot-loading")
+          : null;
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-slot-loading",
+          slotLoading ? slotLoading.textContent.trim() : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-slot-loading-visible",
+          String(Boolean(slotLoading && !slotLoading.hidden)),
+        );
+        await wait(900);
+        const supporterCount = document.querySelector(
+          ".bcampx-label-feed-card__supporter-count",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-count",
+          supporterCount ? supporterCount.textContent.trim() : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-localized-space-count",
+          supporterCount
+            ? supporterCount.getAttribute(
+                "data-bcampx-supporter-count",
+              ) || ""
+            : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-count-exact",
+          supporterCount
+            ? supporterCount.getAttribute(
+                "data-bcampx-supporter-count-exact",
+              ) || ""
+            : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-supporter-request-count",
+          String(globalThis.__fixtureSupporterRequestCount),
+        );
+        const firstWishlistTrack = document.querySelector(
+          '.bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-4"] .bcampx__track-link',
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-refreshed-stream",
+          firstWishlistTrack
+            ? firstWishlistTrack.dataset.streamUrl || ""
+            : "",
+        );
+        const refreshedWishlistTracks = Array.from(
+          document.querySelectorAll(
+            '.bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-4"] .bcampx__track-link',
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-second-refreshed-stream",
+          refreshedWishlistTracks[1]?.dataset.streamUrl || "",
+        );
+
+        wishlist.firstElementChild.setAttribute(
+          "data-title",
+          "Release 4 updated",
+        );
+        await wait(300);
+        const wishlistCards = Array.from(
+          document.querySelectorAll(".bcampx-label-feed-card"),
+        );
+        const lastWishlistCard = wishlistCards[wishlistCards.length - 1];
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-last-card-preview",
+          String(
+            Boolean(
+              lastWishlistCard &&
+                lastWishlistCard.querySelector(".bcampx__track-link"),
+            ),
+          ),
+        );
+        if (lastWishlistCard) {
+          lastWishlistCard.scrollIntoView();
+          await wait(1800);
+        }
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-last-card-loaded",
+          String(
+            Boolean(
+              lastWishlistCard &&
+                lastWishlistCard.querySelector(".bcampx__track-link"),
+            ),
+          ),
+        );
+
+        setActiveGrid("collection-grid");
+        await wait(300);
+        setActiveGrid("wishlist-grid");
+        await wait(300);
+        await waitForStableBackgroundWork();
+        const tabSwitchRequestCount = globalThis.__fixtureReleaseRequestCount;
+        const tabSwitchEnhancedCount = Number(
+          document.documentElement.getAttribute(
+            "data-bcampx-enhanced-count",
+          ) || 0,
+        );
+        const tabSwitchSyncCount = Number(
+          document.documentElement.getAttribute(
+            "data-bcampx-label-feed-sync-run-count",
+          ) || 0,
+        );
+        const tabSwitchScanCount = Number(
+          document.documentElement.getAttribute(
+            "data-bcampx-scan-count",
+          ) || 0,
+        );
+        for (let cycle = 0; cycle < 6; cycle += 1) {
+          for (const gridId of [
+            "collection-grid",
+            "wishlist-grid",
+            "followers-grid",
+            "following-grid",
+          ]) {
+            setActiveGrid(gridId);
+            await wait(25);
+          }
+        }
+        setActiveGrid("collection-grid");
+        await wait(200);
+        const restoredCollectionCard = document.querySelector(
+          '.bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-1"]',
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tab-card-reused",
+          String(
+            Boolean(
+              initialCollectionCard &&
+                restoredCollectionCard === initialCollectionCard,
+            ),
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tab-enhance-delta",
+          String(
+            Number(
+              document.documentElement.getAttribute(
+                "data-bcampx-enhanced-count",
+              ) || 0,
+            ) - tabSwitchEnhancedCount,
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tab-request-delta",
+          String(
+            globalThis.__fixtureReleaseRequestCount - tabSwitchRequestCount,
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tab-sync-delta",
+          String(
+            Number(
+              document.documentElement.getAttribute(
+                "data-bcampx-label-feed-sync-run-count",
+              ) || 0,
+            ) - tabSwitchSyncCount,
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tab-scan-delta",
+          String(
+            Number(
+              document.documentElement.getAttribute(
+                "data-bcampx-scan-count",
+              ) || 0,
+            ) - tabSwitchScanCount,
+          ),
+        );
+        setActiveGrid("wishlist-grid");
+        await wait(100);
+
+        const wishlistTrackButton = document.querySelector(
+          ".bcampx-label-feed .bcampx__track-link",
+        );
+        if (wishlistTrackButton) {
+          wishlistTrackButton.click();
+          await wait(900);
+        }
+        const playerHost = document.querySelector("#bcampx-player-host");
+        const favoriteButton =
+          playerHost &&
+          playerHost.shadowRoot &&
+          playerHost.shadowRoot.querySelector(".bcampx-player-favorite");
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-player-enabled",
+          String(Boolean(favoriteButton && !favoriteButton.disabled)),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-player-active",
+          String(
+            Boolean(
+              favoriteButton &&
+                favoriteButton.getAttribute("aria-pressed") === "true",
+            ),
+          ),
+        );
+        setActiveGrid("followers-grid");
+        await wait(100);
+        const playerTrackLink =
+          playerHost &&
+          playerHost.shadowRoot &&
+          playerHost.shadowRoot.querySelector(".bcampx-player-track");
+        if (playerTrackLink) {
+          playerTrackLink.click();
+          await wait(700);
+        }
+        document.documentElement.setAttribute(
+          "data-bcampx-player-returned-grid",
+          document.querySelector("#grids > .grid.active")?.id || "",
+        );
+        if (favoriteButton) {
+          favoriteButton.click();
+          document.documentElement.setAttribute(
+            "data-bcampx-wishlist-player-pending",
+            String(
+              favoriteButton.classList.contains(
+                "bcampx-player-button--pending",
+              ),
+            ),
+          );
+        }
+      })();
+    </script>
+  </body>
+</html>

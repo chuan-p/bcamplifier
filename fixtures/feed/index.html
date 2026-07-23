@@ -336,8 +336,12 @@
         await new Promise((resolve) => window.setTimeout(resolve, 300));
 
         const root = document.querySelector("#bcampx-player-host").shadowRoot;
-        const inputs = root.querySelectorAll(".bcampx-player-settings-checkbox");
-        inputs[inputs.length - 1].click();
+        const continuousModeRow = Array.from(
+          root.querySelectorAll(".bcampx-player-settings-row"),
+        ).find((row) =>
+          /Continuous mode/i.test(row.textContent || ""),
+        );
+        continuousModeRow.querySelector(".bcampx-player-settings-checkbox").click();
         const next = root.querySelector(
           ".bcampx-player-controls button:nth-child(2)",
         );

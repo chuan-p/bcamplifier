@@ -7,14 +7,33 @@
                 ? normalizeReleaseData(cached)
                 : null;
 
-        if (isFreshReleaseCache(cached)) {
-            if (!shouldRefreshCachedRelease(cached, normalizedCached)) {
+        const freshCache = isFreshReleaseCache(cached);
+        if (freshCache) {
+            const shouldRefresh = shouldRefreshCachedRelease(
+                cached,
+                normalizedCached,
+                requestContext,
+                cacheKey,
+            );
+            if (!shouldRefresh) {
                 return { data: normalizedCached, fromCache: true, stale: false };
             }
         }
 
         const pending = STATE.pendingReleaseRequests.get(cacheKey);
         if (pending) {
+            if (
+                shouldServeCachedReleaseWhileRefreshing(
+                    requestContext,
+                    cached,
+                    normalizedCached,
+                )
+            ) {
+                return buildRefreshingCachedReleaseResult(
+                    normalizedCached,
+                    pending,
+                );
+            }
             return pending;
         }
 
@@ -33,6 +52,9 @@
                 const cacheValue = buildReleaseCacheValue(data);
 
                 await storageSet(cacheKey, cacheValue);
+                if (hasPlayableTracks(cacheValue)) {
+                    STATE.pageFreshTrackReleaseKeys.add(cacheKey);
+                }
                 return { data: cacheValue, fromCache: false, stale: false };
             } catch (error) {
                 if (hasVisibleEnhancements(normalizedCached)) {
@@ -48,13 +70,54 @@
         });
 
         STATE.pendingReleaseRequests.set(cacheKey, request);
-        try {
-            return await request;
-        } finally {
+        const clearPendingRequest = () => {
             if (STATE.pendingReleaseRequests.get(cacheKey) === request) {
                 STATE.pendingReleaseRequests.delete(cacheKey);
             }
+        };
+        request.then(clearPendingRequest, clearPendingRequest);
+
+        if (
+            freshCache &&
+            shouldServeCachedReleaseWhileRefreshing(
+                requestContext,
+                cached,
+                normalizedCached,
+            )
+        ) {
+            return buildRefreshingCachedReleaseResult(
+                normalizedCached,
+                request,
+            );
         }
+
+        return request;
+    }
+
+    function buildRefreshingCachedReleaseResult(data, refreshPromise) {
+        return {
+            data,
+            fromCache: true,
+            stale: false,
+            refreshingTracks: true,
+            refreshPromise,
+        };
+    }
+
+    function shouldServeCachedReleaseWhileRefreshing(
+        requestContext,
+        rawData,
+        normalizedData,
+    ) {
+        return Boolean(
+            requestContext &&
+                requestContext.allowCachedTrackSnapshot === true &&
+                rawData &&
+                normalizedData &&
+                isFreshReleaseCache(rawData) &&
+                hasVisibleEnhancements(normalizedData) &&
+                !needsSchemaRefresh(rawData, normalizedData),
+        );
     }
 
     function enqueueReleaseFetch(task) {
@@ -92,6 +155,10 @@
         return `${RELEASE_CACHE_PREFIX}${releaseUrl}`;
     }
 
+    function getReleaseSupporterCountCacheKey(releaseUrl) {
+        return `${RELEASE_SUPPORTER_COUNT_CACHE_PREFIX}${releaseUrl}`;
+    }
+
     function normalizeReleaseRequestContext(releaseInput) {
         if (releaseInput && typeof releaseInput === "object") {
             return {
@@ -101,6 +168,10 @@
                     releaseInput.itemType,
                     releaseInput.releaseUrl || "",
                 ),
+                requirePageFreshTracks:
+                    releaseInput.requirePageFreshTracks === true,
+                allowCachedTrackSnapshot:
+                    releaseInput.allowCachedTrackSnapshot === true,
             };
         }
 
@@ -108,6 +179,8 @@
             releaseUrl: normalizeReleaseUrl(releaseInput || ""),
             itemId: 0,
             itemType: normalizeReleaseItemType("", releaseInput || ""),
+            requirePageFreshTracks: false,
+            allowCachedTrackSnapshot: false,
         };
     }
 
@@ -208,11 +281,75 @@
         );
     }
 
-    function shouldRefreshCachedRelease(rawData, normalizedData) {
+    function shouldRefreshCachedRelease(
+        rawData,
+        normalizedData,
+        requestContext,
+        cacheKey,
+    ) {
         return (
             needsTrackRefresh(normalizedData) ||
-            needsSchemaRefresh(rawData, normalizedData)
+            needsTrackSnapshotRefresh(
+                rawData,
+                normalizedData,
+                requestContext,
+                cacheKey,
+            ) ||
+            needsSchemaRefresh(rawData, normalizedData) ||
+            needsSupporterSnapshotRefresh(rawData, normalizedData)
         );
+    }
+
+    function needsTrackSnapshotRefresh(
+        rawData,
+        normalizedData,
+        requestContext,
+        cacheKey,
+    ) {
+        if (
+            !hasPlayableTracks(normalizedData) ||
+            !rawData ||
+            !rawData.fetchedAt
+        ) {
+            return false;
+        }
+
+        if (
+            requestContext &&
+            requestContext.requirePageFreshTracks === true &&
+            !STATE.pageFreshTrackReleaseKeys.has(cacheKey)
+        ) {
+            return true;
+        }
+
+        const ttlMs = Math.max(0, Number(CONFIG.trackCacheTtlMs) || 0);
+        return ttlMs > 0 && Date.now() - Number(rawData.fetchedAt) >= ttlMs;
+    }
+
+    function hasPlayableTracks(data) {
+        return Boolean(
+            data &&
+                Array.isArray(data.tracks) &&
+                data.tracks.some((track) => track && track.streamUrl),
+        );
+    }
+
+    function needsSupporterSnapshotRefresh(rawData, normalizedData) {
+        if (
+            !CONFIG.showCollectionCounts ||
+            !normalizedData ||
+            !normalizedData.supporterCount ||
+            !rawData ||
+            !rawData.fetchedAt
+        ) {
+            return false;
+        }
+
+        const ttlMs = Math.max(
+            0,
+            Number(CONFIG.supporterCountCacheTtlMs) || 0,
+        );
+        return ttlMs > 0 && Date.now() - Number(rawData.fetchedAt) >= ttlMs;
     }
 
     function requestHtml(url) {
@@ -373,6 +510,10 @@
             tralbum,
             tracks,
         );
+        const supporterState = extractReleaseSupporterState(
+            documentFromHtml,
+            tralbum,
+        );
 
         return {
             url: releaseUrl,
@@ -383,11 +524,18 @@
             artUrl: metaContent(documentFromHtml, 'meta[property="og:image"]'),
             digitalPrice: extractDigitalPrice(documentFromHtml),
             digitalOwnershipUrl: extractDigitalOwnershipUrl(documentFromHtml),
+            isPreorder: extractReleaseIsPreorder(documentFromHtml, tralbum),
             hasBodyDescriptionSource: descriptionState.hasBodyDescriptionSource,
             description: descriptionState.description,
             descriptionHtml: descriptionState.descriptionHtml,
             tags: extractReleaseTags(documentFromHtml),
             tracks,
+            supporterCount: supporterState.count,
+            supporterCountIsExact: supporterState.isExact,
+            supporterMoreAvailable: supporterState.moreAvailable,
+            supporterNextToken: supporterState.nextToken,
+            supporterItemId: supporterState.itemId,
+            supporterItemType: supporterState.itemType,
         };
     }
 
@@ -443,6 +591,17 @@
             descriptionHtml: descriptionState.descriptionHtml,
             digitalPrice: cleanText(data.digitalPrice || ""),
             digitalOwnershipUrl: cleanText(data.digitalOwnershipUrl || ""),
+            digitalDownloadUrl: cleanText(data.digitalDownloadUrl || ""),
+            isPreorder: data.isPreorder === true,
+            supporterCount: normalizeNonNegativeInteger(data.supporterCount),
+            supporterCountIsExact: data.supporterCountIsExact === true,
+            supporterCountLabel: cleanText(data.supporterCountLabel || ""),
+            supporterCountAuthoritative:
+                data.supporterCountAuthoritative === true,
+            supporterMoreAvailable: data.supporterMoreAvailable === true,
+            supporterNextToken: cleanText(data.supporterNextToken || ""),
+            supporterItemId: normalizeNonNegativeInteger(data.supporterItemId),
+            supporterItemType: normalizeSupporterItemType(data.supporterItemType),
             tags: Array.isArray(data.tags)
                 ? data.tags.map((tag) => cleanText(tag)).filter(Boolean)
                 : [],
@@ -459,11 +618,431 @@
             location: "",
             digitalPrice: "",
             digitalOwnershipUrl: "",
+            digitalDownloadUrl: "",
+            isPreorder: false,
             description: "",
             descriptionHtml: "",
             tags: [],
             tracks: [],
+            supporterCount: 0,
+            supporterCountIsExact: false,
+            supporterCountLabel: "",
+            supporterCountAuthoritative: false,
+            supporterMoreAvailable: false,
+            supporterNextToken: "",
+            supporterItemId: 0,
+            supporterItemType: "",
         };
+    }
+
+    function extractReleaseIsPreorder(doc, tralbum) {
+        if (
+            tralbum &&
+            tralbum.current &&
+            tralbum.current.is_preorder === true
+        ) {
+            return true;
+        }
+
+        return Array.from(
+            doc.querySelectorAll(
+                ".buyItem.digital h4, .buyItem.digital .download-link, .buyItem.digital .buy-link",
+            ),
+        ).some((node) => /\bpre-order\b/i.test(cleanText(node.textContent || "")));
+    }
+
+    async function getExactReleaseSupporterCount(releaseData, options = {}) {
+        const state = normalizeReleaseSupporterState(releaseData);
+        if (!state.url || !state.count) {
+            return {
+                count: 0,
+                isExact: true,
+                moreAvailable: false,
+                nextToken: "",
+            };
+        }
+
+        if (state.isExact || !state.moreAvailable) {
+            return {
+                count: state.count,
+                isExact: true,
+                moreAvailable: false,
+                nextToken: "",
+            };
+        }
+
+        const cacheKey = getReleaseSupporterCountCacheKey(state.url);
+        const cached = await storageGet(cacheKey, null);
+        if (!options.forceRefresh && isFreshReleaseSupporterCountCache(cached)) {
+            return {
+                count: normalizeNonNegativeInteger(cached.count),
+                isExact: cached.isExact === true,
+                moreAvailable: false,
+                nextToken: "",
+            };
+        }
+
+        const pending = STATE.pendingSupporterCountRequests.get(cacheKey);
+        if (pending) {
+            return pending;
+        }
+
+        const request = enqueueSupporterCountFetch(
+            async () => {
+                const result = await fetchExactReleaseSupporterCount(
+                    state,
+                    options,
+                );
+                if (result && result.isExact) {
+                    await storageSet(cacheKey, {
+                        count: result.count,
+                        isExact: true,
+                        fetchedAt: Date.now(),
+                        schemaVersion: CACHE_SCHEMA_VERSION,
+                    });
+                }
+                return result;
+            },
+            { priority: options.forceRefresh === true },
+        );
+
+        STATE.pendingSupporterCountRequests.set(cacheKey, request);
+        try {
+            return await request;
+        } finally {
+            if (STATE.pendingSupporterCountRequests.get(cacheKey) === request) {
+                STATE.pendingSupporterCountRequests.delete(cacheKey);
+            }
+        }
+    }
+
+    function enqueueSupporterCountFetch(task, options = {}) {
+        return new Promise((resolve, reject) => {
+            const entry = { task, resolve, reject };
+            if (options.priority === true) {
+                STATE.supporterCountFetchQueue.unshift(entry);
+            } else {
+                STATE.supporterCountFetchQueue.push(entry);
+            }
+            drainSupporterCountFetchQueue();
+        });
+    }
+
+    function drainSupporterCountFetchQueue() {
+        while (
+            STATE.activeSupporterCountFetchCount <
+                CONFIG.maxConcurrentSupporterCountFetches &&
+            STATE.supporterCountFetchQueue.length
+        ) {
+            const next = STATE.supporterCountFetchQueue.shift();
+            if (!next || typeof next.task !== "function") {
+                continue;
+            }
+
+            STATE.activeSupporterCountFetchCount += 1;
+            Promise.resolve()
+                .then(() => next.task())
+                .then(next.resolve, next.reject)
+                .finally(() => {
+                    STATE.activeSupporterCountFetchCount = Math.max(
+                        0,
+                        STATE.activeSupporterCountFetchCount - 1,
+                    );
+                    drainSupporterCountFetchQueue();
+                });
+        }
+    }
+
+    async function fetchExactReleaseSupporterCount(state, options = {}) {
+        if (!state.itemId || !state.itemType || !state.nextToken) {
+            return {
+                count: state.count,
+                isExact: false,
+                moreAvailable: state.moreAvailable === true,
+                nextToken: state.nextToken,
+            };
+        }
+
+        const apiUrl = getReleaseSupporterCountApiUrl(state.url);
+        if (!apiUrl) {
+            return {
+                count: state.count,
+                isExact: false,
+                moreAvailable: state.moreAvailable === true,
+                nextToken: state.nextToken,
+            };
+        }
+
+        const maxExactCount = options.ignoreLimit
+            ? 0
+            : normalizeNonNegativeInteger(CONFIG.maxSupporterExactCount);
+        let count = state.count;
+        let token = state.nextToken;
+        let moreAvailable = state.moreAvailable;
+
+        if (maxExactCount && count >= maxExactCount) {
+            return buildReleaseSupporterCountResult(count, false, {
+                moreAvailable,
+                nextToken: token,
+            });
+        }
+
+        while (moreAvailable && token) {
+            const response = await requestReleaseSupporterCountPage(apiUrl, {
+                tralbum_type: state.itemType,
+                tralbum_id: state.itemId,
+                token,
+                count: CONFIG.supporterCountPageSize,
+            });
+
+            const results =
+                response && Array.isArray(response.results)
+                    ? response.results
+                    : [];
+            count += results.length;
+            moreAvailable = Boolean(response && response.more_available);
+
+            const last = results[results.length - 1];
+            token = cleanText(last && last.token);
+            if (!results.length) {
+                moreAvailable = false;
+            }
+
+            if (maxExactCount && count >= maxExactCount) {
+                break;
+            }
+
+            if (moreAvailable && CONFIG.supporterCountPageDelayMs > 0) {
+                await waitForSupporterCountPageDelay(
+                    CONFIG.supporterCountPageDelayMs,
+                );
+            }
+        }
+
+        return buildReleaseSupporterCountResult(count, !moreAvailable, {
+            moreAvailable,
+            nextToken: token,
+        });
+    }
+
+    async function requestReleaseSupporterCountPage(apiUrl, payload) {
+        const retryCount = Math.max(
+            0,
+            Math.floor(Number(CONFIG.supporterCountRequestRetries) || 0),
+        );
+        const retryDelayMs = Math.max(
+            0,
+            Math.floor(Number(CONFIG.supporterCountRetryDelayMs) || 0),
+        );
+        let lastError = null;
+
+        for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+            try {
+                return await requestJson(apiUrl, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        Accept: "application/json, text/javascript, */*; q=0.01",
+                        "Content-Type": "application/json",
+                    },
+                    data: JSON.stringify(payload),
+                });
+            } catch (error) {
+                lastError = error;
+                if (attempt >= retryCount) {
+                    break;
+                }
+                await waitForSupporterCountPageDelay(
+                    retryDelayMs * (attempt + 1),
+                );
+            }
+        }
+
+        throw lastError || new Error("Supporter count request failed.");
+    }
+
+    function buildReleaseSupporterCountResult(count, isExact, state = {}) {
+        const normalizedCount = normalizeNonNegativeInteger(count);
+        const exact = isExact === true;
+
+        return {
+            count: normalizedCount,
+            isExact: exact,
+            moreAvailable: !exact && state.moreAvailable === true,
+            nextToken: exact ? "" : cleanText(state.nextToken || ""),
+        };
+    }
+
+    function waitForSupporterCountPageDelay(delayMs) {
+        return new Promise((resolve) => {
+            window.setTimeout(resolve, Math.max(0, delayMs));
+        });
+    }
+
+    function isFreshReleaseSupporterCountCache(value) {
+        return Boolean(
+                value &&
+                value.schemaVersion === CACHE_SCHEMA_VERSION &&
+                value.isExact === true &&
+                normalizeNonNegativeInteger(value.count) > 0 &&
+                value.fetchedAt &&
+                Date.now() - value.fetchedAt <
+                    CONFIG.supporterCountCacheTtlMs,
+        );
+    }
+
+    function getReleaseSupporterCountApiUrl(releaseUrl) {
+        try {
+            const url = new URL(releaseUrl, window.location.href);
+            return `${url.origin}/api/tralbumcollectors/2/thumbs`;
+        } catch (_error) {
+            return "";
+        }
+    }
+
+    function normalizeReleaseSupporterState(data) {
+        const normalized = normalizeReleaseData(data);
+        return {
+            url: normalizeReleaseUrl(normalized.url),
+            count: normalizeNonNegativeInteger(normalized.supporterCount),
+            isExact: normalized.supporterCountIsExact === true,
+            moreAvailable: normalized.supporterMoreAvailable === true,
+            nextToken: cleanText(normalized.supporterNextToken || ""),
+            itemId: normalizeNonNegativeInteger(normalized.supporterItemId),
+            itemType: normalizeSupporterItemType(normalized.supporterItemType),
+        };
+    }
+
+    function extractReleaseSupporterState(doc, tralbum) {
+        const collectors = parseReleaseCollectorsData(doc);
+        const tralbumIdentity = getTralbumSupporterIdentity(tralbum);
+        if (!collectors) {
+            const domCount = countDomSupporterThumbs(doc);
+            return {
+                count: domCount,
+                isExact: domCount > 0,
+                moreAvailable: false,
+                nextToken: "",
+                itemId: tralbumIdentity.itemId,
+                itemType: tralbumIdentity.itemType,
+            };
+        }
+
+        const thumbs = Array.isArray(collectors.thumbs)
+            ? collectors.thumbs
+            : [];
+        const reviews = Array.isArray(collectors.reviews)
+            ? collectors.reviews
+            : [];
+        const shownReviews = Array.isArray(collectors.shown_reviews)
+            ? collectors.shown_reviews
+            : [];
+        const supporterCount = countUniqueSupporters([
+            ...thumbs,
+            ...reviews,
+            ...shownReviews,
+        ]);
+        const fallbackCount = supporterCount || countDomSupporterThumbs(doc);
+        const moreAvailable = Boolean(collectors.more_thumbs_available);
+        const lastThumb = thumbs[thumbs.length - 1] || null;
+
+        return {
+            count: fallbackCount,
+            isExact: fallbackCount > 0 && !moreAvailable,
+            moreAvailable,
+            nextToken: cleanText(lastThumb && lastThumb.token),
+            itemId: tralbumIdentity.itemId,
+            itemType: tralbumIdentity.itemType,
+        };
+    }
+
+    function parseReleaseCollectorsData(doc) {
+        const node = doc.querySelector(
+            "#collectors-data[data-blob], [data-blob*='more_thumbs_available']",
+        );
+        if (!node) {
+            return null;
+        }
+
+        const parsed = parseJsonAttribute(node, "data-blob");
+        return parsed && typeof parsed === "object" ? parsed : null;
+    }
+
+    function countUniqueSupporters(values) {
+        const seen = new Set();
+        values.forEach((value) => {
+            const key = getSupporterUniqueKey(value);
+            if (key) {
+                seen.add(key);
+            }
+        });
+        return seen.size;
+    }
+
+    function getSupporterUniqueKey(value) {
+        if (!value || typeof value !== "object") {
+            return "";
+        }
+
+        const fanId = normalizeNonNegativeInteger(value.fan_id || value.fanId);
+        if (fanId) {
+            return `fan:${fanId}`;
+        }
+
+        const username = cleanText(value.username || value.url || "");
+        return username ? `user:${username.toLowerCase()}` : "";
+    }
+
+    function countDomSupporterThumbs(doc) {
+        const deets = doc.querySelector(".deets.populated");
+        if (!deets) {
+            return 0;
+        }
+
+        const thumbNodes = deets.querySelectorAll(".thumb");
+        if (thumbNodes.length) {
+            return thumbNodes.length;
+        }
+
+        return deets.querySelectorAll("a[href*='bandcamp.com/'] img, img")
+            .length;
+    }
+
+    function getTralbumSupporterIdentity(tralbum) {
+        const current = tralbum && tralbum.current ? tralbum.current : null;
+        const itemId = normalizeNonNegativeInteger(
+            current && current.id ? current.id : tralbum && tralbum.id,
+        );
+        const itemType = normalizeSupporterItemType(
+            (current && current.type) ||
+                (tralbum && tralbum.item_type) ||
+                (tralbum && tralbum.type) ||
+                "",
+        );
+
+        return {
+            itemId,
+            itemType,
+        };
+    }
+
+    function normalizeSupporterItemType(value) {
+        const type = cleanText(value || "").toLowerCase();
+        if (type === "a" || type === "album") {
+            return "a";
+        }
+        if (type === "t" || type === "track") {
+            return "t";
+        }
+        return "";
+    }
+
+    function normalizeNonNegativeInteger(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number) || number < 0) {
+            return 0;
+        }
+        return Math.floor(number);
     }
 
     function resolveReleaseTitle(doc, tralbum, jsonLd) {

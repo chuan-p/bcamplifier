@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0 - 2026-06-25
+
+### Added
+
+- Add the enhanced release feed to Bandcamp fan collection and wishlist pages, including search results and delayed-loaded items.
+- Reuse native collection downloads, wishlist state, preorder labels, preview tracks, and collection counts in enhanced cards.
+- Add an optional collection-count setting with bounded, cached supporter pagination.
+
+### Improved
+
+- Preserve enhanced card state across collection, wishlist, followers, and following tab switches without rebuilding or rescanning clean grids.
+- Render cached tracklists immediately while refreshing expiring Bandcamp preview URLs in the background.
+- Make player title navigation restore the source fan tab and scroll to the exact track below Bandcamp's sticky tabs.
+- Keep enhanced feeds centered and synchronized with Bandcamp search, list/grid switching, and infinite loading.
+
+### Fixed
+
+- Prevent native Bandcamp cards from being injected into or compressed between enhanced cards.
+- Fix missing tracklists after list/grid switches and delayed wishlist or collection loading.
+- Fix player wishlist actions on fan wishlist cards.
+- Fix stale preview URLs causing `410 Gone` playback failures.
+- Fix stuck supporter counts and refresh controls during tab switches or background requests.
+- Fix fan search clearing, follower/following enhancement leakage, localized collection-count parsing, and repeated tab-switch work.
+
 ## 0.2.9 - 2026-06-23
 
 ### Improved

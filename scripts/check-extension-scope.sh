@@ -17,6 +17,7 @@ expected_host_permissions = [
 ]
 
 expected_matches = [
+    "https://bandcamp.com/*",
     "https://bandcamp.com/feed*",
     "https://bandcamp.com/*/feed*",
     "https://bandcamp.com/album/*",

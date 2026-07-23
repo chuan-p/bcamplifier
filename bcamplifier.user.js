@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamplifier
 // @namespace    https://github.com/chuan-p/bcamplifier
-// @version      0.2.9
+// @version      0.3.0
 // @description  Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.
 // @author       chuan
 // @match        https://bandcamp.com/feed*
@@ -26,13 +26,14 @@
     "use strict";
 
     const PLAYER_SHELL_CSS = ".bcampx-player-shell {\n        position: fixed;\n        left: 50%;\n        bottom: 18px;\n        width: min(920px, calc(100vw - 36px));\n        transform: translateX(-50%);\n        pointer-events: auto;\n        padding: 14px;\n        border: 1px solid rgba(190, 198, 204, 0.68);\n        border-radius: 18px;\n        background: rgba(247, 247, 247, 0.98);\n        box-shadow: 0 18px 40px rgba(36, 28, 20, 0.12);\n        color: #2f2f2f;\n        overflow: visible;\n        isolation: isolate;\n        font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        backdrop-filter: blur(6px);\n        -webkit-backdrop-filter: blur(6px);\n      }\n\n      .bcampx-player-controls {\n        display: flex;\n        gap: 8px;\n        align-items: center;\n        margin-bottom: 10px;\n      }\n\n      .bcampx-player-button {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        min-width: 80px;\n        min-height: 38px;\n        padding: 8px 12px;\n        border: solid 1px #dedede;\n        border-radius: 999px;\n        background-color: #fbfcfd;\n        background-image: none;\n        color: #408294;\n        font: 700 13px/1 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        white-space: nowrap;\n        text-align: center;\n        outline: none;\n        box-shadow: none;\n      }\n\n      .bcampx-player-button:disabled {\n        opacity: 0.4;\n        cursor: not-allowed;\n      }\n\n      .bcampx-player-button--circle {\n        width: 38px;\n        min-width: 38px;\n        min-height: 38px;\n        padding: 0;\n      }\n\n      .bcampx-player-button--circle svg {\n        width: 18px;\n        height: 18px;\n        display: block;\n        flex: 0 0 auto;\n      }\n\n      .bcampx-player-settings {\n        position: relative;\n        margin-left: auto;\n        display: flex;\n        align-items: center;\n        flex: 0 0 auto;\n      }\n\n      .bcampx-player-settings-toggle {\n        color: #408294;\n        border-color: #dedede;\n        background-color: #fbfcfd;\n      }\n\n      .bcampx-player-settings-toggle svg {\n        width: 19px;\n        height: 19px;\n      }\n\n      .bcampx-player-settings-toggle:hover {\n        border-color: #b8c6cf;\n        background-color: #f3f7f9;\n        color: #408294;\n      }\n\n      .bcampx-player-settings-menu {\n        position: absolute;\n        bottom: calc(100% + 8px);\n        right: 0;\n        z-index: 20;\n        min-width: 220px;\n        padding: 12px 13px;\n        border: 1px solid rgba(190, 198, 204, 0.9);\n        border-radius: 12px;\n        background: rgba(251, 252, 253, 0.98);\n        box-shadow: 0 14px 32px rgba(36, 28, 20, 0.14);\n        color: #2f2f2f;\n        max-height: min(55vh, 420px);\n        overflow: auto;\n      }\n\n      .bcampx-player-settings-row {\n        display: flex;\n        align-items: flex-start;\n        justify-content: space-between;\n        gap: 10px;\n        padding: 8px 0;\n        cursor: pointer;\n      }\n\n      .bcampx-player-settings-row + .bcampx-player-settings-row {\n        border-top: 1px solid rgba(222, 222, 222, 0.85);\n      }\n\n      .bcampx-player-settings-copy {\n        display: flex;\n        flex-direction: column;\n        gap: 3px;\n        min-width: 0;\n      }\n\n      .bcampx-player-settings-label {\n        color: #2f2f2f;\n        font: 700 13px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-player-settings-description {\n        color: #666;\n        font: 500 12px/1.4 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-player-settings-checkbox {\n        margin: 2px 0 0;\n        inline-size: 14px;\n        block-size: 14px;\n        accent-color: #408294;\n        flex: 0 0 auto;\n      }\n\n      .bcampx-player-settings-footer {\n        margin-top: 8px;\n        padding-top: 10px;\n        border-top: 1px solid rgba(222, 222, 222, 0.85);\n        color: #777;\n        font: 500 11px/1.45 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-player-settings-footer-link {\n        color: #408294;\n        text-decoration: none;\n      }\n\n      .bcampx-player-settings-footer-link:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx-player-button:hover {\n        text-decoration: none;\n        background-color: #f3f7f9;\n      }\n\n      .bcampx-player-favorite {\n        color: #408294;\n        position: relative;\n        transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, background-image 120ms ease;\n      }\n\n      .bcampx-player-favorite-outline,\n      .bcampx-player-favorite-fill {\n        transition: opacity 120ms ease;\n      }\n\n      .bcampx-player-favorite-fill {\n        opacity: 0;\n      }\n\n    .bcampx-player-favorite.active {\n      border: solid 1px #e06d2f;\n      background-color: #e06d2f;\n      background-image: none;\n      color: #fff;\n    }\n\n      .bcampx-player-favorite.active.bcampx-player-favorite--owned {\n        border: solid 1px #CB2D26;\n        background-color: #CB2D26;\n        background-image: none;\n        color: #fff;\n      }\n\n      .bcampx-player-favorite.active.bcampx-player-favorite--owned:disabled {\n       opacity: 1;\n       cursor: default;\n     }\n\n      .bcampx-player-favorite.active.bcampx-player-favorite--owned:hover {\n        border-color: #CB2D26;\n        background-color: #CB2D26;\n        color: #fff;\n      }\n\n    .bcampx-player-favorite.active:hover,\n     .bcampx-player-button--circle:hover {\n        border-color: #b8c6cf;\n        background-color: #f3f7f9;\n        color: #408294;\n      }\n\n      .bcampx-player-favorite.active:hover {\n        border-color: #d66428;\n        background-color: #d66428;\n        color: #fff;\n      }\n\n      .bcampx-player-favorite.active .bcampx-player-favorite-outline {\n        opacity: 0;\n      }\n\n      .bcampx-player-favorite.active .bcampx-player-favorite-fill {\n        opacity: 1;\n      }\n\n      .bcampx-player-meta {\n        display: flex;\n        justify-content: space-between;\n        align-items: baseline;\n        gap: 12px;\n        margin-bottom: 8px;\n      }\n\n      .bcampx-player-now {\n        display: inline-block;\n        margin-bottom: 5px;\n        font-size: 12px;\n        line-height: 1;\n        letter-spacing: 0.05em;\n        text-transform: uppercase;\n        color: #777;\n      }\n\n      .bcampx-player-track {\n        display: block;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #2f2f2f;\n        font: 700 16px/1.04 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: left;\n        text-decoration: none;\n        cursor: pointer;\n        user-select: text;\n        -webkit-user-select: text;\n        -webkit-user-drag: none;\n      }\n\n      .bcampx-player-track:hover,\n      .bcampx-player-store:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx-player-store {\n        color: #6b6b6b;\n        text-decoration: none;\n        font: 500 13px/1.05 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: right;\n        white-space: nowrap;\n      }\n\n      .bcampx-player-native {\n        margin-top: 2px;\n        background: transparent;\n      }\n\n      .bcampx-player-audio {\n        width: 100%;\n        height: 40px;\n        border-radius: 10px;\n        display: block !important;\n        visibility: visible !important;\n        opacity: 1 !important;\n        position: static !important;\n        pointer-events: auto !important;\n      }\n\n      @media (max-width: 820px) {\n        .bcampx-player-shell {\n          left: 50%;\n          bottom: 10px;\n          width: min(920px, calc(100vw - 20px));\n          transform: translateX(-50%);\n          padding: 10px 12px;\n          border-radius: 16px;\n        }\n\n        .bcampx-player-controls {\n          gap: 6px;\n          margin-bottom: 8px;\n        }\n\n        .bcampx-player-button {\n          min-height: 34px;\n          min-width: 74px;\n          padding: 7px 10px;\n          font-size: 12px;\n        }\n\n        .bcampx-player-button--circle {\n          width: 34px;\n          min-width: 34px;\n          min-height: 34px;\n        }\n\n        .bcampx-player-button--circle svg {\n          width: 17px;\n          height: 17px;\n        }\n\n        .bcampx-player-settings-menu {\n          min-width: 200px;\n          padding: 11px 12px;\n        }\n\n        .bcampx-player-settings-toggle svg {\n          width: 18px;\n          height: 18px;\n        }\n\n        .bcampx-player-meta {\n          gap: 8px;\n          margin-bottom: 7px;\n        }\n\n        .bcampx-player-track {\n          font-size: 15px;\n          line-height: 1.03;\n        }\n\n        .bcampx-player-store,\n        .bcampx-player-now {\n          font-size: 11px;\n        }\n\n        .bcampx-player-now {\n          margin-bottom: 4px;\n        }\n\n        .bcampx-player-audio {\n          height: 36px;\n        }\n      }\n";
-    const ENHANCEMENT_CSS = ".bcampx {\n        box-sizing: border-box;\n        margin: 6px 0 0;\n        padding: 0;\n        max-width: 360px;\n        color: #444;\n        font: 12px/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n      }\n\n      .bcampx * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed {\n        box-sizing: border-box;\n        width: 100%;\n        max-width: 940px;\n        margin: 0 0 28px;\n        padding: 0;\n      }\n\n      .bcampx-label-feed__list {\n        margin: 0;\n        padding: 0;\n        list-style: none;\n      }\n\n      .bcampx-label-feed-page--enhanced .label-band-selector.fade-in-on-load {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-native-offscreen {\n        position: absolute !important;\n        left: -10000px !important;\n        top: auto !important;\n        width: 1px !important;\n        height: 1px !important;\n        max-width: 1px !important;\n        max-height: 1px !important;\n        overflow: hidden !important;\n        opacity: 0 !important;\n        pointer-events: none !important;\n      }\n\n      .bcampx-label-feed-card {\n        box-sizing: border-box;\n        display: block;\n        width: 100%;\n        min-height: 150px;\n        content-visibility: auto;\n        contain-intrinsic-size: auto 260px;\n        margin: 0 0 16px;\n        padding: 15px 18px;\n        border: 1px solid rgba(0, 0, 0, 0.12);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.92);\n        color: #333;\n        font: 400 13px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed-card .bcampx-label-feed-card__story-title {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a {\n        color: #4085b6 !important;\n        font: inherit !important;\n        font-weight: 600 !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper {\n        display: grid;\n        grid-template-columns: 200px minmax(180px, 1fr) minmax(220px, 280px);\n        gap: 18px;\n        align-items: start;\n      }\n\n      .bcampx-label-feed-card .art img {\n        display: block;\n        width: 200px;\n        height: 200px;\n        object-fit: cover;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper-col1,\n      .bcampx-label-feed-card .tralbum-wrapper-col2 {\n        min-width: 0;\n      }\n\n      .bcampx-label-feed-card .item-link {\n        color: #222 !important;\n        font: 700 15px/1.25 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .item-link:hover,\n      .bcampx-label-feed-card .buy-link:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .itemsubtext {\n        margin-top: 4px !important;\n        color: #777 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n      }\n\n      .bcampx-label-feed-card .buy-link {\n        display: inline-block;\n        margin-top: 8px !important;\n        border: 0 !important;\n        background: transparent !important;\n        padding: 0 !important;\n        color: #4085b6 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n        cursor: pointer !important;\n      }\n\n      .bcampx-label-feed-card .buy-link:disabled,\n      .bcampx-label-feed-card .buy-link:disabled:hover {\n        color: #777 !important;\n        cursor: default !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-owners {\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot {\n        width: 100%;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot.bcampx--expanded {\n        content-visibility: auto;\n        contain-intrinsic-size: auto 360px;\n      }\n\n      .bcampx-label-feed-toggle {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: auto;\n        height: 22px;\n        min-height: 22px;\n        margin: 0 8px 10px 0;\n        padding: 1px;\n        border: 1px solid rgba(0, 0, 0, 0.13);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.9);\n        box-shadow: none;\n        color: #777;\n        cursor: pointer;\n        vertical-align: middle;\n      }\n\n      .bcampx-label-feed-toggle__icon {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: 22px;\n        height: 18px;\n        border-radius: 2px;\n        color: #777;\n      }\n\n      .bcampx-label-feed-toggle__icon + .bcampx-label-feed-toggle__icon {\n        margin-left: 2px;\n      }\n\n      .bcampx-label-feed-toggle--feed .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle svg {\n        display: block;\n      }\n\n      .bcampx-label-feed-toggle--floating {\n        position: fixed;\n        left: 14px;\n        bottom: 14px;\n        z-index: 2147483645;\n        margin: 0;\n        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);\n      }\n\n      .bcampx-label-feed-toggle--inline {\n        position: static;\n      }\n\n      .bcampx-label-feed-toggle--navbar {\n        margin: 0 0 0 auto;\n        align-self: center;\n      }\n\n      #band-navbar.bcampx-label-feed-navbar-host {\n        display: flex;\n        align-items: center;\n        gap: 0;\n      }\n\n      .bcampx-label-feed-toggle:hover {\n        border-color: rgba(64, 133, 182, 0.3);\n        color: #266a99;\n        background: rgba(255, 255, 255, 0.96);\n      }\n\n      .bcampx-label-feed-toggle:hover .bcampx-label-feed-toggle__icon {\n        color: #266a99;\n        background: rgba(64, 133, 182, 0.08);\n      }\n\n      .bcampx-label-feed-toggle--feed:hover .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original:hover .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle:focus-visible {\n        outline: 2px solid #4085b6;\n        outline-offset: 2px;\n      }\n\n      @media (max-width: 560px) {\n        .bcampx-label-feed {\n          max-width: none;\n        }\n\n        .bcampx-label-feed-card {\n          padding: 14px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper {\n          grid-template-columns: 128px minmax(0, 1fr);\n          gap: 12px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper-col2 {\n          grid-column: 1 / -1;\n          padding-top: 4px;\n        }\n\n        .bcampx-label-feed-card .art img {\n          width: 128px;\n          height: 128px;\n        }\n\n        .bcampx-label-feed-toggle {\n          margin-right: 8px;\n        }\n\n        .bcampx-label-feed-toggle--floating {\n          left: 10px;\n          bottom: 10px;\n          margin: 0;\n        }\n      }\n\n      .bcampx__meta {\n        display: block;\n        color: #555;\n        padding-top: 4px;\n      }\n\n      .bcampx__summary {\n        display: flex;\n        align-items: center;\n        gap: 10px;\n        margin-top: 4px;\n        color: #777;\n      }\n\n      .bcampx--supported-slot {\n        max-width: none;\n        margin: 0;\n        padding: 0;\n      }\n\n      .bcampx--supported-slot .bcampx__meta {\n        padding: 0;\n        max-width: none;\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx__slot-panel {\n        padding: 0;\n        border-left: 0;\n      }\n\n      .bcampx__summary-text {\n        min-width: 0;\n      }\n\n      .bcampx__merge-note {\n        margin: 8px 0 12px;\n        color: #8a8a8a;\n        font: 400 12px/1.34 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: left;\n      }\n\n      .bcampx__merge-fan {\n        color: #6d6d6d;\n        font-weight: 600;\n      }\n\n      .bcampx__merge-copy {\n        color: #8a8a8a;\n      }\n\n      .bcampx__merge-track-button {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        cursor: pointer;\n      }\n\n      .bcampx__merge-track-button:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button.bcampx__track-link--active {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button:disabled {\n        cursor: progress;\n        opacity: 0.75;\n      }\n\n      .bcampx__toggle {\n        cursor: pointer;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        text-decoration: underline;\n      }\n\n      .bcampx__toggle:disabled {\n        cursor: progress;\n        opacity: 0.68;\n      }\n\n      .bcampx__facts {\n        color: #666;\n      }\n\n      .bcampx__slot-header {\n        margin: 0 0 7px;\n        color: #757575;\n        font-size: 10px;\n        line-height: 1.2;\n        font-weight: 600;\n        letter-spacing: 0.09em;\n        text-transform: uppercase;\n      }\n\n      .bcampx__slot-subhead {\n        margin: 8px 0 0;\n        color: #949494;\n        font-size: 11px;\n        font-weight: 400;\n      }\n\n      .bcampx__description {\n        margin: 6px 0 0;\n        color: #333;\n        white-space: pre-line;\n      }\n\n      .bcampx__tracks {\n        display: none;\n        margin: 6px 0 0 18px;\n        padding: 0;\n      }\n\n      .bcampx--expanded .bcampx__tracks {\n        display: block;\n      }\n\n      .bcampx__tracks li {\n        margin: 2px 0;\n      }\n\n      .bcampx__tracks--slot {\n        display: block;\n        margin: 0;\n        padding-left: 0;\n        list-style: none;\n        counter-reset: bcampxTrackNumber;\n        color: #4a4a4a;\n        font-size: 12px;\n        font-weight: 400;\n      }\n\n      .bcampx__tracks--slot li {\n        display: grid;\n        grid-template-columns: 18px minmax(0, 1fr) auto;\n        column-gap: 7px;\n        align-items: start;\n        margin: 0;\n        padding: 2px 0 5px;\n        line-height: 1.28;\n        border-top: 0;\n      }\n\n      .bcampx__tracks--slot li:first-child {\n        border-top: 0;\n        padding-top: 0;\n      }\n\n      .bcampx__tracks--slot.bcampx__tracks--collapsed .bcampx__track-item--extra {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li::before {\n        counter-increment: bcampxTrackNumber;\n        content: counter(bcampxTrackNumber) \".\";\n        color: #aaaaaa;\n        font-variant-numeric: tabular-nums;\n        align-self: start;\n        justify-self: start;\n        padding-top: 1px;\n      }\n\n      .bcampx__track-item--purchased::before {\n        color: #4085b6;\n        font-weight: 400;\n      }\n\n      .bcampx__track-link {\n        cursor: pointer;\n        display: block;\n        width: 100%;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: inherit;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        min-width: 0;\n        margin: 0;\n      }\n\n      .bcampx__track-link:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-link--active {\n        color: #4085b6;\n        font-weight: 400;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-item--purchased .bcampx__track-link {\n        color: #333;\n        font-weight: 400;\n      }\n\n      .bcampx__track-duration {\n        color: #a0a0a0;\n        font-size: 11px;\n        font-variant-numeric: tabular-nums;\n        white-space: nowrap;\n        padding-top: 1px;\n        text-align: right;\n        opacity: 0.88;\n        align-self: start;\n      }\n\n      .bcampx__track-end {\n        display: flex;\n        justify-content: flex-end;\n        align-items: flex-start;\n        min-width: 42px;\n      }\n\n      .bcampx__track-actions {\n        display: none;\n        align-items: center;\n        gap: 6px;\n        margin-top: -1px;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-duration,\n      .bcampx__track-item--show-actions .bcampx__track-duration {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-actions,\n      .bcampx__track-item--show-actions .bcampx__track-actions {\n        display: flex;\n      }\n\n      .bcampx__track-action {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 10px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-transform: lowercase;\n      }\n\n      .bcampx__track-action:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-action:disabled {\n        cursor: default;\n        opacity: 0.7;\n      }\n\n      .bcampx__track-action--pending,\n      .bcampx__track-action--flash {\n        color: #4085b6;\n      }\n\n      .bcampx__track-action-frame {\n        position: fixed;\n        width: 1px;\n        height: 1px;\n        opacity: 0;\n        pointer-events: none;\n        left: -9999px;\n        top: -9999px;\n        border: 0;\n      }\n\n      .bcampx__track-link:disabled {\n        cursor: default;\n        opacity: 0.55;\n      }\n\n\n      .bcampx__description--slot {\n        margin-top: 10px;\n        color: #757575;\n        font-size: 12px;\n        line-height: 1.4;\n        white-space: normal;\n      }\n\n      .bcampx__description-block {\n        display: block;\n        margin-top: 10px;\n        padding-top: 0;\n        border-top: 0;\n      }\n\n      .bcampx__description--slot p {\n        margin: 0 0 5px;\n      }\n\n      .bcampx__description--slot p:last-child {\n        margin-bottom: 0;\n      }\n\n      .bcampx__description--slot.bcampx__description--collapsed {\n        max-height: calc(1.35em * 4);\n        overflow: hidden;\n      }\n\n      .bcampx__description--slot a {\n        color: #4085b6;\n        text-decoration: none;\n      }\n\n      .bcampx__description--slot a:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__slot-expand {\n        display: inline-block;\n        margin-top: 3px;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 11px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-decoration: none;\n      }\n\n\n      .bcampx__slot-expand:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      #track_play_waypoint {\n        display: none !important;\n      }\n\n      .bcampx__waypoint-toggle {\n        position: absolute;\n        right: -18px;\n        top: 50%;\n        transform: translateY(-50%);\n        min-width: 62px;\n        padding: 6px 14px;\n        border: 1px solid rgba(255, 255, 255, 0.65);\n        border-radius: 999px;\n        background: rgba(120, 120, 120, 0.92);\n        color: #fff;\n        font: 600 12px/1 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n        cursor: pointer;\n        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);\n        z-index: 4;\n      }\n\n      .bcampx__waypoint-toggle:hover {\n        background: rgba(105, 105, 105, 0.98);\n      }\n\n      .bcampx__waypoint-toggle--paused {\n        background: rgba(132, 132, 132, 0.9);\n      }\n\n\n      .bcampx__link {\n        display: inline-block;\n        margin-top: 8px;\n        color: #4085b6;\n        text-decoration: none;\n        font-size: 13px;\n        font-weight: 600;\n      }\n\n      .bcampx__link:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action {\n        display: inline-block;\n        margin: 8px 10px 0 0;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font-size: 13px;\n        font-weight: 600;\n        cursor: pointer;\n      }\n\n      .bcampx__action:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action:disabled {\n        cursor: default;\n        opacity: 0.6;\n        text-decoration: none;\n      }\n\n      .bcampx__error,\n      .bcampx__empty {\n        margin: 0 0 6px;\n        color: #66757f;\n      }\n\n      .bcampx--loading {\n        opacity: 0.78;\n      }\n";
-    const SCRIPT_VERSION = "0.2.9";
+    const ENHANCEMENT_CSS = ".bcampx {\n        box-sizing: border-box;\n        margin: 6px 0 0;\n        padding: 0;\n        max-width: 360px;\n        color: #444;\n        font: 12px/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n      }\n\n      .bcampx * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed {\n        box-sizing: border-box;\n        width: 100%;\n        max-width: 940px;\n        margin: 0 0 28px;\n        padding: 0;\n      }\n\n      #collection-grid > .bcampx-label-feed,\n      #wishlist-grid > .bcampx-label-feed,\n      #collection-search-grid > .bcampx-label-feed,\n      #wishlist-search-grid > .bcampx-label-feed {\n        flex: 0 0 100%;\n        width: 100%;\n        max-width: 940px;\n        margin-right: auto;\n        margin-left: auto;\n      }\n\n      #grids > .grid > .bcampx-label-feed {\n        flex: 0 0 100%;\n        width: 100%;\n        max-width: 940px;\n        box-sizing: border-box;\n      }\n\n      #grids > .grid > .bcampx-label-feed--other-fan {\n        margin-top: 20px;\n      }\n\n      .bcampx-label-feed__list {\n        margin: 0;\n        padding: 0;\n        list-style: none;\n      }\n\n      .bcampx-label-feed-page--enhanced .label-band-selector.fade-in-on-load {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-native-offscreen {\n        position: absolute !important;\n        left: -10000px !important;\n        top: auto !important;\n        width: 1px !important;\n        height: 1px !important;\n        max-width: 1px !important;\n        max-height: 1px !important;\n        overflow: hidden !important;\n        opacity: 0 !important;\n        pointer-events: none !important;\n      }\n\n      .bcampx-label-feed-card {\n        box-sizing: border-box;\n        display: block;\n        width: 100%;\n        min-height: 150px;\n        content-visibility: auto;\n        contain-intrinsic-size: 260px;\n        margin: 0 0 16px;\n        padding: 15px 18px;\n        border: 1px solid rgba(0, 0, 0, 0.12);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.92);\n        color: #333;\n        font: 400 13px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed-card .bcampx-label-feed-card__story-title {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a {\n        color: #4085b6 !important;\n        font: inherit !important;\n        font-weight: 600 !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper {\n        display: grid;\n        grid-template-columns: 200px minmax(180px, 1fr) minmax(220px, 280px);\n        gap: 18px;\n        align-items: start;\n      }\n\n.bcampx-label-feed-card .art img {\n        display: block;\n        width: 200px;\n        height: 200px;\n        object-fit: cover;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper-col1,\n      .bcampx-label-feed-card .tralbum-wrapper-col2 {\n        min-width: 0;\n      }\n\n\n\n\n      .bcampx-label-feed-card .item-link {\n        color: #222 !important;\n        font: 700 15px/1.25 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .item-link:hover,\n      .bcampx-label-feed-card .buy-link:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .itemsubtext {\n        margin-top: 4px !important;\n        color: #777 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n      }\n\n      .bcampx-label-feed-card__supporter-count {\n        margin-top: 5px;\n        color: #6a6a6a;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card__supporter-refresh {\n        margin: 0 0 0 6px;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        cursor: pointer;\n        text-decoration: underline;\n      }\n\n      .bcampx-label-feed-card__supporter-refresh:disabled {\n        color: #999;\n        cursor: progress;\n        text-decoration: none;\n      }\n\n      .bcampx-label-feed-card .buy-link {\n        display: inline-block;\n        margin-top: 7px !important;\n        border: 0 !important;\n        background: transparent !important;\n        padding: 0 !important;\n        color: #4085b6 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n        cursor: pointer !important;\n      }\n\n      .bcampx-label-feed-card .buy-link:disabled,\n      .bcampx-label-feed-card .buy-link:disabled:hover {\n        color: #777 !important;\n        cursor: default !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-owners {\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot {\n        width: 100%;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot.bcampx--expanded {\n        content-visibility: auto;\n        contain-intrinsic-size: auto 360px;\n      }\n\n      .bcampx-label-feed-toggle {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: auto;\n        height: 22px;\n        min-height: 22px;\n        margin: 0 8px 10px 0;\n        padding: 1px;\n        border: 1px solid rgba(0, 0, 0, 0.13);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.9);\n        box-shadow: none;\n        color: #777;\n        cursor: pointer;\n        vertical-align: middle;\n      }\n\n      .bcampx-label-feed-toggle__icon {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: 22px;\n        height: 18px;\n        border-radius: 2px;\n        color: #777;\n      }\n\n      .bcampx-label-feed-toggle__icon + .bcampx-label-feed-toggle__icon {\n        margin-left: 2px;\n      }\n\n      .bcampx-label-feed-toggle--feed .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle svg {\n        display: block;\n      }\n\n      .bcampx-label-feed-toggle--floating {\n        position: fixed;\n        left: 14px;\n        bottom: 14px;\n        z-index: 2147483645;\n        margin: 0;\n        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);\n      }\n\n      .bcampx-label-feed-toggle--inline {\n        position: static;\n      }\n\n      .bcampx-label-feed-toggle--navbar {\n        margin: 0 0 0 auto;\n        align-self: center;\n      }\n\n      #band-navbar.bcampx-label-feed-navbar-host {\n        display: flex;\n        align-items: center;\n        gap: 0;\n      }\n\n      .bcampx-label-feed-toggle:hover {\n        border-color: rgba(64, 133, 182, 0.3);\n        color: #266a99;\n        background: rgba(255, 255, 255, 0.96);\n      }\n\n      .bcampx-label-feed-toggle:hover .bcampx-label-feed-toggle__icon {\n        color: #266a99;\n        background: rgba(64, 133, 182, 0.08);\n      }\n\n      .bcampx-label-feed-toggle--feed:hover .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original:hover .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle:focus-visible {\n        outline: 2px solid #4085b6;\n        outline-offset: 2px;\n      }\n\n      @media (max-width: 560px) {\n        .bcampx-label-feed {\n          max-width: none;\n        }\n\n        .bcampx-label-feed-card {\n          padding: 14px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper {\n          grid-template-columns: 128px minmax(0, 1fr);\n          gap: 12px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper-col2 {\n          grid-column: 1 / -1;\n          padding-top: 4px;\n        }\n\n        .bcampx-label-feed-card .art img {\n          width: 128px;\n          height: 128px;\n        }\n\n        .bcampx-label-feed-toggle {\n          margin-right: 8px;\n        }\n\n        .bcampx-label-feed-toggle--floating {\n          left: 10px;\n          bottom: 10px;\n          margin: 0;\n        }\n      }\n\n      .bcampx__meta {\n        display: block;\n        color: #555;\n        padding-top: 4px;\n      }\n\n      .bcampx__summary {\n        display: flex;\n        align-items: center;\n        gap: 10px;\n        margin-top: 4px;\n        color: #777;\n      }\n\n      .bcampx--supported-slot {\n        max-width: none;\n        margin: 0;\n        padding: 0;\n      }\n\n      .bcampx--supported-slot .bcampx__meta {\n        padding: 0;\n        max-width: none;\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx__slot-panel {\n        padding: 0;\n        border-left: 0;\n      }\n\n      .bcampx__summary-text {\n        min-width: 0;\n      }\n\n      .bcampx__merge-note {\n        margin: 8px 0 12px;\n        color: #8a8a8a;\n        font: 400 12px/1.34 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: left;\n      }\n\n      .bcampx__merge-fan {\n        color: #6d6d6d;\n        font-weight: 600;\n      }\n\n      .bcampx__merge-copy {\n        color: #8a8a8a;\n      }\n\n      .bcampx__merge-track-button {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        cursor: pointer;\n      }\n\n      .bcampx__merge-track-button:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button.bcampx__track-link--active {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button:disabled {\n        cursor: progress;\n        opacity: 0.75;\n      }\n\n      .bcampx__toggle {\n        cursor: pointer;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        text-decoration: underline;\n      }\n\n      .bcampx__toggle:disabled {\n        cursor: progress;\n        opacity: 0.68;\n      }\n\n      .bcampx__facts {\n        color: #666;\n      }\n\n      .bcampx__slot-header {\n        margin: 0 0 7px;\n        color: #757575;\n        font-size: 10px;\n        line-height: 1.2;\n        font-weight: 600;\n        letter-spacing: 0.09em;\n        text-transform: uppercase;\n      }\n\n      .bcampx__slot-subhead {\n        margin: 8px 0 0;\n        color: #949494;\n        font-size: 11px;\n        font-weight: 400;\n      }\n\n      .bcampx__slot-loading {\n        margin: 7px 0 0;\n        color: #8a8a8a;\n        font-size: 11px;\n        line-height: 1.3;\n      }\n\n      .bcampx__description {\n        margin: 6px 0 0;\n        color: #333;\n        white-space: pre-line;\n      }\n\n      .bcampx__tracks {\n        display: none;\n        margin: 6px 0 0 18px;\n        padding: 0;\n      }\n\n      .bcampx--expanded .bcampx__tracks {\n        display: block;\n      }\n\n      .bcampx__tracks li {\n        margin: 2px 0;\n      }\n\n      .bcampx__tracks--slot {\n        display: block;\n        margin: 0;\n        padding-left: 0;\n        list-style: none;\n        counter-reset: bcampxTrackNumber;\n        color: #4a4a4a;\n        font-size: 12px;\n        font-weight: 400;\n      }\n\n      .bcampx__tracks--slot li {\n        display: grid;\n        grid-template-columns: 18px minmax(0, 1fr) auto;\n        column-gap: 7px;\n        align-items: start;\n        margin: 0;\n        padding: 2px 0 5px;\n        line-height: 1.28;\n        border-top: 0;\n      }\n\n      .bcampx__tracks--slot li:first-child {\n        border-top: 0;\n        padding-top: 0;\n      }\n\n      .bcampx__tracks--slot.bcampx__tracks--collapsed .bcampx__track-item--extra {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li::before {\n        counter-increment: bcampxTrackNumber;\n        content: counter(bcampxTrackNumber) \".\";\n        color: #aaaaaa;\n        font-variant-numeric: tabular-nums;\n        align-self: start;\n        justify-self: start;\n        padding-top: 1px;\n      }\n\n      .bcampx__track-item--purchased::before {\n        color: #4085b6;\n        font-weight: 400;\n      }\n\n      .bcampx__track-link {\n        cursor: pointer;\n        display: block;\n        width: 100%;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: inherit;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        min-width: 0;\n        margin: 0;\n      }\n\n      .bcampx__track-link:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-link--active {\n        color: #4085b6;\n        font-weight: 400;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-item--purchased .bcampx__track-link {\n        color: #333;\n        font-weight: 400;\n      }\n\n      .bcampx__track-duration {\n        color: #a0a0a0;\n        font-size: 11px;\n        font-variant-numeric: tabular-nums;\n        white-space: nowrap;\n        padding-top: 1px;\n        text-align: right;\n        opacity: 0.88;\n        align-self: start;\n      }\n\n      .bcampx__track-end {\n        display: flex;\n        justify-content: flex-end;\n        align-items: flex-start;\n        min-width: 42px;\n      }\n\n      .bcampx__track-actions {\n        display: none;\n        align-items: center;\n        gap: 6px;\n        margin-top: -1px;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-duration,\n      .bcampx__track-item--show-actions .bcampx__track-duration {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-actions,\n      .bcampx__track-item--show-actions .bcampx__track-actions {\n        display: flex;\n      }\n\n      .bcampx__track-action {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 10px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-transform: lowercase;\n      }\n\n      .bcampx__track-action:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-action:disabled {\n        cursor: default;\n        opacity: 0.7;\n      }\n\n      .bcampx__track-action--pending,\n      .bcampx__track-action--flash {\n        color: #4085b6;\n      }\n\n      .bcampx__track-action-frame {\n        position: fixed;\n        width: 1px;\n        height: 1px;\n        opacity: 0;\n        pointer-events: none;\n        left: -9999px;\n        top: -9999px;\n        border: 0;\n      }\n\n      .bcampx__track-link:disabled {\n        cursor: default;\n        opacity: 0.55;\n      }\n\n\n      .bcampx__description--slot {\n        margin-top: 10px;\n        color: #757575;\n        font-size: 12px;\n        line-height: 1.4;\n        white-space: normal;\n      }\n\n      .bcampx__description-block {\n        display: block;\n        margin-top: 10px;\n        padding-top: 0;\n        border-top: 0;\n      }\n\n      .bcampx__description--slot p {\n        margin: 0 0 5px;\n      }\n\n      .bcampx__description--slot p:last-child {\n        margin-bottom: 0;\n      }\n\n      .bcampx__description--slot.bcampx__description--collapsed {\n        max-height: calc(1.35em * 4);\n        overflow: hidden;\n      }\n\n      .bcampx__description--slot a {\n        color: #4085b6;\n        text-decoration: none;\n      }\n\n      .bcampx__description--slot a:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__slot-expand {\n        display: inline-block;\n        margin-top: 3px;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 11px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-decoration: none;\n      }\n\n\n      .bcampx__slot-expand:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      #track_play_waypoint {\n        display: none !important;\n      }\n\n      .bcampx__waypoint-toggle {\n        position: absolute;\n        right: -18px;\n        top: 50%;\n        transform: translateY(-50%);\n        min-width: 62px;\n        padding: 6px 14px;\n        border: 1px solid rgba(255, 255, 255, 0.65);\n        border-radius: 999px;\n        background: rgba(120, 120, 120, 0.92);\n        color: #fff;\n        font: 600 12px/1 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n        cursor: pointer;\n        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);\n        z-index: 4;\n      }\n\n      .bcampx__waypoint-toggle:hover {\n        background: rgba(105, 105, 105, 0.98);\n      }\n\n      .bcampx__waypoint-toggle--paused {\n        background: rgba(132, 132, 132, 0.9);\n      }\n\n\n      .bcampx__link {\n        display: inline-block;\n        margin-top: 8px;\n        color: #4085b6;\n        text-decoration: none;\n        font-size: 13px;\n        font-weight: 600;\n      }\n\n      .bcampx__link:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action {\n        display: inline-block;\n        margin: 8px 10px 0 0;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font-size: 13px;\n        font-weight: 600;\n        cursor: pointer;\n      }\n\n      .bcampx__action:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action:disabled {\n        cursor: default;\n        opacity: 0.6;\n        text-decoration: none;\n      }\n\n      .bcampx__error,\n      .bcampx__empty {\n        margin: 0 0 6px;\n        color: #66757f;\n      }\n\n      .bcampx--loading {\n        opacity: 0.78;\n      }\n\n\n      .bcampx-label-feed-card__tags {\n        grid-column: 1 / -1;\n        display: flex;\n        justify-content: space-between;\n        align-items: baseline;\n        gap: 12px;\n        margin-top: 6px;\n        color: #7a7a7a;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card__tags a {\n        color: #4085b6;\n        font: inherit;\n        text-decoration: none;\n      }\n\n      .bcampx-label-feed-card__tags a:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx-label-feed-card__date {\n        margin-left: auto;\n      }\n";
+    const SCRIPT_VERSION = "0.3.0";
 
     const CONFIG = {
         autoFetchOnVisible: true,
         expandAfterAutoFetch: true,
         cacheTtlMs: 7 * 24 * 60 * 60 * 1000,
+        trackCacheTtlMs: 12 * 60 * 60 * 1000,
         fetchTimeoutMs: 15000,
         maxTracks: 40,
         initialVisibleTracks: 6,
@@ -44,11 +45,22 @@
         enableTrackRowActions: true,
         continuousMode: false,
         autoFillMinimumPrice: false,
-        maxConcurrentFetches: 3,
+        showCollectionCounts: false,
+        maxConcurrentFetches: 4,
+        maxConcurrentAutoFetches: 4,
+        maxViewSwitchPrefetchCards: 24,
+        maxConcurrentSupporterCountFetches: 2,
+        supporterCountPageSize: 80,
+        supporterCountPageDelayMs: 120,
+        supporterCountRequestRetries: 2,
+        supporterCountRetryDelayMs: 400,
+        supporterCountCacheTtlMs: 12 * 60 * 60 * 1000,
+        maxSupporterExactCount: 250,
     };
 
-    const CACHE_SCHEMA_VERSION = 16;
+    const CACHE_SCHEMA_VERSION = 17;
     const RELEASE_CACHE_PREFIX = "bcampx:release:";
+    const RELEASE_SUPPORTER_COUNT_CACHE_PREFIX = "bcampx:releaseSupporters:";
     const USER_SETTINGS_KEY = "bcampx:userSettings";
     const ARTIST_MUSIC_VIEW_KEY = "bcampx:artistMusicView";
     const PLAYBACK_PAUSE_REQUEST_KEY = "bcampx:playbackPauseRequest";
@@ -58,14 +70,24 @@
     const PLAYBACK_PAUSE_STALE_MS = 10000;
     const PLAYER_WISHLIST_STATE_RETRY_MS = 30000;
     const OWNED_RELEASE_COLLECTION_SEARCH_TTL_MS = 2 * 60 * 1000;
+    const LOADING_EXTRA_CONTEXT_TEXT = "Loading extra context...";
     const STATE = {
         initialized: false,
         artistMusicFeedBuilt: false,
+        artistMusicFeedBuilding: false,
         artistMusicFeedView: "feed",
         artistMusicFeedNode: null,
         artistMusicSourceGridNode: null,
         artistMusicToggleNode: null,
         artistMusicFeaturedNodes: [],
+        artistMusicFeedSyncTimer: 0,
+        artistMusicVisibleFetchTimer: 0,
+        artistMusicSourceGridObserver: null,
+        artistMusicFanTabObserver: null,
+        artistMusicFanTabSyncTimer: 0,
+        artistMusicFanCardsByGrid: new WeakMap(),
+        artistMusicFanDirtyGrids: new WeakSet(),
+        artistMusicLoadMoreScrollPending: false,
         globalBridgeInitialized: false,
         trackActionBridgeInitialized: false,
         scanTimer: 0,
@@ -77,6 +99,7 @@
         pageAudio: null,
         activeTrackButton: null,
         activeTrackCard: null,
+        activeTrackFanGridNode: null,
         waypointNode: null,
         activeTrack: null,
         activeTrackIndex: -1,
@@ -92,8 +115,17 @@
         playerHost: null,
         playerSettingsOpen: false,
         pendingReleaseRequests: new Map(),
+        pageFreshTrackReleaseKeys: new Set(),
         releaseFetchQueue: [],
         activeReleaseFetchCount: 0,
+        autoFetchQueue: [],
+        autoFetchDrainScheduled: false,
+        activeAutoFetchCount: 0,
+        autoFetchSequence: 0,
+        peakAutoFetchCount: 0,
+        pendingSupporterCountRequests: new Map(),
+        supporterCountFetchQueue: [],
+        activeSupporterCountFetchCount: 0,
         pendingTrackActionRequests: new Map(),
         playerWishlistStateByUrl: new Map(),
         playerWishlistStateRequests: new Map(),
@@ -364,9 +396,12 @@
         setupPlayerMenuDismissal();
         injectStyles();
         await buildArtistMusicFeed();
+        setupFanCollectionTabObserver();
         ensurePlayerShell();
         setupIntersectionObserver();
         scanForCards();
+        rearmArtistMusicFeedCardObservers(STATE.artistMusicFeedNode);
+        scheduleArtistMusicFeedVisibleFetch(STATE.artistMusicFeedNode);
         setupMutationObserver();
     }
 
@@ -377,6 +412,11 @@
 
         STATE.globalBridgeInitialized = true;
         document.addEventListener("play", handleDocumentAudioPlay, true);
+        document.addEventListener(
+            "click",
+            handleArtistMusicNativeLoadMoreClick,
+            true,
+        );
         subscribeToPlaybackPauseRequests();
         STATE.playbackPauseMonitorTimer = window.setInterval(
             checkForPlaybackPauseRequest,
@@ -404,6 +444,10 @@
             settings.autoFillMinimumPrice,
             false,
         );
+        CONFIG.showCollectionCounts = coerceBooleanSetting(
+            settings.showCollectionCounts,
+            false,
+        );
     }
 
     function coerceBooleanSetting(value, fallback) {
@@ -427,6 +471,7 @@
             enableTrackRowActions: !!CONFIG.enableTrackRowActions,
             continuousMode: !!CONFIG.continuousMode,
             autoFillMinimumPrice: !!CONFIG.autoFillMinimumPrice,
+            showCollectionCounts: !!CONFIG.showCollectionCounts,
         };
     }
 
@@ -1046,6 +1091,20 @@
                         parsed.collect_item_type),
                 normalizedReleaseUrl,
             ),
+            requirePageFreshTracks:
+                isBandcampFanCollectionPageUrl(window.location.href) &&
+                Boolean(
+                    card &&
+                        card.classList &&
+                        card.classList.contains("bcampx-label-feed-card"),
+                ),
+            allowCachedTrackSnapshot:
+                isBandcampFanCollectionPageUrl(window.location.href) &&
+                Boolean(
+                    card &&
+                        card.classList &&
+                        card.classList.contains("bcampx-label-feed-card"),
+                ),
         };
     }
 
@@ -1223,28 +1282,44 @@
     }
 
         async function buildArtistMusicFeed() {
-        if (STATE.artistMusicFeedBuilt || !isArtistMusicPage()) {
+        if (STATE.artistMusicFeedBuilt || STATE.artistMusicFeedBuilding) {
             return false;
         }
 
-        const releases = collectArtistMusicReleaseCandidates();
+        const feedContext = getReleaseGridFeedContext();
+        if (!feedContext) {
+            return false;
+        }
+
+        const releases = collectReleaseGridFeedCandidates(feedContext);
         if (!releases.length) {
             markDebugState("data-bcampx-label-feed-state", "empty");
             return false;
         }
 
-        const sourceGrid = findArtistMusicSourceGrid();
+        const sourceGrid = feedContext.sourceGrid;
         if (!sourceGrid || !sourceGrid.parentNode) {
             markDebugState("data-bcampx-label-feed-state", "missing-source");
             return false;
         }
 
+        STATE.artistMusicFeedBuilding = true;
         const feed = document.createElement("section");
         feed.className = "bcampx-label-feed";
-        feed.setAttribute("aria-label", "Bandcamp release feed");
+        feed.setAttribute("aria-label", feedContext.ariaLabel);
+        feed.setAttribute("data-bcampx-feed-kind", feedContext.kind);
+        if (
+            /^fan-/.test(feedContext.kind) &&
+            !isCurrentFanProfileOwner()
+        ) {
+            feed.classList.add("bcampx-label-feed--other-fan");
+        }
 
-        const list = document.createElement("ol");
+        // Bandcamp's fan-page infinite loader appends releases to every nearby
+        // <ol>, so this list must not look like a native collection grid.
+        const list = document.createElement("div");
         list.className = "bcampx-label-feed__list";
+        list.setAttribute("role", "list");
         releases.forEach((release) => {
             list.appendChild(createArtistMusicFeedCard(release));
         });
@@ -1257,20 +1332,720 @@
         STATE.artistMusicFeedNode = feed;
         STATE.artistMusicSourceGridNode = sourceGrid;
         STATE.artistMusicFeaturedNodes = findArtistMusicFeaturedNodes();
+        if (/^fan-/.test(feedContext.kind)) {
+            STATE.artistMusicFanDirtyGrids.delete(sourceGrid);
+        }
 
-        sourceGrid.parentNode.insertBefore(feed, sourceGrid);
+        mountReleaseGridFeed(feed, feedContext);
         document.body.classList.add("bcampx-label-feed-page");
         ensureArtistMusicViewToggle();
         applyArtistMusicFeedView(STATE.artistMusicFeedView);
         STATE.artistMusicFeedBuilt = true;
+        STATE.artistMusicFeedBuilding = false;
+        setupArtistMusicSourceGridObserver(sourceGrid);
+        setupFanCollectionTabObserver();
 
         markDebugState("data-bcampx-label-feed-state", "ready");
         markDebugState("data-bcampx-label-feed-count", String(releases.length));
+        markDebugState("data-bcampx-label-feed-kind", feedContext.kind);
+        markDebugState("data-bcampx-page-kind", feedContext.kind);
         markDebugState(
             "data-bcampx-label-feed-visible-count",
             String(releases.length),
         );
+        if (/^fan-/.test(feedContext.kind)) {
+            scheduleFanCollectionFeedContextSync();
+        }
         return true;
+    }
+
+    function isCurrentFanProfileOwner() {
+        const pageData = parseJsonAttribute(
+            document.querySelector("#pagedata[data-blob]"),
+            "data-blob",
+        );
+        const fanData = pageData && pageData.fan_data;
+        const currentFan = pageData && pageData.current_fan;
+
+        if (fanData && fanData.is_own_page === true) {
+            return true;
+        }
+
+        const profileFanId = Number(fanData && fanData.fan_id);
+        const currentFanId = Number(currentFan && currentFan.fan_id);
+        return Boolean(
+            profileFanId > 0 &&
+                currentFanId > 0 &&
+                profileFanId === currentFanId,
+        );
+    }
+
+    function setupFanCollectionTabObserver() {
+        if (
+            !("MutationObserver" in window) ||
+            !isBandcampFanCollectionPageUrl(window.location.href)
+        ) {
+            return;
+        }
+
+        const observerRoot =
+            document.querySelector("#grids") ||
+            document.querySelector(".grid-tabs-anchor") ||
+            null;
+        if (!(observerRoot instanceof Element)) {
+            return;
+        }
+        if (
+            STATE.artistMusicFanTabObserver &&
+            STATE.artistMusicFanTabObserver.__bcampxRoot === observerRoot &&
+            observerRoot.isConnected
+        ) {
+            return;
+        }
+        if (STATE.artistMusicFanTabObserver) {
+            STATE.artistMusicFanTabObserver.disconnect();
+        }
+
+        STATE.artistMusicFanTabObserver = new MutationObserver((mutations) => {
+            if (mutations.some(hasFanCollectionContextMutation)) {
+                scheduleFanCollectionFeedContextSync();
+            }
+        });
+        STATE.artistMusicFanTabObserver.__bcampxRoot = observerRoot;
+        STATE.artistMusicFanTabObserver.observe(observerRoot, {
+            attributes: true,
+            attributeFilter: ["class"],
+            childList: true,
+            subtree: true,
+        });
+        window.removeEventListener(
+            "popstate",
+            scheduleFanCollectionFeedContextSync,
+        );
+        window.addEventListener("popstate", scheduleFanCollectionFeedContextSync);
+    }
+
+    function hasFanCollectionContextMutation(mutation) {
+        if (!mutation) {
+            return false;
+        }
+
+        if (mutation.type === "attributes") {
+            const target = mutation.target;
+            return Boolean(
+                target instanceof Element &&
+                    target.matches(
+                        "#grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
+                    ),
+            );
+        }
+
+        if (mutation.type !== "childList") {
+            return false;
+        }
+
+        const target = mutation.target;
+        if (
+            target instanceof Element &&
+            target.matches("#grids, .collection-tabs, .grid-tabs-anchor")
+        ) {
+            return true;
+        }
+
+        return [...mutation.addedNodes, ...mutation.removedNodes].some(
+            (node) =>
+                node instanceof Element &&
+                (node.matches(
+                    "#grids, #grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
+                ) ||
+                    node.querySelector(
+                        "#grids, #grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
+                    )),
+        );
+    }
+
+    function scheduleFanCollectionFeedContextSync() {
+        if (!STATE.initialized || STATE.artistMusicFanTabSyncTimer) {
+            return;
+        }
+
+        STATE.artistMusicFanTabSyncTimer = 1;
+        const run = () => {
+            STATE.artistMusicFanTabSyncTimer = 0;
+            reconcileFanCollectionFeedContext();
+        };
+        if (typeof window.queueMicrotask === "function") {
+            window.queueMicrotask(run);
+        } else {
+            Promise.resolve().then(run);
+        }
+    }
+
+    function reconcileFanCollectionFeedContext() {
+        const context = getReleaseGridFeedContext();
+        const feed = STATE.artistMusicFeedNode;
+        if (!context) {
+            suspendFanCollectionFeedContext();
+            return;
+        }
+        if (!(feed instanceof Element)) {
+            void buildArtistMusicFeed();
+            return;
+        }
+        if (
+            !/^fan-/.test(context.kind) ||
+            !(context.sourceGrid instanceof Element) ||
+            STATE.artistMusicFeedBuilding
+        ) {
+            return;
+        }
+
+        const currentKind = cleanText(
+            feed.getAttribute("data-bcampx-feed-kind") || "",
+        );
+        const expectedParent =
+            context.sourceGrid.closest(".grid") || context.sourceGrid.parentElement;
+        if (
+            STATE.artistMusicSourceGridNode === context.sourceGrid &&
+            currentKind === context.kind &&
+            feed.parentElement === expectedParent &&
+            feed.getAttribute("data-bcampx-context-suspended") !== "true"
+        ) {
+            return;
+        }
+
+        const previousSourceGrid = STATE.artistMusicSourceGridNode;
+        if (previousSourceGrid instanceof Element) {
+            setArtistMusicNativeSectionHidden(
+                previousSourceGrid,
+                false,
+                "offscreen",
+            );
+            previousSourceGrid.setAttribute(
+                "data-bcampx-label-feed-source-hidden",
+                "false",
+            );
+        }
+
+        const list = feed.querySelector(".bcampx-label-feed__list");
+        const sourceGridChanged =
+            previousSourceGrid !== context.sourceGrid;
+        if (sourceGridChanged) {
+            stashFanCollectionFeedCards(previousSourceGrid, list);
+        }
+
+        STATE.artistMusicSourceGridNode = context.sourceGrid;
+        feed.setAttribute("data-bcampx-feed-kind", context.kind);
+        feed.setAttribute("aria-label", context.ariaLabel);
+        feed.removeAttribute("data-bcampx-context-suspended");
+        mountReleaseGridFeed(feed, context);
+        const restoredCards =
+            sourceGridChanged &&
+            restoreFanCollectionFeedCards(context.sourceGrid, list);
+        if (sourceGridChanged && !restoredCards) {
+            rebuildReleaseGridFeed(context);
+        }
+        setupArtistMusicSourceGridObserver(context.sourceGrid);
+        if (STATE.artistMusicToggleNode) {
+            STATE.artistMusicToggleNode.hidden = false;
+        }
+        applyArtistMusicFeedView(STATE.artistMusicFeedView, {
+            skipFeedWork: restoredCards || !sourceGridChanged,
+        });
+        if (
+            (!sourceGridChanged ||
+                STATE.artistMusicFanDirtyGrids.has(context.sourceGrid)) &&
+            (restoredCards || !sourceGridChanged)
+        ) {
+            syncArtistMusicFeedFromSourceGrid();
+        }
+
+        markDebugState("data-bcampx-label-feed-kind", context.kind);
+        markDebugState("data-bcampx-page-kind", context.kind);
+    }
+
+    function stashFanCollectionFeedCards(sourceGrid, list) {
+        if (
+            !(sourceGrid instanceof Element) ||
+            !(list instanceof Element)
+        ) {
+            return;
+        }
+
+        STATE.artistMusicFanCardsByGrid.set(
+            sourceGrid,
+            Array.from(list.children),
+        );
+    }
+
+    function restoreFanCollectionFeedCards(sourceGrid, list) {
+        if (
+            !(sourceGrid instanceof Element) ||
+            !(list instanceof Element)
+        ) {
+            return false;
+        }
+
+        const cards = STATE.artistMusicFanCardsByGrid.get(sourceGrid);
+        if (!Array.isArray(cards)) {
+            return false;
+        }
+
+        list.replaceChildren(...cards);
+        cards.forEach((card) => syncTrackButtonsForCard(card));
+        return true;
+    }
+
+    function markFanCollectionGridDirtyFromMutation(mutation) {
+        if (
+            !mutation ||
+            !isBandcampFanCollectionPageUrl(window.location.href)
+        ) {
+            return;
+        }
+
+        const target =
+            mutation.target instanceof Element
+                ? mutation.target
+                : mutation.target && mutation.target.parentElement;
+        const sourceGrid =
+            target &&
+            (target.matches(".collection-grid")
+                ? target
+                : target.closest(".collection-grid"));
+        if (sourceGrid instanceof Element) {
+            STATE.artistMusicFanDirtyGrids.add(sourceGrid);
+        }
+    }
+
+    function suspendFanCollectionFeedContext() {
+        const feed = STATE.artistMusicFeedNode;
+        if (!(feed instanceof Element) || !/^fan-/.test(
+            cleanText(feed.getAttribute("data-bcampx-feed-kind") || ""),
+        )) {
+            return;
+        }
+
+        const sourceGrid = STATE.artistMusicSourceGridNode;
+        if (sourceGrid instanceof Element) {
+            setArtistMusicNativeSectionHidden(sourceGrid, false, "offscreen");
+            sourceGrid.setAttribute(
+                "data-bcampx-label-feed-source-hidden",
+                "false",
+            );
+        }
+        if (STATE.artistMusicSourceGridObserver) {
+            STATE.artistMusicSourceGridObserver.disconnect();
+        }
+        if (STATE.artistMusicFeedSyncTimer) {
+            window.clearTimeout(STATE.artistMusicFeedSyncTimer);
+            STATE.artistMusicFeedSyncTimer = 0;
+        }
+        if (STATE.artistMusicVisibleFetchTimer) {
+            window.clearTimeout(STATE.artistMusicVisibleFetchTimer);
+            STATE.artistMusicVisibleFetchTimer = 0;
+        }
+
+        feed.hidden = true;
+        feed.setAttribute("data-bcampx-context-suspended", "true");
+        if (STATE.artistMusicToggleNode) {
+            STATE.artistMusicToggleNode.hidden = true;
+        }
+        document.body.classList.remove(
+            "bcampx-label-feed-page--enhanced",
+            "bcampx-label-feed-page--original",
+        );
+        markDebugState("data-bcampx-page-kind", "fan-other");
+    }
+
+    function rebuildReleaseGridFeed(context) {
+        const feed = STATE.artistMusicFeedNode;
+        const list =
+            feed && feed.querySelector(".bcampx-label-feed__list");
+        if (!list) {
+            return;
+        }
+
+        const releases = collectReleaseGridFeedCandidates(context);
+        const cards = releases.map((release) =>
+            createArtistMusicFeedCard(release),
+        );
+        list.replaceChildren(...cards);
+        if (context.sourceGrid instanceof Element) {
+            STATE.artistMusicFanDirtyGrids.delete(context.sourceGrid);
+        }
+
+        markDebugState(
+            "data-bcampx-label-feed-count",
+            String(cards.length),
+        );
+        markDebugState(
+            "data-bcampx-label-feed-visible-count",
+            String(cards.length),
+        );
+
+        cards.forEach((card) => scheduleScan(card));
+        if (STATE.artistMusicFeedView === "feed") {
+            scheduleArtistMusicFeedVisibleFetch(feed);
+        }
+    }
+
+    function mountReleaseGridFeed(feed, feedContext) {
+        const sourceGrid = feedContext && feedContext.sourceGrid;
+        if (!(feed instanceof Element) || !(sourceGrid instanceof Element)) {
+            return;
+        }
+
+        if (feedContext && /^fan-/.test(feedContext.kind)) {
+            const activeGrid = sourceGrid.closest(".grid");
+            const nativeContentRoot =
+                activeGrid &&
+                Array.from(activeGrid.children).find(
+                    (node) => node instanceof Element && node.contains(sourceGrid),
+                );
+            if (activeGrid && nativeContentRoot) {
+                activeGrid.insertBefore(feed, nativeContentRoot);
+                feed.setAttribute(
+                    "data-bcampx-mounted-outside-native-content",
+                    "true",
+                );
+                return;
+            }
+        }
+
+        sourceGrid.parentNode.insertBefore(feed, sourceGrid);
+    }
+
+    function setupArtistMusicSourceGridObserver(sourceGrid) {
+        if (!("MutationObserver" in window) || !(sourceGrid instanceof Element)) {
+            return;
+        }
+
+        if (STATE.artistMusicSourceGridObserver) {
+            STATE.artistMusicSourceGridObserver.disconnect();
+        }
+
+        STATE.artistMusicSourceGridObserver = new MutationObserver(() => {
+            STATE.artistMusicFanDirtyGrids.add(sourceGrid);
+            scheduleArtistMusicFeedSync();
+        });
+        STATE.artistMusicSourceGridObserver.observe(sourceGrid, {
+            attributes: true,
+            attributeFilter: [
+                "data-playerdata",
+                "data-itemid",
+                "data-tralbumid",
+                "data-tralbumtype",
+                "data-title",
+                "href",
+            ],
+            childList: true,
+            subtree: true,
+        });
+    }
+
+    function scheduleArtistMusicFeedSync() {
+        if (!STATE.artistMusicFeedBuilt || !STATE.artistMusicFeedNode) {
+            return;
+        }
+
+        if (STATE.artistMusicFeedSyncTimer) {
+            window.clearTimeout(STATE.artistMusicFeedSyncTimer);
+        }
+
+        STATE.artistMusicFeedSyncTimer = window.setTimeout(
+            () => {
+                STATE.artistMusicFeedSyncTimer = 0;
+                syncArtistMusicFeedFromSourceGrid();
+            },
+            50,
+        );
+    }
+
+    function syncArtistMusicFeedFromSourceGrid() {
+        if (!STATE.artistMusicFeedBuilt || !STATE.artistMusicFeedNode) {
+            return;
+        }
+
+        const context = getReleaseGridFeedContext();
+        const feedKind = cleanText(
+            STATE.artistMusicFeedNode.getAttribute(
+                "data-bcampx-feed-kind",
+            ) || "",
+        );
+        if (
+            /^fan-/.test(feedKind) &&
+            (!context ||
+                STATE.artistMusicFeedNode.getAttribute(
+                    "data-bcampx-context-suspended",
+                ) === "true")
+        ) {
+            return;
+        }
+        if (
+            context &&
+            context.sourceGrid &&
+            STATE.artistMusicSourceGridNode !== context.sourceGrid
+        ) {
+            scheduleFanCollectionFeedContextSync();
+            return;
+        }
+
+        const sourceGrid = STATE.artistMusicSourceGridNode;
+        const list = STATE.artistMusicFeedNode.querySelector(
+            ".bcampx-label-feed__list",
+        );
+        if (!sourceGrid || !list) {
+            return;
+        }
+        incrementDebugCounter("data-bcampx-label-feed-sync-run-count");
+
+        const feedContext = {
+            kind:
+                STATE.artistMusicFeedNode.getAttribute(
+                    "data-bcampx-feed-kind",
+                ) || "artist-music",
+            sourceGrid,
+        };
+        const candidates = collectReleaseGridFeedCandidates(feedContext);
+        const existingCards = Array.from(
+            list.querySelectorAll(
+                ".bcampx-label-feed-card[data-bcampx-release-url]",
+            ),
+        );
+        const existingCardsByUrl = new Map();
+        existingCards.forEach((card) => {
+            const releaseUrl = normalizeReleaseUrl(
+                card.getAttribute("data-bcampx-release-url") || "",
+            );
+            if (releaseUrl && !existingCardsByUrl.has(releaseUrl)) {
+                existingCardsByUrl.set(releaseUrl, card);
+            }
+        });
+
+        const nextCards = [];
+        const nextUrls = new Set();
+        const appendedCards = [];
+
+        candidates.forEach((release) => {
+            if (!release || !release.releaseUrl) {
+                return;
+            }
+
+            const releaseUrl = normalizeReleaseUrl(release.releaseUrl);
+            if (!releaseUrl || nextUrls.has(releaseUrl)) {
+                return;
+            }
+
+            nextUrls.add(releaseUrl);
+            const existingCard = existingCardsByUrl.get(releaseUrl);
+            if (existingCard) {
+                updateArtistMusicFeedCardSource(existingCard, release);
+                nextCards.push(existingCard);
+                return;
+            }
+
+            const newCard = createArtistMusicFeedCard(release);
+            nextCards.push(newCard);
+            appendedCards.push(newCard);
+        });
+        const currentCards = Array.from(list.children);
+        const cardOrderChanged =
+            currentCards.length !== nextCards.length ||
+            nextCards.some((card, index) => currentCards[index] !== card);
+        if (cardOrderChanged) {
+            list.replaceChildren(...nextCards);
+        }
+
+        markDebugState(
+            "data-bcampx-label-feed-count",
+            String(nextCards.length),
+        );
+        markDebugState(
+            "data-bcampx-label-feed-visible-count",
+            String(nextCards.length),
+        );
+        markDebugState(
+            "data-bcampx-label-feed-sync-count",
+            String(appendedCards.length),
+        );
+
+        appendedCards.forEach((card) => scheduleScan(card));
+        rearmArtistMusicFeedCardObservers(STATE.artistMusicFeedNode);
+        if (appendedCards.length || cardOrderChanged) {
+            window.setTimeout(
+                () =>
+                    rearmArtistMusicFeedCardObservers(
+                        STATE.artistMusicFeedNode,
+                    ),
+                CONFIG.scanDebounceMs + 20,
+            );
+        }
+        if (STATE.artistMusicFeedView === "feed") {
+            scheduleArtistMusicFeedVisibleFetch(STATE.artistMusicFeedNode);
+        }
+        if (STATE.artistMusicLoadMoreScrollPending) {
+            if (appendedCards.length) {
+                STATE.artistMusicLoadMoreScrollPending = false;
+                scrollToNewArtistMusicFeedCards(appendedCards);
+            }
+        }
+        if (sourceGrid instanceof Element) {
+            STATE.artistMusicFanDirtyGrids.delete(sourceGrid);
+        }
+    }
+
+    function updateArtistMusicFeedCardSource(card, release) {
+        if (!(card instanceof Element) || !release) {
+            return;
+        }
+
+        card.__bcampxArtistMusicRelease = release;
+        if (release.bandId) {
+            card.setAttribute("data-bcampx-band-id", release.bandId);
+        } else {
+            card.removeAttribute("data-bcampx-band-id");
+        }
+
+        if (!release.initialData) {
+            return;
+        }
+
+        const controller = getCardController(card);
+        updateArtistMusicCardBuyAction(
+            card,
+            controller && controller.data
+                ? controller.data
+                : release.initialData,
+        );
+    }
+
+    function handleArtistMusicNativeLoadMoreClick(event) {
+        if (
+            STATE.artistMusicFeedView !== "feed" ||
+            !STATE.artistMusicFeedBuilt ||
+            !STATE.artistMusicSourceGridNode ||
+            !event ||
+            !(event.target instanceof Element)
+        ) {
+            return;
+        }
+
+        const button = event.target.closest(".expand-container .show-more");
+        if (!button || !isArtistMusicNativeLoadMoreButton(button)) {
+            return;
+        }
+
+        STATE.artistMusicLoadMoreScrollPending = true;
+        markDebugState("data-bcampx-label-feed-load-more-clicked", "true");
+    }
+
+    function isArtistMusicNativeLoadMoreButton(button) {
+        const sourceGrid = STATE.artistMusicSourceGridNode;
+        const nativeGrid =
+            sourceGrid &&
+            (sourceGrid.closest(".grid") ||
+                sourceGrid.closest(".collection-items") ||
+                sourceGrid.parentElement);
+        return Boolean(nativeGrid && nativeGrid.contains(button));
+    }
+
+    function scrollToNewArtistMusicFeedCards(cards) {
+        const firstCard = (cards || []).find(
+            (card) => card instanceof Element && card.isConnected,
+        );
+        if (!firstCard) {
+            return;
+        }
+
+        window.setTimeout(() => {
+            if (!firstCard.isConnected) {
+                return;
+            }
+
+            scrollElementIntoViewBelowPageChrome(firstCard);
+            markDebugState("data-bcampx-label-feed-load-more-scrolled", "true");
+        }, 0);
+    }
+
+    function scrollElementIntoViewBelowPageChrome(node) {
+        if (!(node instanceof Element)) {
+            return;
+        }
+
+        const rect = node.getBoundingClientRect();
+        const offset = getArtistMusicPageChromeOffset();
+        window.scrollTo({
+            top: Math.max(0, window.scrollY + rect.top - offset),
+            behavior: "auto",
+        });
+    }
+
+    function getArtistMusicPageChromeOffset() {
+        const topChromeBottom = Array.from(document.body.children)
+            .map((node) => {
+                if (!(node instanceof Element)) {
+                    return 0;
+                }
+
+                const style = window.getComputedStyle(node);
+                if (
+                    style.position !== "fixed" &&
+                    style.position !== "sticky"
+                ) {
+                    return 0;
+                }
+
+                const rect = node.getBoundingClientRect();
+                if (rect.top > 4 || rect.bottom <= 0 || rect.height > 180) {
+                    return 0;
+                }
+
+                return rect.bottom;
+            })
+            .reduce((max, value) => Math.max(max, value), 0);
+
+        return Math.max(12, Math.ceil(topChromeBottom + 12));
+    }
+
+    function getReleaseGridFeedContext() {
+        if (isArtistMusicPage()) {
+            const sourceGrid = findArtistMusicSourceGrid();
+            return sourceGrid
+                ? {
+                      kind: "artist-music",
+                      ariaLabel: "Bandcamp release feed",
+                      sourceGrid,
+                  }
+                : null;
+        }
+
+        if (isFanCollectionPage()) {
+            const sourceGrid = findFanCollectionActiveGrid();
+            const kind = getFanCollectionFeedKind(sourceGrid);
+            return sourceGrid
+                ? {
+                      kind,
+                      ariaLabel: kind === "fan-wishlist"
+                          ? "Bandcamp wishlist feed"
+                          : "Bandcamp collection feed",
+                      sourceGrid,
+                  }
+                : null;
+        }
+
+        return null;
+    }
+
+    function getFanCollectionFeedKind(sourceGrid) {
+        const grid = sourceGrid && sourceGrid.closest(".grid");
+        if (grid && /^(wishlist|wishlist-search)-grid$/.test(grid.id)) {
+            return "fan-wishlist";
+        }
+        if (grid && /^(collection|collection-search)-grid$/.test(grid.id)) {
+            return "fan-collection";
+        }
+        return isFanWishlistPage() ? "fan-wishlist" : "fan-collection";
     }
 
     function ensureArtistMusicViewToggle() {
@@ -1396,7 +2171,8 @@
     function findArtistMusicViewToggleTarget() {
         return (
             document.querySelector(".label-band-selector.fade-in-on-load") ||
-            document.querySelector(".label-band-selector")
+            document.querySelector(".label-band-selector") ||
+            document.querySelector(".collection-tabs")
         );
     }
 
@@ -1406,12 +2182,16 @@
         await storageSet(ARTIST_MUSIC_VIEW_KEY, nextView);
     }
 
-    function applyArtistMusicFeedView(view) {
+    function applyArtistMusicFeedView(view, options = {}) {
         const nextView = view === "original" ? "original" : "feed";
         const feed = STATE.artistMusicFeedNode;
         const sourceGrid = STATE.artistMusicSourceGridNode;
+        const viewChanged = STATE.artistMusicFeedView !== nextView;
 
         STATE.artistMusicFeedView = nextView;
+        if (nextView !== "feed" && feed) {
+            cancelArtistMusicFeedAutoFetches(feed);
+        }
         if (feed) {
             feed.hidden = nextView !== "feed";
         }
@@ -1448,13 +2228,116 @@
         markDebugState("data-bcampx-label-feed-view", nextView);
 
         if (nextView === "feed" && feed) {
-            scheduleScan(feed);
-            scheduleArtistMusicFeedVisibleFetch(feed);
+            if (!options.skipFeedWork) {
+                // A feed that was built while the native grid was visible has
+                // no card controllers yet: its synthetic cards were hidden
+                // during the initial scan.  Observing only the viewport here
+                // leaves every off-screen card as a "supported by" placeholder
+                // until it is scrolled into view. Prime every loaded card's
+                // shell when returning from the grid, but prefetch only a
+                // bounded top-of-list batch. That preserves the blank-free
+                // transition without downloading a large collection in full.
+                if (viewChanged) {
+                    primeArtistMusicFeedCards(feed);
+                }
+                scheduleScan(feed);
+                rearmArtistMusicFeedCardObservers(feed);
+                window.setTimeout(
+                    () => rearmArtistMusicFeedCardObservers(feed),
+                    CONFIG.scanDebounceMs + 20,
+                );
+                scheduleArtistMusicFeedVisibleFetch(feed);
+            }
         }
     }
 
+    function primeArtistMusicFeedCards(feed) {
+        if (!(feed instanceof Element) || feed.hidden || !CONFIG.autoFetchOnVisible) {
+            return;
+        }
+
+        let queuedCount = 0;
+        const maxQueued = Math.max(
+            0,
+            Number(CONFIG.maxViewSwitchPrefetchCards) || 0,
+        );
+        Array.from(feed.querySelectorAll(".bcampx-label-feed-card")).forEach(
+            (card) => {
+                const releaseUrl = cleanText(
+                    card.getAttribute("data-bcampx-release-url") || "",
+                );
+                if (!releaseUrl) {
+                    return;
+                }
+
+                const controller = ensureCardController(card, releaseUrl);
+                if (
+                    controller &&
+                    !controller.loaded &&
+                    !controller.loading &&
+                    !controller.autoFetchQueued &&
+                    queuedCount < maxQueued
+                ) {
+                    queueAutoFetch(controller);
+                    queuedCount += 1;
+                }
+            },
+        );
+    }
+
+    function cancelArtistMusicFeedAutoFetches(feed) {
+        if (!(feed instanceof Element) || !STATE.autoFetchQueue.length) {
+            return;
+        }
+
+        STATE.autoFetchQueue = STATE.autoFetchQueue.filter((entry) => {
+            const controller = entry && entry.controller;
+            const card = controller && controller.card;
+            if (!(card instanceof Element) || !feed.contains(card)) {
+                return true;
+            }
+
+            controller.autoFetchQueued = false;
+            return false;
+        });
+        updateAutoFetchDebugState();
+    }
+
+    function rearmArtistMusicFeedCardObservers(feed) {
+        if (
+            !(feed instanceof Element) ||
+            feed.hidden ||
+            !STATE.observer
+        ) {
+            return;
+        }
+
+        Array.from(feed.querySelectorAll(".bcampx-label-feed-card")).forEach(
+            (card) => {
+                const controller = getCardController(card);
+                if (
+                    !controller ||
+                    controller.loaded ||
+                    controller.loading ||
+                    controller.autoFetchQueued
+                ) {
+                    return;
+                }
+
+                STATE.observer.unobserve(card);
+                STATE.observer.observe(card);
+                card.setAttribute(OBSERVED_ATTR, "true");
+            },
+        );
+    }
+
     function scheduleArtistMusicFeedVisibleFetch(feed) {
-        window.setTimeout(() => {
+        if (STATE.artistMusicVisibleFetchTimer) {
+            return;
+        }
+
+        STATE.artistMusicVisibleFetchTimer = window.setTimeout(() => {
+            STATE.artistMusicVisibleFetchTimer = 0;
             fetchVisibleArtistMusicFeedCards(feed);
         }, CONFIG.scanDebounceMs + 40);
     }
@@ -1494,9 +2377,10 @@
                 if (
                     controller &&
                     !controller.loaded &&
-                    !controller.loading
+                    !controller.loading &&
+                    !controller.autoFetchQueued
                 ) {
-                    controller.fetchAndRender({ auto: true });
+                    queueAutoFetch(controller);
                 }
             },
         );
@@ -1626,6 +2510,14 @@
         );
     }
 
+    function collectReleaseGridFeedCandidates(feedContext) {
+        if (feedContext && /^fan-/.test(feedContext.kind)) {
+            return collectFanCollectionReleaseCandidates(feedContext);
+        }
+
+        return collectArtistMusicReleaseCandidates();
+    }
+
     function collectArtistMusicReleaseCandidates() {
         const seen = new Set();
         const candidatesByKey = new Map();
@@ -1681,6 +2573,301 @@
 
 
         return candidates;
+    }
+
+    function collectFanCollectionReleaseCandidates(feedContext) {
+        const seen = new Set();
+        const candidatesByKey = new Map();
+        const candidates = [];
+        const sourceGrid = feedContext && feedContext.sourceGrid;
+        const items = Array.from(
+            (sourceGrid || document).querySelectorAll(
+                "li.collection-item-container[data-playerdata], li.collection-item-container",
+            ),
+        );
+
+        items.forEach((item) => {
+            addFanCollectionReleaseCandidate(
+                candidates,
+                seen,
+                item,
+                candidatesByKey,
+                feedContext && feedContext.kind,
+            );
+        });
+
+        return candidates;
+    }
+
+    function addFanCollectionReleaseCandidate(
+        candidates,
+        seen,
+        item,
+        candidatesByKey,
+        feedKind,
+    ) {
+        if (!(item instanceof Element)) {
+            return;
+        }
+
+        const playerData = parseJsonAttribute(item, "data-playerdata") || {};
+        const itemType = normalizeReleaseItemType(
+            item.getAttribute("data-tralbumtype") ||
+                item.getAttribute("data-itemtype") ||
+                "",
+        );
+        const releaseUrl = getFanCollectionReleaseUrl(item, playerData, itemType);
+        if (!releaseUrl) {
+            return;
+        }
+
+        const title = getFanCollectionReleaseTitle(item, playerData, itemType, releaseUrl);
+        const artist = getFanCollectionReleaseArtist(item, playerData);
+        const itemId = getArtistMusicReleaseItemId(item);
+        const release = {
+            releaseUrl,
+            title,
+            artist,
+            artUrl: getArtistMusicReleaseArtUrl(item),
+            itemId,
+            itemType: itemType || normalizeReleaseItemType("", releaseUrl),
+            bandId: getArtistMusicReleaseBandId(item),
+            feedKind,
+            sourceItem: item,
+            gridItem: item,
+            featuredItem: null,
+            playerData,
+            initialData: buildFanCollectionInitialReleaseData(
+                item,
+                playerData,
+                releaseUrl,
+                title,
+                artist,
+                feedKind,
+            ),
+        };
+        const dedupeKeys = getArtistMusicReleaseDedupeKeys(release);
+        const existingKey = dedupeKeys.find((key) => seen.has(key));
+        if (existingKey) {
+            mergeArtistMusicReleaseCandidate(
+                candidatesByKey.get(existingKey),
+                item,
+                "grid",
+            );
+            return;
+        }
+
+        dedupeKeys.forEach((key) => {
+            seen.add(key);
+            candidatesByKey.set(key, release);
+        });
+        candidates.push(release);
+    }
+
+    function getFanCollectionReleaseUrl(item, playerData, itemType) {
+        const albumUrl = cleanText(playerData && playerData.album && playerData.album.url);
+        const trackUrl = cleanText(playerData && playerData.url);
+        const linkUrl = normalizeReleaseUrl(
+            item.querySelector(RELEASE_LINK_SELECTOR)?.href || "",
+        );
+
+        return normalizeReleaseUrl(
+            itemType === "track"
+                ? trackUrl || linkUrl || albumUrl
+                : albumUrl || linkUrl || trackUrl,
+        );
+    }
+
+    function getFanCollectionReleaseTitle(item, playerData, itemType, releaseUrl) {
+        const playerTitle =
+            itemType === "album"
+                ? playerData && playerData.album && playerData.album.title
+                : playerData && playerData.title;
+        return (
+            cleanText(playerTitle || "") ||
+            getArtistMusicReleaseTitle(
+                item,
+                item.querySelector(RELEASE_LINK_SELECTOR),
+                releaseUrl,
+            )
+        );
+    }
+
+    function getFanCollectionReleaseArtist(item, playerData) {
+        return (
+            cleanText(playerData && playerData.artist_name) ||
+            getArtistMusicReleaseArtist(item)
+        );
+    }
+
+    function buildFanCollectionInitialReleaseData(
+        item,
+        playerData,
+        releaseUrl,
+        title,
+        artist,
+        feedKind,
+    ) {
+        const track = createFanCollectionPreviewTrack(playerData);
+        const isCollection = feedKind === "fan-collection";
+        const supporterCountLabel = getFanCollectionSupporterCountLabel(item);
+        const hasNativeSupporterCount = Boolean(supporterCountLabel);
+        return normalizeReleaseData({
+            url: releaseUrl,
+            title,
+            artist,
+            artUrl: getArtistMusicReleaseArtUrl(item),
+            digitalPrice: getFanCollectionDigitalPrice(playerData),
+            digitalDownloadUrl: isCollection
+                ? getFanCollectionDownloadUrl(item)
+                : "",
+            isPreorder: Boolean(
+                playerData &&
+                    (playerData.is_preorder === true ||
+                        (playerData.album &&
+                            playerData.album.is_preorder === true)),
+            ),
+            tracks: track ? [track] : [],
+            supporterCount: getFanCollectionSupporterCount(item, playerData),
+            supporterCountIsExact: hasNativeSupporterCount,
+            supporterMoreAvailable: false,
+            supporterCountLabel,
+            supporterCountAuthoritative: hasNativeSupporterCount,
+            supporterItemId: getArtistMusicReleaseItemId(item),
+            supporterItemType: normalizeSupporterItemType(
+                item.getAttribute("data-tralbumtype") ||
+                    item.getAttribute("data-itemtype") ||
+                    "",
+            ),
+        });
+    }
+
+    function getFanCollectionDownloadUrl(item) {
+        const directLink =
+            item && item.querySelector(".redownload-item a[href]");
+        const menuLink =
+            item &&
+            Array.from(
+                item.querySelectorAll(".contextual-menu-expanded a[href]"),
+            ).find((link) => /^download\b/i.test(cleanText(link.textContent || "")));
+        const link = directLink || menuLink;
+        return cleanText((link && link.href) || "");
+    }
+
+    function createFanCollectionPreviewTrack(playerData) {
+        if (!playerData || typeof playerData !== "object") {
+            return null;
+        }
+
+        return createTrackData(
+            playerData.title || "",
+            playerData.id || "",
+            playerData.stream_url || "",
+            playerData.duration || "",
+            playerData.url || "",
+        );
+    }
+
+    function getFanCollectionDigitalPrice(playerData) {
+        const itemPrice = formatFanCollectionPrice(
+            playerData && playerData.price,
+        );
+        const albumPrice = formatFanCollectionPrice(
+            playerData && playerData.album && playerData.album.price,
+        );
+        if (playerData && playerData.is_owned) {
+            return "you own this";
+        }
+        if (playerData && playerData.album && playerData.album.is_owned) {
+            return "you own this";
+        }
+        if (playerData && playerData.is_free_download) {
+            return "free download";
+        }
+        if (playerData && playerData.album && playerData.album.is_free_download) {
+            return "free download";
+        }
+        return itemPrice || albumPrice;
+    }
+
+    function formatFanCollectionPrice(price) {
+        if (!price || typeof price !== "object" || price.is_money !== true) {
+            return "";
+        }
+
+        const amount = Number(price.amount);
+        const currency = cleanText(price.currency || "");
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return "";
+        }
+
+        return cleanText(`${currency} ${amount}`);
+    }
+
+    function getFanCollectionSupporterCount(item, playerData = null) {
+        const rawCount = getFanCollectionRawSupporterCount(item, playerData);
+        if (rawCount > 0) {
+            return rawCount;
+        }
+
+        const text = getFanCollectionSupporterCountLabel(item);
+        const match = text.match(
+            /(\d(?:[\d.,'’\s\u00a0\u202f]*\d)?)/,
+        );
+        if (!match) {
+            return 0;
+        }
+
+        const digits = match[1].replace(/\D/g, "");
+        const count = Number(digits);
+        if (!digits || !Number.isSafeInteger(count) || count <= 0) {
+            return 0;
+        }
+
+        return count;
+    }
+
+    function getFanCollectionRawSupporterCount(item, playerData) {
+        const album =
+            playerData && typeof playerData.album === "object"
+                ? playerData.album
+                : null;
+        const candidates = [
+            playerData && playerData.collectors_count,
+            playerData && playerData.collector_count,
+            playerData && playerData.supporter_count,
+            playerData && playerData.collection_count,
+            playerData && playerData.num_collectors,
+            album && album.collectors_count,
+            album && album.collector_count,
+            album && album.supporter_count,
+            album && album.collection_count,
+            album && album.num_collectors,
+            item && item.getAttribute("data-collectors-count"),
+            item && item.getAttribute("data-supporter-count"),
+        ];
+
+        for (const candidate of candidates) {
+            if (
+                typeof candidate !== "number" &&
+                !/^\d+$/.test(cleanText(candidate))
+            ) {
+                continue;
+            }
+            const count = Number(candidate);
+            if (Number.isSafeInteger(count) && count > 0) {
+                return count;
+            }
+        }
+
+        return 0;
+    }
+
+    function getFanCollectionSupporterCountLabel(item) {
+        return cleanText(
+            item.querySelector(".collected-by .collected-by-header")
+                ?.textContent || "",
+        );
     }
 
     function addArtistMusicReleaseCandidate(
@@ -1805,6 +2992,22 @@
             item_type: release.itemType || undefined,
             item_url: release.releaseUrl,
             item_title: release.title || undefined,
+            featured_track:
+                release.playerData && release.playerData.id
+                    ? release.playerData.id
+                    : undefined,
+            featured_track_title:
+                release.playerData && release.playerData.title
+                    ? release.playerData.title
+                    : undefined,
+            featured_track_duration:
+                release.playerData && release.playerData.duration
+                    ? release.playerData.duration
+                    : undefined,
+            featured_track_url:
+                release.playerData && release.playerData.url
+                    ? release.playerData.url
+                    : undefined,
         };
 
         const headline = document.createElement("div");
@@ -1826,6 +3029,9 @@
         const body = document.createElement("div");
         body.className = "story-body";
         body.setAttribute("data-item-json", JSON.stringify(itemJson));
+        if (release.playerData) {
+            body.setAttribute("data-playerdata", JSON.stringify(release.playerData));
+        }
 
         const wrapper = document.createElement("div");
         wrapper.className = "tralbum-wrapper";
@@ -1851,6 +3057,7 @@
         byline.textContent = `by ${release.artist || getArtistMusicBandName()}`;
         content.appendChild(byline);
 
+
         const action = document.createElement("button");
         action.type = "button";
         action.className = "buy-link bcampx-label-feed-card__buy-button";
@@ -1860,6 +3067,13 @@
         action.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
+            const downloadUrl = cleanText(
+                action.getAttribute("data-bcampx-digital-download-url") || "",
+            );
+            if (downloadUrl) {
+                window.location.assign(downloadUrl);
+                return;
+            }
             const actionText = cleanText(action.textContent || "");
             if (/^hear more$/i.test(actionText)) {
                 const releaseUrl = action.getAttribute("data-bcampx-release-url") || "";
@@ -1881,9 +3095,30 @@
                 );
                 return;
             }
-            executeTrackAction("basket", release.releaseUrl, action);
+            openTrackBuyWindow(release.releaseUrl);
         });
         content.appendChild(action);
+
+        const supporterCount = document.createElement("div");
+        supporterCount.className = "bcampx-label-feed-card__supporter-count";
+        supporterCount.hidden = true;
+        const supporterCountText = document.createElement("span");
+        supporterCountText.className =
+            "bcampx-label-feed-card__supporter-count-text";
+        const supporterCountRefresh = document.createElement("button");
+        supporterCountRefresh.type = "button";
+        supporterCountRefresh.className =
+            "bcampx-label-feed-card__supporter-refresh";
+        supporterCountRefresh.textContent = "refresh";
+        supporterCountRefresh.title = "Refresh exact collection count";
+        supporterCountRefresh.hidden = true;
+        supporterCountRefresh.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void refreshArtistMusicCardSupporterCount(card);
+        });
+        supporterCount.append(supporterCountText, supporterCountRefresh);
+        content.appendChild(supporterCount);
 
         const supportedSlot = document.createElement("div");
         supportedSlot.className = "tralbum-wrapper-col2 tralbum-owners";
@@ -1893,10 +3128,15 @@
         supportedLabel.textContent = "supported by";
         supportedSlot.appendChild(supportedLabel);
 
+
         wrapper.append(art, content, supportedSlot);
         body.appendChild(wrapper);
+
         innards.appendChild(body);
         card.append(headline, innards);
+        if (release.initialData) {
+            updateArtistMusicCardBuyAction(card, release.initialData);
+        }
 
         return card;
     }
@@ -1915,6 +3155,11 @@
         if (!card || !data) {
             return;
         }
+
+        applyArtistMusicNativeCardData(card, data);
+        updateArtistMusicCardSupporterCount(card, data);
+        scheduleArtistMusicCardExactSupporterCount(card, data);
+        updateArtistMusicCardTags(card, data);
 
         const action = card.querySelector("[data-bcampx-release-action='buy']");
         if (!action) {
@@ -1937,29 +3182,337 @@
 
         const isOwned = isOwnedDigitalPrice(data.digitalPrice);
         const ownershipUrl = cleanText(data.digitalOwnershipUrl || "");
-        action.textContent = getDigitalBuyActionLabel(data.digitalPrice);
-        action.disabled = isOwned && !ownershipUrl;
+        const downloadUrl = cleanText(data.digitalDownloadUrl || "");
+        action.textContent = downloadUrl
+            ? "download"
+            : getDigitalBuyActionLabel(data.digitalPrice, data.isPreorder);
+        action.disabled = !downloadUrl && isOwned && !ownershipUrl;
         action.classList.toggle("bcampx-label-feed-card__buy-button--owned", isOwned);
-        action.title = isOwned
+        action.title = downloadUrl
+            ? "Download this release"
+            : isOwned
             ? ownershipUrl
                 ? "Find this release in your collection"
                 : "This release is already in your collection"
             : "";
-        if (data.title) {
-            action.setAttribute("data-bcampx-release-title", data.title);
+        setAttr(action, "data-bcampx-release-title", data.title);
+        setAttr(action, "data-bcampx-digital-ownership-url", ownershipUrl);
+        setAttr(action, "data-bcampx-digital-download-url", downloadUrl);
+        setAttr(action, "data-bcampx-digital-price", data.digitalPrice);
+    }
+
+    function setAttr(element, attribute, value) {
+        if (value) {
+            element.setAttribute(attribute, value);
         } else {
-            action.removeAttribute("data-bcampx-release-title");
+            element.removeAttribute(attribute);
         }
-        if (ownershipUrl) {
-            action.setAttribute("data-bcampx-digital-ownership-url", ownershipUrl);
-        } else {
-            action.removeAttribute("data-bcampx-digital-ownership-url");
+    }
+
+    function applyArtistMusicNativeCardData(card, data) {
+        const release = card && card.__bcampxArtistMusicRelease;
+        const nativeData = release && release.initialData;
+        if (!nativeData || !data) {
+            return;
         }
-        if (data.digitalPrice) {
-            action.setAttribute("data-bcampx-digital-price", data.digitalPrice);
-        } else {
-            action.removeAttribute("data-bcampx-digital-price");
+
+        const downloadUrl = cleanText(nativeData.digitalDownloadUrl || "");
+        if (downloadUrl) {
+            data.digitalDownloadUrl = downloadUrl;
+            data.digitalPrice = "you own this";
         }
+
+        if (nativeData.supporterCountAuthoritative === true) {
+            data.supporterCount = nativeData.supporterCount;
+            data.supporterCountIsExact = true;
+            data.supporterMoreAvailable = false;
+            data.supporterNextToken = "";
+            data.supporterCountLabel = cleanText(
+                nativeData.supporterCountLabel || "",
+            );
+            data.supporterCountAuthoritative = true;
+        }
+    }
+
+    function updateArtistMusicCardTags(card, data) {
+        let tagsContainer =
+            card && card.querySelector(".bcampx-label-feed-card__tags");
+        if (!tagsContainer) {
+            const wrapper =
+                card && card.querySelector(".tralbum-wrapper");
+            if (!wrapper) {
+                return;
+            }
+            tagsContainer = document.createElement("div");
+            tagsContainer.className = "bcampx-label-feed-card__tags";
+            tagsContainer.hidden = true;
+            wrapper.appendChild(tagsContainer);
+        }
+
+        const tags = (Array.isArray(data && data.tags)
+            ? data.tags.map((tag) => cleanText(tag)).filter(Boolean)
+            : []).slice(0, 5);
+        const dateLocation = compactJoin(
+            [formatReleaseDate(data && data.releaseDate), data && data.location],
+            " \u00b7 ",
+        );
+        if (!tags.length && !dateLocation) {
+            tagsContainer.hidden = true;
+            tagsContainer.replaceChildren();
+            return;
+        }
+
+        tagsContainer.hidden = false;
+        tagsContainer.replaceChildren();
+
+        if (tags.length) {
+            const leftSide = document.createElement("span");
+            leftSide.className = "bcampx-label-feed-card__tags-text";
+            leftSide.appendChild(document.createTextNode("tags: "));
+            tags.forEach(function(tag, index) {
+                if (index > 0) {
+                    leftSide.appendChild(document.createTextNode(", "));
+                }
+                var link = document.createElement("a");
+                link.href = "/tag/" + encodeURIComponent(tag);
+                link.textContent = tag;
+                leftSide.appendChild(link);
+            });
+            tagsContainer.appendChild(leftSide);
+        }
+
+        if (dateLocation) {
+            var rightSide = document.createElement("span");
+            rightSide.className = "bcampx-label-feed-card__date";
+            rightSide.textContent = dateLocation;
+            tagsContainer.appendChild(rightSide);
+        }
+    }
+
+    function updateArtistMusicCardSupporterCount(card, data) {
+        const node =
+            card &&
+            card.querySelector(".bcampx-label-feed-card__supporter-count");
+        if (!node || !data) {
+            return;
+        }
+
+        if (!CONFIG.showCollectionCounts) {
+            hideArtistMusicCardSupporterCount(node);
+            return;
+        }
+
+        const count = Number(data.supporterCount || 0);
+        if (!Number.isFinite(count) || count <= 0) {
+            hideArtistMusicCardSupporterCount(node);
+            return;
+        }
+
+        const countText =
+            node.querySelector(".bcampx-label-feed-card__supporter-count-text") ||
+            node;
+        const refreshButton = node.querySelector(
+            ".bcampx-label-feed-card__supporter-refresh",
+        );
+        const showRefresh =
+            data.supporterCountIsExact !== true &&
+            data.supporterMoreAvailable === true;
+        const refreshPending = card.hasAttribute(
+            "data-bcampx-supporter-count-pending",
+        );
+
+        node.hidden = false;
+        countText.textContent =
+            cleanText(data.supporterCountLabel || "") ||
+            formatArtistMusicSupporterCount(
+                count,
+                data.supporterCountIsExact === true,
+            );
+        if (refreshButton) {
+            refreshButton.hidden = !showRefresh;
+            refreshButton.textContent = showRefresh
+                ? refreshPending
+                    ? "..."
+                    : "refresh"
+                : "";
+            refreshButton.disabled = refreshPending;
+        }
+        node.setAttribute("data-bcampx-supporter-count", String(Math.floor(count)));
+        node.setAttribute(
+            "data-bcampx-supporter-count-exact",
+            data.supporterCountIsExact === true ? "true" : "false",
+        );
+    }
+
+    function scheduleArtistMusicCardExactSupporterCount(card, data) {
+        if (
+            !CONFIG.showCollectionCounts ||
+            !card ||
+            !data ||
+            data.supporterCountAuthoritative === true ||
+            data.supporterCountIsExact === true ||
+            !data.supporterMoreAvailable ||
+            card.hasAttribute(
+                "data-bcampx-supporter-count-auto-attempted",
+            ) ||
+            card.hasAttribute("data-bcampx-supporter-count-pending")
+        ) {
+            return;
+        }
+
+        card.setAttribute(
+            "data-bcampx-supporter-count-auto-attempted",
+            "true",
+        );
+        void fetchArtistMusicSupporterCount(
+            card,
+            data,
+            getExactReleaseSupporterCount(data),
+        );
+    }
+
+    function refreshArtistMusicCardSupporterCount(card) {
+        if (
+            !CONFIG.showCollectionCounts ||
+            !card ||
+            card.hasAttribute("data-bcampx-supporter-count-pending")
+        ) {
+            return Promise.resolve(null);
+        }
+
+        const controller = getCardController(card);
+        const data = controller && controller.data;
+        if (
+            !data ||
+            data.supporterCountAuthoritative === true ||
+            data.supporterCountIsExact === true ||
+            data.supporterMoreAvailable !== true
+        ) {
+            return Promise.resolve(null);
+        }
+
+        return fetchArtistMusicSupporterCount(
+            card,
+            data,
+            getExactReleaseSupporterCount(data, {
+                forceRefresh: true,
+                ignoreLimit: true,
+            }),
+        );
+    }
+
+    function fetchArtistMusicSupporterCount(card, data, fetchPromise) {
+        card.setAttribute("data-bcampx-supporter-count-pending", "true");
+        updateArtistMusicCardSupporterRefreshPending(card, true);
+        return fetchPromise
+            .then((result) => {
+                if (!result || !result.count) {
+                    return result;
+                }
+
+                applyArtistMusicSupporterCountResult(card, data, result);
+                if (card.isConnected) {
+                    updateArtistMusicCardSupporterCount(card, data);
+                }
+                return result;
+            })
+            .catch(() => null)
+            .finally(() => {
+                card.removeAttribute("data-bcampx-supporter-count-pending");
+                if (card.isConnected) {
+                    updateArtistMusicCardSupporterCount(card, data);
+                }
+            });
+    }
+
+    function applyArtistMusicSupporterCountResult(card, data, result) {
+        const supporterData = {
+            supporterCount: result.count,
+            supporterCountIsExact: result.isExact === true,
+            supporterMoreAvailable: result.moreAvailable === true,
+            supporterNextToken: cleanText(result.nextToken || ""),
+        };
+        Object.assign(data, supporterData);
+
+        const controller = getCardController(card);
+        if (controller && controller.data) {
+            Object.assign(controller.data, supporterData);
+        }
+    }
+
+    function updateArtistMusicCardSupporterRefreshPending(card, pending) {
+        const button =
+            card &&
+            card.querySelector(".bcampx-label-feed-card__supporter-refresh");
+        if (!button) {
+            return;
+        }
+
+        button.disabled = !!pending;
+        if (button.hidden && !pending) {
+            button.textContent = "";
+            return;
+        }
+        button.textContent = pending ? "..." : "refresh";
+    }
+
+    function formatArtistMusicSupporterCount(count, isExact) {
+        const normalizedCount = Math.max(0, Math.floor(Number(count) || 0));
+        const maxExactCount = Math.max(
+            0,
+            Math.floor(Number(CONFIG.maxSupporterExactCount) || 0),
+        );
+        const displayCount =
+            !isExact && maxExactCount > 0
+                ? Math.min(normalizedCount, maxExactCount)
+                : normalizedCount;
+        const suffix = displayCount === 1 ? "collection" : "collections";
+        const marker =
+            !isExact && normalizedCount >= displayCount ? "+" : "";
+        return `appears in ${displayCount}${marker} ${suffix}`;
+    }
+
+    function hideArtistMusicCardSupporterCount(node) {
+        node.hidden = true;
+        const countText =
+            node.querySelector(".bcampx-label-feed-card__supporter-count-text") ||
+            node;
+        const refreshButton = node.querySelector(
+            ".bcampx-label-feed-card__supporter-refresh",
+        );
+        countText.textContent = "";
+        if (refreshButton) {
+            refreshButton.hidden = true;
+            refreshButton.disabled = false;
+            refreshButton.textContent = "";
+        }
+        node.removeAttribute("data-bcampx-supporter-count");
+        node.removeAttribute("data-bcampx-supporter-count-exact");
+    }
+
+    function refreshArtistMusicCollectionCounts() {
+        if (!STATE.artistMusicFeedNode) {
+            return;
+        }
+
+        Array.from(
+            STATE.artistMusicFeedNode.querySelectorAll(".bcampx-label-feed-card"),
+        ).forEach((card) => {
+            const controller = getCardController(card);
+            const data = controller && controller.data;
+            if (!data) {
+                const node = card.querySelector(
+                    ".bcampx-label-feed-card__supporter-count",
+                );
+                if (node && !CONFIG.showCollectionCounts) {
+                    hideArtistMusicCardSupporterCount(node);
+                }
+                return;
+            }
+
+            updateArtistMusicCardSupporterCount(card, data);
+            scheduleArtistMusicCardExactSupporterCount(card, data);
+        });
     }
 
 
@@ -1984,13 +3537,17 @@
         return text.replace(/\s+or more$/i, "");
     }
 
-   function getDigitalBuyActionLabel(priceText) {
+   function getDigitalBuyActionLabel(priceText, isPreorder = false) {
        const compactPrice = getCompactDigitalPrice(priceText);
        if (isOwnedDigitalPrice(compactPrice)) {
            return "you own this";
         }
        if (/^free download$/i.test(compactPrice)) {
            return "free download";
+        }
+
+        if (isPreorder) {
+            return compactPrice ? `pre-order (${compactPrice})` : "pre-order";
         }
 
         return compactPrice ? `buy now (${compactPrice})` : "hear more";
@@ -2029,7 +3586,13 @@
         const clone = titleNode.cloneNode(true);
         clone
             .querySelectorAll(
-                ".artist-override, .artist, .item-artist, .collection-item-artist",
+                [
+                    ".artist-override",
+                    ".artist",
+                    ".item-artist",
+                    ".collection-item-artist",
+                    ".collection-item-gift-given-title",
+                ].join(", "),
             )
             .forEach((node) => node.remove());
         return normalizedText(clone);
@@ -2041,8 +3604,10 @@
             ".artist, .item-artist, .collection-item-artist",
         );
         return (
-            (artistOverride ? normalizedText(artistOverride) : "") ||
-            (artistNode ? normalizedText(artistNode) : "") ||
+            cleanText(
+                (artistOverride ? normalizedText(artistOverride) : "") ||
+                    (artistNode ? normalizedText(artistNode) : ""),
+            ).replace(/^by\s+/i, "") ||
             getArtistMusicBandName()
         );
     }
@@ -2062,6 +3627,15 @@
     }
 
     function getArtistMusicReleaseItemId(item) {
+        const direct = firstPositiveNumber(
+            item.getAttribute("data-tralbumid"),
+            item.getAttribute("data-itemid"),
+            item.getAttribute("data-trackid"),
+        );
+        if (direct) {
+            return direct;
+        }
+
         const raw = cleanText(item.getAttribute("data-item-id") || "");
         const match = raw.match(/(?:album|track)-(\d+)/i);
         return match && match[1] ? Number(match[1]) : 0;
@@ -2075,6 +3649,7 @@
         return cleanText(
             item.getAttribute("data-band-id") ||
                 item.getAttribute("data-band") ||
+                item.getAttribute("data-bandid") ||
                 "",
         );
     }
@@ -2352,7 +3927,11 @@
     }
 
     function isFeedEnhancerPage() {
-        return isFeedPage() || isArtistMusicPage();
+        return (
+            isFeedPage() ||
+            isArtistMusicPage() ||
+            isBandcampFanCollectionPageUrl(window.location.href)
+        );
     }
 
     function getEnhancerPageKind() {
@@ -2362,6 +3941,14 @@
 
         if (isArtistMusicPage()) {
             return "artist-music";
+        }
+
+        if (isFanCollectionPage()) {
+            return isFanWishlistPage() ? "fan-wishlist" : "fan-collection";
+        }
+
+        if (isBandcampFanCollectionPageUrl(window.location.href)) {
+            return "fan-other";
         }
 
         return "other";
@@ -2603,6 +4190,94 @@
 
     function isBandcampCollectionSearchPageCandidate() {
         return isBandcampFanProfileUrl(window.location.href);
+    }
+
+    function isFanCollectionPage() {
+        if (!isBandcampFanCollectionPageUrl(window.location.href)) {
+            return false;
+        }
+
+        return Boolean(findFanCollectionActiveGrid());
+    }
+
+    function isFanWishlistPage() {
+        return /\/wishlist\/?$/i.test(window.location.pathname || "");
+    }
+
+    function isBandcampFanCollectionPageUrl(rawUrl) {
+        try {
+            const url = new URL(rawUrl, window.location.href);
+            if (url.hostname !== "bandcamp.com") {
+                return false;
+            }
+
+            const segments = url.pathname.split("/").filter(Boolean);
+            if (segments.length === 1) {
+                return isBandcampFanProfileUrl(url.href);
+            }
+
+            const fanRoot = `${url.origin}/${encodeURIComponent(segments[0])}`;
+            if (!isBandcampFanProfileUrl(fanRoot)) {
+                return false;
+            }
+
+            const section = segments[1].toLowerCase();
+            return (
+                (section === "wishlist" ||
+                    section === "followers" ||
+                    section === "following") &&
+                segments.length === 2
+            );
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    function findFanCollectionActiveGrid() {
+        const activeGridContainer = document.querySelector(
+            "#grids > .grid.active",
+        );
+        if (activeGridContainer) {
+            const activeGrid =
+                activeGridContainer.querySelector(
+                    [
+                        "#collection-search-items > .collection-grid",
+                        "#wishlist-search-items > .collection-grid",
+                        ".collection-grid",
+                    ].join(", "),
+                );
+            if (activeGrid) {
+                return activeGrid;
+            }
+            return null;
+        }
+
+        const activeTab = document.querySelector(
+            "li.active[data-grid-id][data-tab]",
+        );
+        const activeGridId = cleanText(
+            activeTab && activeTab.getAttribute("data-grid-id"),
+        );
+        if (activeGridId) {
+            const activeGrid = document.querySelector(
+                `#${CSS.escape(activeGridId)} .collection-grid`,
+            );
+            if (activeGrid) {
+                return activeGrid;
+            }
+        }
+
+        const preferredGridId = isFanWishlistPage()
+            ? "wishlist-grid"
+            : "collection-grid";
+        const preferredGrid = document.querySelector(
+            `#${preferredGridId} .collection-grid`,
+        );
+        if (preferredGrid) {
+            return preferredGrid;
+        }
+
+        return document.querySelector(".grid.active .collection-grid");
     }
 
     function isFreshOwnedReleaseCollectionSearchPayload(payload) {
@@ -3503,13 +5178,145 @@
                     if (
                         controller &&
                         !controller.loaded &&
-                        !controller.loading
+                        !controller.loading &&
+                        !controller.autoFetchQueued
                     ) {
-                        controller.fetchAndRender({ auto: true });
+                        queueAutoFetch(controller);
                     }
                 });
             },
             { rootMargin: CONFIG.observerRootMargin },
+        );
+    }
+
+    function queueAutoFetch(controller) {
+        if (
+            !controller ||
+            controller.loaded ||
+            controller.loading ||
+            controller.autoFetchQueued
+        ) {
+            return;
+        }
+
+        controller.autoFetchQueued = true;
+        applyReleaseShellLoadingState(controller);
+        STATE.autoFetchQueue.push({
+            controller,
+            sequence: ++STATE.autoFetchSequence,
+        });
+        updateAutoFetchDebugState();
+        scheduleAutoFetchQueueDrain();
+    }
+
+    function scheduleAutoFetchQueueDrain() {
+        if (STATE.autoFetchDrainScheduled) {
+            return;
+        }
+
+        STATE.autoFetchDrainScheduled = true;
+        const run = () => {
+            STATE.autoFetchDrainScheduled = false;
+            drainAutoFetchQueue();
+        };
+        if (typeof window.queueMicrotask === "function") {
+            window.queueMicrotask(run);
+        } else {
+            Promise.resolve().then(run);
+        }
+    }
+
+    function drainAutoFetchQueue() {
+        while (
+            STATE.activeAutoFetchCount < CONFIG.maxConcurrentAutoFetches &&
+            STATE.autoFetchQueue.length
+        ) {
+            const next = takeNearestAutoFetch();
+            const controller = next && next.controller;
+            if (!controller) {
+                continue;
+            }
+
+            controller.autoFetchQueued = false;
+            updateAutoFetchDebugState();
+            if (
+                controller.loaded ||
+                controller.loading ||
+                !(controller.card instanceof Element) ||
+                !controller.card.isConnected
+            ) {
+                continue;
+            }
+
+            STATE.activeAutoFetchCount += 1;
+            STATE.peakAutoFetchCount = Math.max(
+                STATE.peakAutoFetchCount,
+                STATE.activeAutoFetchCount,
+            );
+            updateAutoFetchDebugState();
+            Promise.resolve(controller.fetchAndRender({ auto: true }))
+                .catch(() => {})
+                .finally(() => {
+                    STATE.activeAutoFetchCount = Math.max(
+                        0,
+                        STATE.activeAutoFetchCount - 1,
+                    );
+                    updateAutoFetchDebugState();
+                    drainAutoFetchQueue();
+                });
+        }
+    }
+
+    function takeNearestAutoFetch() {
+        let nearestIndex = 0;
+        let nearestDistance = Infinity;
+        let nearestSequence = Infinity;
+
+        STATE.autoFetchQueue.forEach((entry, index) => {
+            const distance = getAutoFetchViewportDistance(
+                entry && entry.controller && entry.controller.card,
+            );
+            const sequence = Number(entry && entry.sequence) || 0;
+            if (
+                distance < nearestDistance ||
+                (distance === nearestDistance && sequence < nearestSequence)
+            ) {
+                nearestIndex = index;
+                nearestDistance = distance;
+                nearestSequence = sequence;
+            }
+        });
+
+        return STATE.autoFetchQueue.splice(nearestIndex, 1)[0] || null;
+    }
+
+    function getAutoFetchViewportDistance(card) {
+        if (!(card instanceof Element) || !card.isConnected) {
+            return Infinity;
+        }
+
+        const rect = card.getBoundingClientRect();
+        const viewportHeight =
+            window.innerHeight || document.documentElement.clientHeight || 0;
+        return Math.abs(rect.top + rect.height / 2 - viewportHeight / 2);
+    }
+
+    function updateAutoFetchDebugState() {
+        markDebugState(
+            "data-bcampx-auto-fetch-active-count",
+            String(STATE.activeAutoFetchCount),
+        );
+        markDebugState(
+            "data-bcampx-auto-fetch-queue-count",
+            String(STATE.autoFetchQueue.length),
+        );
+        markDebugState(
+            "data-bcampx-auto-fetch-peak-count",
+            String(STATE.peakAutoFetchCount),
+        );
+        markDebugState(
+            "data-bcampx-auto-fetch-limit",
+            String(CONFIG.maxConcurrentAutoFetches),
         );
     }
 
@@ -3521,8 +5328,10 @@
         STATE.mutationObserver = new MutationObserver((mutations) => {
             let shouldFullScan = false;
             let shouldInvalidateMemo = false;
+            let shouldSyncReleaseGridFeed = false;
 
             mutations.forEach((mutation) => {
+                markFanCollectionGridDirtyFromMutation(mutation);
                 if (mutation.type === "attributes") {
                     const target = mutation.target;
                     if (!(target instanceof Element)) {
@@ -3530,6 +5339,9 @@
                     }
 
                     shouldInvalidateMemo = true;
+                    if (hasArtistMusicSourceGridMutationNode(target)) {
+                        shouldSyncReleaseGridFeed = true;
+                    }
                     if (hasPotentialReleaseSignal(target)) {
                         const story = getStoryRoot(target);
                         if (story) {
@@ -3545,6 +5357,10 @@
                 Array.from(mutation.addedNodes || []).forEach((node) => {
                     if (!(node instanceof Element)) {
                         return;
+                    }
+
+                    if (hasArtistMusicSourceGridMutationNode(node)) {
+                        shouldSyncReleaseGridFeed = true;
                     }
 
                     if (isBcampxInternalMutationNode(node)) {
@@ -3581,6 +5397,18 @@
                 invalidateNodeMemoCache();
             }
 
+            if (shouldSyncReleaseGridFeed) {
+                scheduleArtistMusicFeedSync();
+            }
+
+            if (
+                mutations.some(hasFanCollectionContextMutation) &&
+                isBandcampFanCollectionPageUrl(window.location.href)
+            ) {
+                setupFanCollectionTabObserver();
+                scheduleFanCollectionFeedContextSync();
+            }
+
             if (shouldFullScan) {
                 scheduleScan();
             }
@@ -3588,10 +5416,36 @@
 
         STATE.mutationObserver.observe(document.body, {
             attributes: true,
-            attributeFilter: ["data-item-json"],
+            attributeFilter: [
+                "data-item-json",
+                "data-playerdata",
+                "data-itemid",
+                "data-tralbumid",
+                "data-tralbumtype",
+                "data-title",
+                "href",
+            ],
             childList: true,
             subtree: true,
         });
+    }
+
+    function hasArtistMusicSourceGridMutationNode(node) {
+        if (!(node instanceof Element) || !STATE.artistMusicFeedBuilt) {
+            return false;
+        }
+
+        const sourceGrid = STATE.artistMusicSourceGridNode;
+        if (
+            sourceGrid &&
+            (sourceGrid === node ||
+                sourceGrid.contains(node) ||
+                (node.contains && node.contains(sourceGrid)))
+        ) {
+            return true;
+        }
+
+        return false;
     }
 
     function scheduleScan(root = null) {
@@ -3635,6 +5489,13 @@
     function isBcampxInternalMutationNode(node) {
         if (!(node instanceof Element)) {
             return false;
+        }
+
+        if (
+            node.matches(".bcampx-label-feed") ||
+            node.closest(".bcampx-label-feed")
+        ) {
+            return true;
         }
 
         if (
@@ -4827,7 +6688,7 @@
 
         const text = document.createElement("span");
         text.className = "bcampx__summary-text";
-        text.textContent = "Loading extra context...";
+        text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
 
         const toggle = document.createElement("button");
         toggle.type = "button";
@@ -4842,8 +6703,15 @@
         const controller = {
             loaded: false,
             loading: false,
+            autoFetchQueued: false,
             expanded: false,
             data: null,
+            refreshPromise: null,
+            card,
+            shellNode: shell,
+            metaNode: meta,
+            textNode: text,
+            toggleNode: toggle,
             releaseUrl,
             releaseRequestContext:
                 releaseRequestContext ||
@@ -4862,6 +6730,15 @@
         };
 
         setCardController(card, controller);
+        renderArtistMusicCardInitialData(
+            card,
+            controller,
+            shell,
+            meta,
+            text,
+            toggle,
+            releaseUrl,
+        );
         incrementDebugCounter("data-bcampx-enhanced-count");
 
         toggle.addEventListener("click", () => {
@@ -4876,6 +6753,55 @@
             card.setAttribute(OBSERVED_ATTR, "true");
             STATE.observer.observe(card);
         }
+    }
+
+    function renderArtistMusicCardInitialData(
+        card,
+        controller,
+        shell,
+        meta,
+        text,
+        toggle,
+        releaseUrl,
+    ) {
+        const release = card && card.__bcampxArtistMusicRelease;
+        const initialData = release && release.initialData;
+        if (!initialData || !controller) {
+            return;
+        }
+
+        const normalizedData = normalizeReleaseData(initialData);
+        const showInitialLoading = shouldShowInitialExtraContextLoading(card);
+        if (showInitialLoading) {
+            applyReleaseShellLoadingState(controller);
+        }
+
+        controller.data = normalizedData;
+        renderReleaseData(
+            shell,
+            meta,
+            text,
+            toggle,
+            normalizedData,
+            releaseUrl,
+        );
+        text.textContent = buildLoadedSummaryText(normalizedData, {
+            fromCache: true,
+            stale: false,
+        });
+        if (showInitialLoading) {
+            text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
+        }
+    }
+
+    function shouldShowInitialExtraContextLoading(card) {
+        const release = card && card.__bcampxArtistMusicRelease;
+        return Boolean(
+            release &&
+                /^(fan-collection|fan-wishlist)$/.test(
+                    cleanText(release.feedKind || ""),
+                ),
+        );
     }
 
     function mountEnhancementShell(card, shell) {
@@ -5173,17 +7099,20 @@
         options,
     ) {
         controller.loading = true;
-        shell.classList.add("bcampx--loading");
-        text.textContent = "Loading extra context...";
-        toggle.disabled = true;
+        applyReleaseShellLoadingState(controller);
+        let keepLoadingForRefresh = false;
 
         try {
             const result = await getReleaseData(
                 controller.releaseRequestContext || releaseUrl,
             );
-            const normalizedData = normalizeReleaseData(result.data);
+            const normalizedData = getRenderableReleaseData(
+                controller,
+                result,
+            );
             controller.loaded = true;
             controller.data = normalizedData;
+            keepLoadingForRefresh = Boolean(result.refreshPromise);
 
             renderReleaseData(
                 shell,
@@ -5200,7 +7129,20 @@
             controller.expanded = shouldExpand;
             shell.classList.toggle("bcampx--expanded", shouldExpand);
             updateToggle(toggle, shouldExpand);
-            text.textContent = buildLoadedSummaryText(normalizedData, result);
+            text.textContent = result.refreshingTracks
+                ? LOADING_EXTRA_CONTEXT_TEXT
+                : buildLoadedSummaryText(normalizedData, result);
+            if (result.refreshPromise) {
+                attachReleaseRefreshPromise(
+                    controller,
+                    result.refreshPromise,
+                    releaseUrl,
+                    shell,
+                    meta,
+                    text,
+                    toggle,
+                );
+            }
         } catch (error) {
             if (shouldAbandonReleaseEnhancement(error)) {
                 controller.loaded = true;
@@ -5218,9 +7160,145 @@
             toggle.hidden = true;
         } finally {
             controller.loading = false;
-            toggle.disabled = false;
-            shell.classList.remove("bcampx--loading");
+            if (!keepLoadingForRefresh) {
+                clearReleaseShellLoadingState(controller);
+            }
         }
+    }
+
+    function applyReleaseShellLoadingState(controller) {
+        if (!controller) {
+            return;
+        }
+
+        const shell = controller.shellNode;
+        const text = controller.textNode;
+        const toggle = controller.toggleNode;
+
+        if (shell) {
+            shell.classList.add("bcampx--loading");
+            shell.setAttribute("data-bcampx-loading-extra-context", "true");
+        }
+        if (text) {
+            text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
+        }
+        if (toggle) {
+            toggle.disabled = true;
+        }
+    }
+
+    function clearReleaseShellLoadingState(controller) {
+        if (!controller) {
+            return;
+        }
+
+        const shell = controller.shellNode;
+        const toggle = controller.toggleNode;
+
+        if (shell) {
+            shell.classList.remove("bcampx--loading");
+            shell.removeAttribute("data-bcampx-loading-extra-context");
+            shell
+                .querySelectorAll(".bcampx__slot-loading")
+                .forEach((node) => node.remove());
+        }
+        if (toggle) {
+            toggle.disabled = false;
+        }
+    }
+
+    function getRenderableReleaseData(controller, result) {
+        const normalizedData = normalizeReleaseData(result && result.data);
+        if (!(result && result.refreshingTracks)) {
+            return normalizedData;
+        }
+
+        const release =
+            controller &&
+            controller.card &&
+            controller.card.__bcampxArtistMusicRelease;
+        const nativeData = normalizeReleaseData(
+            release && release.initialData,
+        );
+        const nativeTracks = Array.isArray(nativeData.tracks)
+            ? nativeData.tracks
+            : [];
+        normalizedData.tracks = normalizedData.tracks.map((track) => {
+            const nativeTrack = nativeTracks.find(
+                (candidate) =>
+                    (track.trackId &&
+                        candidate.trackId &&
+                        track.trackId === candidate.trackId) ||
+                    cleanText(track.title).toLowerCase() ===
+                        cleanText(candidate.title).toLowerCase(),
+            );
+            return {
+                ...track,
+                streamUrl:
+                    (nativeTrack && nativeTrack.streamUrl) || "",
+            };
+        });
+        return normalizedData;
+    }
+
+    function attachReleaseRefreshPromise(
+        controller,
+        refreshPromise,
+        releaseUrl,
+        shell,
+        meta,
+        text,
+        toggle,
+    ) {
+        controller.refreshPromise = refreshPromise;
+        void refreshPromise
+            .then((result) => {
+                if (controller.refreshPromise !== refreshPromise) {
+                    return;
+                }
+
+                const normalizedData = getRenderableReleaseData(
+                    controller,
+                    result,
+                );
+                controller.data = normalizedData;
+                if (!shell.isConnected) {
+                    return;
+                }
+                renderReleaseData(
+                    shell,
+                    meta,
+                    text,
+                    toggle,
+                    normalizedData,
+                    releaseUrl,
+                );
+                shell.classList.toggle(
+                    "bcampx--expanded",
+                    controller.expanded,
+                );
+                updateToggle(toggle, controller.expanded);
+                text.textContent = buildLoadedSummaryText(
+                    normalizedData,
+                    result,
+                );
+            })
+            .catch(() => {
+                if (controller.refreshPromise !== refreshPromise) {
+                    return;
+                }
+                const fallbackData = controller.data || createEmptyReleaseData();
+                text.textContent = buildLoadedSummaryText(fallbackData, {
+                    fromCache: true,
+                    stale: true,
+                });
+            })
+            .finally(() => {
+                if (controller.refreshPromise === refreshPromise) {
+                    controller.refreshPromise = null;
+                }
+                clearReleaseShellLoadingState(controller);
+            });
     }
 
     function toggleDetails(controller, shell, toggle) {
@@ -5245,14 +7323,33 @@
                 ? normalizeReleaseData(cached)
                 : null;
 
-        if (isFreshReleaseCache(cached)) {
-            if (!shouldRefreshCachedRelease(cached, normalizedCached)) {
+        const freshCache = isFreshReleaseCache(cached);
+        if (freshCache) {
+            const shouldRefresh = shouldRefreshCachedRelease(
+                cached,
+                normalizedCached,
+                requestContext,
+                cacheKey,
+            );
+            if (!shouldRefresh) {
                 return { data: normalizedCached, fromCache: true, stale: false };
             }
         }
 
         const pending = STATE.pendingReleaseRequests.get(cacheKey);
         if (pending) {
+            if (
+                shouldServeCachedReleaseWhileRefreshing(
+                    requestContext,
+                    cached,
+                    normalizedCached,
+                )
+            ) {
+                return buildRefreshingCachedReleaseResult(
+                    normalizedCached,
+                    pending,
+                );
+            }
             return pending;
         }
 
@@ -5271,6 +7368,9 @@
                 const cacheValue = buildReleaseCacheValue(data);
 
                 await storageSet(cacheKey, cacheValue);
+                if (hasPlayableTracks(cacheValue)) {
+                    STATE.pageFreshTrackReleaseKeys.add(cacheKey);
+                }
                 return { data: cacheValue, fromCache: false, stale: false };
             } catch (error) {
                 if (hasVisibleEnhancements(normalizedCached)) {
@@ -5286,13 +7386,54 @@
         });
 
         STATE.pendingReleaseRequests.set(cacheKey, request);
-        try {
-            return await request;
-        } finally {
+        const clearPendingRequest = () => {
             if (STATE.pendingReleaseRequests.get(cacheKey) === request) {
                 STATE.pendingReleaseRequests.delete(cacheKey);
             }
+        };
+        request.then(clearPendingRequest, clearPendingRequest);
+
+        if (
+            freshCache &&
+            shouldServeCachedReleaseWhileRefreshing(
+                requestContext,
+                cached,
+                normalizedCached,
+            )
+        ) {
+            return buildRefreshingCachedReleaseResult(
+                normalizedCached,
+                request,
+            );
         }
+
+        return request;
+    }
+
+    function buildRefreshingCachedReleaseResult(data, refreshPromise) {
+        return {
+            data,
+            fromCache: true,
+            stale: false,
+            refreshingTracks: true,
+            refreshPromise,
+        };
+    }
+
+    function shouldServeCachedReleaseWhileRefreshing(
+        requestContext,
+        rawData,
+        normalizedData,
+    ) {
+        return Boolean(
+            requestContext &&
+                requestContext.allowCachedTrackSnapshot === true &&
+                rawData &&
+                normalizedData &&
+                isFreshReleaseCache(rawData) &&
+                hasVisibleEnhancements(normalizedData) &&
+                !needsSchemaRefresh(rawData, normalizedData),
+        );
     }
 
     function enqueueReleaseFetch(task) {
@@ -5330,6 +7471,10 @@
         return `${RELEASE_CACHE_PREFIX}${releaseUrl}`;
     }
 
+    function getReleaseSupporterCountCacheKey(releaseUrl) {
+        return `${RELEASE_SUPPORTER_COUNT_CACHE_PREFIX}${releaseUrl}`;
+    }
+
     function normalizeReleaseRequestContext(releaseInput) {
         if (releaseInput && typeof releaseInput === "object") {
             return {
@@ -5339,6 +7484,10 @@
                     releaseInput.itemType,
                     releaseInput.releaseUrl || "",
                 ),
+                requirePageFreshTracks:
+                    releaseInput.requirePageFreshTracks === true,
+                allowCachedTrackSnapshot:
+                    releaseInput.allowCachedTrackSnapshot === true,
             };
         }
 
@@ -5346,6 +7495,8 @@
             releaseUrl: normalizeReleaseUrl(releaseInput || ""),
             itemId: 0,
             itemType: normalizeReleaseItemType("", releaseInput || ""),
+            requirePageFreshTracks: false,
+            allowCachedTrackSnapshot: false,
         };
     }
 
@@ -5446,11 +7597,75 @@
         );
     }
 
-    function shouldRefreshCachedRelease(rawData, normalizedData) {
+    function shouldRefreshCachedRelease(
+        rawData,
+        normalizedData,
+        requestContext,
+        cacheKey,
+    ) {
         return (
             needsTrackRefresh(normalizedData) ||
-            needsSchemaRefresh(rawData, normalizedData)
+            needsTrackSnapshotRefresh(
+                rawData,
+                normalizedData,
+                requestContext,
+                cacheKey,
+            ) ||
+            needsSchemaRefresh(rawData, normalizedData) ||
+            needsSupporterSnapshotRefresh(rawData, normalizedData)
         );
+    }
+
+    function needsTrackSnapshotRefresh(
+        rawData,
+        normalizedData,
+        requestContext,
+        cacheKey,
+    ) {
+        if (
+            !hasPlayableTracks(normalizedData) ||
+            !rawData ||
+            !rawData.fetchedAt
+        ) {
+            return false;
+        }
+
+        if (
+            requestContext &&
+            requestContext.requirePageFreshTracks === true &&
+            !STATE.pageFreshTrackReleaseKeys.has(cacheKey)
+        ) {
+            return true;
+        }
+
+        const ttlMs = Math.max(0, Number(CONFIG.trackCacheTtlMs) || 0);
+        return ttlMs > 0 && Date.now() - Number(rawData.fetchedAt) >= ttlMs;
+    }
+
+    function hasPlayableTracks(data) {
+        return Boolean(
+            data &&
+                Array.isArray(data.tracks) &&
+                data.tracks.some((track) => track && track.streamUrl),
+        );
+    }
+
+    function needsSupporterSnapshotRefresh(rawData, normalizedData) {
+        if (
+            !CONFIG.showCollectionCounts ||
+            !normalizedData ||
+            !normalizedData.supporterCount ||
+            !rawData ||
+            !rawData.fetchedAt
+        ) {
+            return false;
+        }
+
+        const ttlMs = Math.max(
+            0,
+            Number(CONFIG.supporterCountCacheTtlMs) || 0,
+        );
+        return ttlMs > 0 && Date.now() - Number(rawData.fetchedAt) >= ttlMs;
     }
 
     function requestHtml(url) {
@@ -5611,6 +7826,10 @@
             tralbum,
             tracks,
         );
+        const supporterState = extractReleaseSupporterState(
+            documentFromHtml,
+            tralbum,
+        );
 
         return {
             url: releaseUrl,
@@ -5621,11 +7840,18 @@
             artUrl: metaContent(documentFromHtml, 'meta[property="og:image"]'),
             digitalPrice: extractDigitalPrice(documentFromHtml),
             digitalOwnershipUrl: extractDigitalOwnershipUrl(documentFromHtml),
+            isPreorder: extractReleaseIsPreorder(documentFromHtml, tralbum),
             hasBodyDescriptionSource: descriptionState.hasBodyDescriptionSource,
             description: descriptionState.description,
             descriptionHtml: descriptionState.descriptionHtml,
             tags: extractReleaseTags(documentFromHtml),
             tracks,
+            supporterCount: supporterState.count,
+            supporterCountIsExact: supporterState.isExact,
+            supporterMoreAvailable: supporterState.moreAvailable,
+            supporterNextToken: supporterState.nextToken,
+            supporterItemId: supporterState.itemId,
+            supporterItemType: supporterState.itemType,
         };
     }
 
@@ -5681,6 +7907,17 @@
             descriptionHtml: descriptionState.descriptionHtml,
             digitalPrice: cleanText(data.digitalPrice || ""),
             digitalOwnershipUrl: cleanText(data.digitalOwnershipUrl || ""),
+            digitalDownloadUrl: cleanText(data.digitalDownloadUrl || ""),
+            isPreorder: data.isPreorder === true,
+            supporterCount: normalizeNonNegativeInteger(data.supporterCount),
+            supporterCountIsExact: data.supporterCountIsExact === true,
+            supporterCountLabel: cleanText(data.supporterCountLabel || ""),
+            supporterCountAuthoritative:
+                data.supporterCountAuthoritative === true,
+            supporterMoreAvailable: data.supporterMoreAvailable === true,
+            supporterNextToken: cleanText(data.supporterNextToken || ""),
+            supporterItemId: normalizeNonNegativeInteger(data.supporterItemId),
+            supporterItemType: normalizeSupporterItemType(data.supporterItemType),
             tags: Array.isArray(data.tags)
                 ? data.tags.map((tag) => cleanText(tag)).filter(Boolean)
                 : [],
@@ -5697,11 +7934,431 @@
             location: "",
             digitalPrice: "",
             digitalOwnershipUrl: "",
+            digitalDownloadUrl: "",
+            isPreorder: false,
             description: "",
             descriptionHtml: "",
             tags: [],
             tracks: [],
+            supporterCount: 0,
+            supporterCountIsExact: false,
+            supporterCountLabel: "",
+            supporterCountAuthoritative: false,
+            supporterMoreAvailable: false,
+            supporterNextToken: "",
+            supporterItemId: 0,
+            supporterItemType: "",
         };
+    }
+
+    function extractReleaseIsPreorder(doc, tralbum) {
+        if (
+            tralbum &&
+            tralbum.current &&
+            tralbum.current.is_preorder === true
+        ) {
+            return true;
+        }
+
+        return Array.from(
+            doc.querySelectorAll(
+                ".buyItem.digital h4, .buyItem.digital .download-link, .buyItem.digital .buy-link",
+            ),
+        ).some((node) => /\bpre-order\b/i.test(cleanText(node.textContent || "")));
+    }
+
+    async function getExactReleaseSupporterCount(releaseData, options = {}) {
+        const state = normalizeReleaseSupporterState(releaseData);
+        if (!state.url || !state.count) {
+            return {
+                count: 0,
+                isExact: true,
+                moreAvailable: false,
+                nextToken: "",
+            };
+        }
+
+        if (state.isExact || !state.moreAvailable) {
+            return {
+                count: state.count,
+                isExact: true,
+                moreAvailable: false,
+                nextToken: "",
+            };
+        }
+
+        const cacheKey = getReleaseSupporterCountCacheKey(state.url);
+        const cached = await storageGet(cacheKey, null);
+        if (!options.forceRefresh && isFreshReleaseSupporterCountCache(cached)) {
+            return {
+                count: normalizeNonNegativeInteger(cached.count),
+                isExact: cached.isExact === true,
+                moreAvailable: false,
+                nextToken: "",
+            };
+        }
+
+        const pending = STATE.pendingSupporterCountRequests.get(cacheKey);
+        if (pending) {
+            return pending;
+        }
+
+        const request = enqueueSupporterCountFetch(
+            async () => {
+                const result = await fetchExactReleaseSupporterCount(
+                    state,
+                    options,
+                );
+                if (result && result.isExact) {
+                    await storageSet(cacheKey, {
+                        count: result.count,
+                        isExact: true,
+                        fetchedAt: Date.now(),
+                        schemaVersion: CACHE_SCHEMA_VERSION,
+                    });
+                }
+                return result;
+            },
+            { priority: options.forceRefresh === true },
+        );
+
+        STATE.pendingSupporterCountRequests.set(cacheKey, request);
+        try {
+            return await request;
+        } finally {
+            if (STATE.pendingSupporterCountRequests.get(cacheKey) === request) {
+                STATE.pendingSupporterCountRequests.delete(cacheKey);
+            }
+        }
+    }
+
+    function enqueueSupporterCountFetch(task, options = {}) {
+        return new Promise((resolve, reject) => {
+            const entry = { task, resolve, reject };
+            if (options.priority === true) {
+                STATE.supporterCountFetchQueue.unshift(entry);
+            } else {
+                STATE.supporterCountFetchQueue.push(entry);
+            }
+            drainSupporterCountFetchQueue();
+        });
+    }
+
+    function drainSupporterCountFetchQueue() {
+        while (
+            STATE.activeSupporterCountFetchCount <
+                CONFIG.maxConcurrentSupporterCountFetches &&
+            STATE.supporterCountFetchQueue.length
+        ) {
+            const next = STATE.supporterCountFetchQueue.shift();
+            if (!next || typeof next.task !== "function") {
+                continue;
+            }
+
+            STATE.activeSupporterCountFetchCount += 1;
+            Promise.resolve()
+                .then(() => next.task())
+                .then(next.resolve, next.reject)
+                .finally(() => {
+                    STATE.activeSupporterCountFetchCount = Math.max(
+                        0,
+                        STATE.activeSupporterCountFetchCount - 1,
+                    );
+                    drainSupporterCountFetchQueue();
+                });
+        }
+    }
+
+    async function fetchExactReleaseSupporterCount(state, options = {}) {
+        if (!state.itemId || !state.itemType || !state.nextToken) {
+            return {
+                count: state.count,
+                isExact: false,
+                moreAvailable: state.moreAvailable === true,
+                nextToken: state.nextToken,
+            };
+        }
+
+        const apiUrl = getReleaseSupporterCountApiUrl(state.url);
+        if (!apiUrl) {
+            return {
+                count: state.count,
+                isExact: false,
+                moreAvailable: state.moreAvailable === true,
+                nextToken: state.nextToken,
+            };
+        }
+
+        const maxExactCount = options.ignoreLimit
+            ? 0
+            : normalizeNonNegativeInteger(CONFIG.maxSupporterExactCount);
+        let count = state.count;
+        let token = state.nextToken;
+        let moreAvailable = state.moreAvailable;
+
+        if (maxExactCount && count >= maxExactCount) {
+            return buildReleaseSupporterCountResult(count, false, {
+                moreAvailable,
+                nextToken: token,
+            });
+        }
+
+        while (moreAvailable && token) {
+            const response = await requestReleaseSupporterCountPage(apiUrl, {
+                tralbum_type: state.itemType,
+                tralbum_id: state.itemId,
+                token,
+                count: CONFIG.supporterCountPageSize,
+            });
+
+            const results =
+                response && Array.isArray(response.results)
+                    ? response.results
+                    : [];
+            count += results.length;
+            moreAvailable = Boolean(response && response.more_available);
+
+            const last = results[results.length - 1];
+            token = cleanText(last && last.token);
+            if (!results.length) {
+                moreAvailable = false;
+            }
+
+            if (maxExactCount && count >= maxExactCount) {
+                break;
+            }
+
+            if (moreAvailable && CONFIG.supporterCountPageDelayMs > 0) {
+                await waitForSupporterCountPageDelay(
+                    CONFIG.supporterCountPageDelayMs,
+                );
+            }
+        }
+
+        return buildReleaseSupporterCountResult(count, !moreAvailable, {
+            moreAvailable,
+            nextToken: token,
+        });
+    }
+
+    async function requestReleaseSupporterCountPage(apiUrl, payload) {
+        const retryCount = Math.max(
+            0,
+            Math.floor(Number(CONFIG.supporterCountRequestRetries) || 0),
+        );
+        const retryDelayMs = Math.max(
+            0,
+            Math.floor(Number(CONFIG.supporterCountRetryDelayMs) || 0),
+        );
+        let lastError = null;
+
+        for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+            try {
+                return await requestJson(apiUrl, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        Accept: "application/json, text/javascript, */*; q=0.01",
+                        "Content-Type": "application/json",
+                    },
+                    data: JSON.stringify(payload),
+                });
+            } catch (error) {
+                lastError = error;
+                if (attempt >= retryCount) {
+                    break;
+                }
+                await waitForSupporterCountPageDelay(
+                    retryDelayMs * (attempt + 1),
+                );
+            }
+        }
+
+        throw lastError || new Error("Supporter count request failed.");
+    }
+
+    function buildReleaseSupporterCountResult(count, isExact, state = {}) {
+        const normalizedCount = normalizeNonNegativeInteger(count);
+        const exact = isExact === true;
+
+        return {
+            count: normalizedCount,
+            isExact: exact,
+            moreAvailable: !exact && state.moreAvailable === true,
+            nextToken: exact ? "" : cleanText(state.nextToken || ""),
+        };
+    }
+
+    function waitForSupporterCountPageDelay(delayMs) {
+        return new Promise((resolve) => {
+            window.setTimeout(resolve, Math.max(0, delayMs));
+        });
+    }
+
+    function isFreshReleaseSupporterCountCache(value) {
+        return Boolean(
+                value &&
+                value.schemaVersion === CACHE_SCHEMA_VERSION &&
+                value.isExact === true &&
+                normalizeNonNegativeInteger(value.count) > 0 &&
+                value.fetchedAt &&
+                Date.now() - value.fetchedAt <
+                    CONFIG.supporterCountCacheTtlMs,
+        );
+    }
+
+    function getReleaseSupporterCountApiUrl(releaseUrl) {
+        try {
+            const url = new URL(releaseUrl, window.location.href);
+            return `${url.origin}/api/tralbumcollectors/2/thumbs`;
+        } catch (_error) {
+            return "";
+        }
+    }
+
+    function normalizeReleaseSupporterState(data) {
+        const normalized = normalizeReleaseData(data);
+        return {
+            url: normalizeReleaseUrl(normalized.url),
+            count: normalizeNonNegativeInteger(normalized.supporterCount),
+            isExact: normalized.supporterCountIsExact === true,
+            moreAvailable: normalized.supporterMoreAvailable === true,
+            nextToken: cleanText(normalized.supporterNextToken || ""),
+            itemId: normalizeNonNegativeInteger(normalized.supporterItemId),
+            itemType: normalizeSupporterItemType(normalized.supporterItemType),
+        };
+    }
+
+    function extractReleaseSupporterState(doc, tralbum) {
+        const collectors = parseReleaseCollectorsData(doc);
+        const tralbumIdentity = getTralbumSupporterIdentity(tralbum);
+        if (!collectors) {
+            const domCount = countDomSupporterThumbs(doc);
+            return {
+                count: domCount,
+                isExact: domCount > 0,
+                moreAvailable: false,
+                nextToken: "",
+                itemId: tralbumIdentity.itemId,
+                itemType: tralbumIdentity.itemType,
+            };
+        }
+
+        const thumbs = Array.isArray(collectors.thumbs)
+            ? collectors.thumbs
+            : [];
+        const reviews = Array.isArray(collectors.reviews)
+            ? collectors.reviews
+            : [];
+        const shownReviews = Array.isArray(collectors.shown_reviews)
+            ? collectors.shown_reviews
+            : [];
+        const supporterCount = countUniqueSupporters([
+            ...thumbs,
+            ...reviews,
+            ...shownReviews,
+        ]);
+        const fallbackCount = supporterCount || countDomSupporterThumbs(doc);
+        const moreAvailable = Boolean(collectors.more_thumbs_available);
+        const lastThumb = thumbs[thumbs.length - 1] || null;
+
+        return {
+            count: fallbackCount,
+            isExact: fallbackCount > 0 && !moreAvailable,
+            moreAvailable,
+            nextToken: cleanText(lastThumb && lastThumb.token),
+            itemId: tralbumIdentity.itemId,
+            itemType: tralbumIdentity.itemType,
+        };
+    }
+
+    function parseReleaseCollectorsData(doc) {
+        const node = doc.querySelector(
+            "#collectors-data[data-blob], [data-blob*='more_thumbs_available']",
+        );
+        if (!node) {
+            return null;
+        }
+
+        const parsed = parseJsonAttribute(node, "data-blob");
+        return parsed && typeof parsed === "object" ? parsed : null;
+    }
+
+    function countUniqueSupporters(values) {
+        const seen = new Set();
+        values.forEach((value) => {
+            const key = getSupporterUniqueKey(value);
+            if (key) {
+                seen.add(key);
+            }
+        });
+        return seen.size;
+    }
+
+    function getSupporterUniqueKey(value) {
+        if (!value || typeof value !== "object") {
+            return "";
+        }
+
+        const fanId = normalizeNonNegativeInteger(value.fan_id || value.fanId);
+        if (fanId) {
+            return `fan:${fanId}`;
+        }
+
+        const username = cleanText(value.username || value.url || "");
+        return username ? `user:${username.toLowerCase()}` : "";
+    }
+
+    function countDomSupporterThumbs(doc) {
+        const deets = doc.querySelector(".deets.populated");
+        if (!deets) {
+            return 0;
+        }
+
+        const thumbNodes = deets.querySelectorAll(".thumb");
+        if (thumbNodes.length) {
+            return thumbNodes.length;
+        }
+
+        return deets.querySelectorAll("a[href*='bandcamp.com/'] img, img")
+            .length;
+    }
+
+    function getTralbumSupporterIdentity(tralbum) {
+        const current = tralbum && tralbum.current ? tralbum.current : null;
+        const itemId = normalizeNonNegativeInteger(
+            current && current.id ? current.id : tralbum && tralbum.id,
+        );
+        const itemType = normalizeSupporterItemType(
+            (current && current.type) ||
+                (tralbum && tralbum.item_type) ||
+                (tralbum && tralbum.type) ||
+                "",
+        );
+
+        return {
+            itemId,
+            itemType,
+        };
+    }
+
+    function normalizeSupporterItemType(value) {
+        const type = cleanText(value || "").toLowerCase();
+        if (type === "a" || type === "album") {
+            return "a";
+        }
+        if (type === "t" || type === "track") {
+            return "t";
+        }
+        return "";
+    }
+
+    function normalizeNonNegativeInteger(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number) || number < 0) {
+            return 0;
+        }
+        return Math.floor(number);
     }
 
     function resolveReleaseTitle(doc, tralbum, jsonLd) {
@@ -6339,7 +8996,10 @@
             return;
         }
 
-        const actionText = getDigitalBuyActionLabel(data.digitalPrice);
+        const actionText = getDigitalBuyActionLabel(
+            data.digitalPrice,
+            data.isPreorder,
+        );
         buyLink.textContent = actionText;
 
         buyLink.addEventListener("click", (event) => {
@@ -6403,8 +9063,8 @@
             data.tracks,
             "bcampx__tracks",
             (track) => {
-            const item = document.createElement("li");
-            item.textContent = track.title;
+                const item = document.createElement("li");
+                item.textContent = track.title;
                 return item;
             },
         );
@@ -6435,6 +9095,7 @@
     }
 
     function renderSupportedSlot(meta, text, toggle, data, releaseUrl) {
+        const shell = meta.closest(".bcampx");
         const purchasedTrackTitles = getMergedTrackTitleSet(
             meta.closest(CARD_SELECTOR),
         );
@@ -6455,14 +9116,30 @@
             purchasedTrackTitles,
             autoExpandState,
         );
+        appendSupportedSlotLoading(panel, shell);
         renderSupportedSlotDescription(panel, data, autoExpandState);
-        appendSupportedSlotSubhead(panel, subhead);
-
+        if (!shell.closest(".bcampx-label-feed-card")) {
+            appendSupportedSlotSubhead(panel, subhead);
+        }
         meta.append(panel);
         scheduleSupportedSlotAutoExpand(panel, autoExpandState);
 
         toggle.hidden = true;
         text.hidden = true;
+    }
+
+    function appendSupportedSlotLoading(panel, shell) {
+        if (
+            !panel ||
+            !shell ||
+            shell.getAttribute("data-bcampx-loading-extra-context") !== "true"
+        ) {
+            return;
+        }
+
+        const loading = createClassedElement("div", "bcampx__slot-loading");
+        loading.textContent = LOADING_EXTRA_CONTEXT_TEXT;
+        panel.append(loading);
     }
 
     function renderSupportedSlotTracks(
@@ -7993,6 +10670,10 @@
         STATE.activeReleaseData = data || null;
         STATE.activeReleaseUrl = releaseUrl || "";
         STATE.activeTrackCard = card || null;
+        STATE.activeTrackFanGridNode =
+            card && typeof card.closest === "function"
+                ? card.closest("#grids > .grid")
+                : null;
         STATE.activeCardArtUrl = cardArtUrl || STATE.activeCardArtUrl || "";
         STATE.activePlaybackScope = cleanText(options.playbackScope);
 
@@ -8196,35 +10877,52 @@
     }
 
     function findWaypointScrollTarget(card, track) {
-        const trackId = cleanText(track && track.trackId);
-        if (trackId) {
-            const matches = Array.from(
-                document.querySelectorAll(
-                    `[data-trackid="${CSS.escape(trackId)}"]`,
-                ),
-            ).filter((node) => {
-                return node instanceof HTMLElement && isNodeVisible(node);
-            });
-
-            const preferred = matches
-                .map((node) => {
-                    return (
-                        node.closest(
-                            ".story-innards.collection-item-container",
-                        ) ||
-                        node.closest(".collection-item-container") ||
-                        node.closest(".story") ||
-                        node
-                    );
-                })
-                .find(Boolean);
-
-            if (preferred) {
-                return preferred;
-            }
+        if (!(card instanceof Element)) {
+            return null;
         }
 
-        return card || null;
+        if (
+            STATE.activeTrackButton instanceof Element &&
+            card.contains(STATE.activeTrackButton)
+        ) {
+            return (
+                STATE.activeTrackButton.closest(".bcampx__track-item") ||
+                STATE.activeTrackButton
+            );
+        }
+
+        const trackId = cleanText(track && track.trackId);
+        const streamUrl = cleanText(track && track.streamUrl);
+        const title = cleanText(track && track.title).toLowerCase();
+        const buttons = Array.from(
+            card.querySelectorAll(
+                ".bcampx__track-link, .bcampx__merge-track-button",
+            ),
+        );
+        const preferredButton =
+            (trackId &&
+                buttons.find(
+                    (button) =>
+                        cleanText(button.dataset.trackId) === trackId,
+                )) ||
+            (streamUrl &&
+                buttons.find(
+                    (button) =>
+                        cleanText(button.dataset.streamUrl) === streamUrl,
+                )) ||
+            (title &&
+                buttons.find(
+                    (button) =>
+                        cleanText(button.textContent).toLowerCase() === title,
+                ));
+        if (preferredButton) {
+            return (
+                preferredButton.closest(".bcampx__track-item") ||
+                preferredButton
+            );
+        }
+
+        return card;
     }
 
     function scrollCardIntoView(card, track) {
@@ -8236,18 +10934,45 @@
         if (!target) {
             return;
         }
+        const scrollOffset = getActiveTrackScrollOffset();
 
         if (window.Dom && typeof window.Dom.scrollToElement === "function") {
-            window.Dom.scrollToElement(target, -30);
+            window.Dom.scrollToElement(target, -scrollOffset);
             return;
         }
 
         const cardRect = target.getBoundingClientRect();
-        const targetTop = window.scrollY + cardRect.top - 30;
+        const targetTop = window.scrollY + cardRect.top - scrollOffset;
         window.scrollTo({
             top: Math.max(0, targetTop),
             behavior: "smooth",
         });
+    }
+
+    function getActiveTrackScrollOffset() {
+        const baseOffset = 30;
+        const sticky = document.querySelector("#grid-tabs-sticky");
+        if (!(sticky instanceof Element)) {
+            return baseOffset;
+        }
+
+        const rect = sticky.getBoundingClientRect();
+        const height = Math.max(
+            0,
+            rect.height,
+            Number(sticky.clientHeight) || 0,
+        );
+        if (!height) {
+            return baseOffset;
+        }
+
+        const style = window.getComputedStyle(sticky);
+        const configuredTop = Number.parseFloat(style.top);
+        const topInset =
+            Number.isFinite(configuredTop) && configuredTop >= 0
+                ? configuredTop
+                : 0;
+        return Math.max(baseOffset, Math.ceil(topInset + height + 12));
     }
 
     function ensurePlayerShell() {
@@ -8352,6 +11077,13 @@
             onChange: handleContinuousModeSettingChange,
         });
 
+        const collectionCountsSetting = createPlayerSettingsToggleRow({
+            label: "Collection counts",
+            description: "Show how many collections a release appears in. Uses extra Bandcamp requests.",
+            checked: CONFIG.showCollectionCounts,
+            onChange: handleCollectionCountsSettingChange,
+        });
+
         const settingsFooter = document.createElement("div");
         settingsFooter.className = "bcampx-player-settings-footer";
         settingsFooter.append("Made by ");
@@ -8370,6 +11102,7 @@
             trackRowActionsSetting.row,
             autoFillPriceSetting.row,
             continuousModeSetting.row,
+            collectionCountsSetting.row,
             settingsFooter,
         );
         settingsWrap.append(settingsButton, settingsMenu);
@@ -8429,7 +11162,9 @@
             settingsButton,
             settingsMenu,
             trackRowActionsSettingInput: trackRowActionsSetting.input,
+            autoFillPriceSettingInput: autoFillPriceSetting.input,
             continuousModeSettingInput: continuousModeSetting.input,
+            collectionCountsSettingInput: collectionCountsSetting.input,
             trackLink,
             storeLink,
             nativeAudio,
@@ -8462,7 +11197,7 @@
         const data = STATE.activeReleaseData || {};
         const releaseUrl = STATE.activeReleaseUrl || "#";
         const navigationState = getPlayerNavigationState();
-        ensureArtistMusicPlayerWishlistState(releaseUrl);
+        ensureRemotePlayerWishlistState(releaseUrl);
         const favoriteState = getPlayerFavoriteState(releaseUrl);
         setBooleanPropertyIfChanged(
             ui.prevButton,
@@ -8525,7 +11260,7 @@
 
     function handlePlayerTrackLinkClick(event) {
         event.preventDefault();
-        scrollToActiveTrackCard();
+        void scrollToActiveTrackCard();
     }
 
     function handlePlayerTrackLinkKeydown(event) {
@@ -8534,7 +11269,7 @@
         }
 
         event.preventDefault();
-        scrollToActiveTrackCard();
+        void scrollToActiveTrackCard();
     }
 
     function getPlayerNavigationState() {
@@ -8582,7 +11317,7 @@
             };
         }
 
-        if (!isArtistMusicPage()) {
+        if (!shouldUseRemotePlayerWishlist()) {
             const wishlistControl = findActiveWishlistControl();
             return {
                 hidden: false,
@@ -8619,8 +11354,8 @@
         };
     }
 
-    function ensureArtistMusicPlayerWishlistState(releaseUrl) {
-        if (!isArtistMusicPage()) {
+    function ensureRemotePlayerWishlistState(releaseUrl) {
+        if (!shouldUseRemotePlayerWishlist()) {
             return null;
         }
 
@@ -8725,7 +11460,7 @@
                 STATE.playerWishlistStateByUrl.delete(normalizedReleaseUrl);
             }
 
-            ensureArtistMusicPlayerWishlistState(normalizedReleaseUrl);
+            ensureRemotePlayerWishlistState(normalizedReleaseUrl);
             syncFavoriteButtonState();
         }, PLAYER_WISHLIST_STATE_RETRY_MS);
 
@@ -8863,6 +11598,13 @@
                 !!CONFIG.continuousMode,
             );
         }
+        if (ui.collectionCountsSettingInput) {
+            setBooleanPropertyIfChanged(
+                ui.collectionCountsSettingInput,
+                "checked",
+                !!CONFIG.showCollectionCounts,
+            );
+        }
     }
 
     function createPlayerSettingsToggleRow({
@@ -8917,6 +11659,14 @@
         CONFIG.continuousMode = checked;
         syncPlayerSettingsMenu();
         syncPlayerShell();
+        void persistUserSettings();
+    }
+
+    function handleCollectionCountsSettingChange(event) {
+        const checked = !!(event && event.target && event.target.checked);
+        CONFIG.showCollectionCounts = checked;
+        refreshArtistMusicCollectionCounts();
+        syncPlayerSettingsMenu();
         void persistUserSettings();
     }
 
@@ -9323,13 +12073,72 @@
         window.open(STATE.activeReleaseUrl, "_blank", "noopener");
     }
 
-    function scrollToActiveTrackCard() {
-        const activeCard = getConnectedActiveTrackCard();
+    async function scrollToActiveTrackCard() {
+        await activateActiveTrackFanGrid();
+        const activeCard =
+            getConnectedActiveTrackCard() ||
+            findActiveTrackCardByRelease();
         if (!activeCard) {
             return;
         }
 
+        STATE.activeTrackCard = activeCard;
         scrollCardIntoView(activeCard, STATE.activeTrack);
+    }
+
+    async function activateActiveTrackFanGrid() {
+        const grid = STATE.activeTrackFanGridNode;
+        if (
+            !(grid instanceof Element) ||
+            !grid.isConnected ||
+            grid.classList.contains("active")
+        ) {
+            return;
+        }
+
+        const tab = grid.id
+            ? document.querySelector(
+                  `[data-grid-id="${CSS.escape(grid.id)}"]`,
+              )
+            : null;
+        if (!(tab instanceof HTMLElement)) {
+            return;
+        }
+
+        tab.click();
+        scheduleFanCollectionFeedContextSync();
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+            await new Promise((resolve) => window.setTimeout(resolve, 25));
+            if (
+                grid.classList.contains("active") &&
+                findActiveTrackCardByRelease()
+            ) {
+                return;
+            }
+        }
+    }
+
+    function findActiveTrackCardByRelease() {
+        const releaseUrl = normalizeReleaseUrl(STATE.activeReleaseUrl || "");
+        if (!releaseUrl) {
+            return null;
+        }
+
+        const grid = STATE.activeTrackFanGridNode;
+        const root =
+            grid instanceof Element && grid.isConnected ? grid : document;
+        return (
+            Array.from(
+                root.querySelectorAll(
+                    ".bcampx-label-feed-card[data-bcampx-release-url]",
+                ),
+            ).find(
+                (card) =>
+                    normalizeReleaseUrl(
+                        card.getAttribute("data-bcampx-release-url") || "",
+                    ) === releaseUrl,
+            ) || null
+        );
     }
 
     function attachSharedAudioToPlayer(container, audio) {
@@ -9458,8 +12267,8 @@
             return;
         }
 
-        if (isArtistMusicPage()) {
-            ensureArtistMusicPlayerWishlistState(STATE.activeReleaseUrl || "");
+        if (shouldUseRemotePlayerWishlist()) {
+            ensureRemotePlayerWishlistState(STATE.activeReleaseUrl || "");
         }
 
         applyPlayerFavoriteState(
@@ -9492,8 +12301,8 @@
 
     function toggleActiveWishlist() {
         const ui = STATE.playerUi;
-        if (isArtistMusicPage()) {
-            void toggleActiveLabelWishlist();
+        if (shouldUseRemotePlayerWishlist()) {
+            void toggleActiveRemoteWishlist();
             return;
         }
 
@@ -9514,7 +12323,17 @@
         window.setTimeout(syncFavoriteButtonState, 700);
     }
 
-    async function toggleActiveLabelWishlist() {
+    function shouldUseRemotePlayerWishlist() {
+        const activeCard = getConnectedActiveTrackCard();
+        return Boolean(
+            isArtistMusicPage() ||
+                (activeCard &&
+                    activeCard.closest &&
+                    activeCard.closest(".bcampx-label-feed-card")),
+        );
+    }
+
+    async function toggleActiveRemoteWishlist() {
         const ui = STATE.playerUi;
         const releaseUrl = normalizeReleaseUrl(STATE.activeReleaseUrl || "");
         if (!ui || !ui.favoriteButton || !releaseUrl) {
@@ -9523,7 +12342,7 @@
 
         const favoriteState = getPlayerFavoriteState(releaseUrl);
         if (favoriteState.disabled) {
-            ensureArtistMusicPlayerWishlistState(releaseUrl);
+            ensureRemotePlayerWishlistState(releaseUrl);
             return;
         }
 
@@ -9954,6 +12773,9 @@
         if (normalizedData.tracks && normalizedData.tracks.length) {
             parts.push(`${normalizedData.tracks.length} tracks`);
         }
+        if (normalizedData.tags && normalizedData.tags.length) {
+            parts.push(`${normalizedData.tags.length} tags`);
+        }
         return parts.length ? parts.join(" · ") : "Extra context loaded";
     }
 
@@ -9987,6 +12809,7 @@
             formatReleaseDate(data.releaseDate) ||
             data.location ||
             data.description ||
+            (data.tags && data.tags.length) ||
             (data.tracks && data.tracks.length),
         );
     }

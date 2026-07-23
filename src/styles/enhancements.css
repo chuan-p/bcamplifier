@@ -19,6 +19,28 @@
         padding: 0;
       }
 
+      #collection-grid > .bcampx-label-feed,
+      #wishlist-grid > .bcampx-label-feed,
+      #collection-search-grid > .bcampx-label-feed,
+      #wishlist-search-grid > .bcampx-label-feed {
+        flex: 0 0 100%;
+        width: 100%;
+        max-width: 940px;
+        margin-right: auto;
+        margin-left: auto;
+      }
+
+      #grids > .grid > .bcampx-label-feed {
+        flex: 0 0 100%;
+        width: 100%;
+        max-width: 940px;
+        box-sizing: border-box;
+      }
+
+      #grids > .grid > .bcampx-label-feed--other-fan {
+        margin-top: 20px;
+      }
+
       .bcampx-label-feed__list {
         margin: 0;
         padding: 0;
@@ -48,7 +70,7 @@
         width: 100%;
         min-height: 150px;
         content-visibility: auto;
-        contain-intrinsic-size: auto 260px;
+        contain-intrinsic-size: 260px;
         margin: 0 0 16px;
         padding: 15px 18px;
         border: 1px solid rgba(0, 0, 0, 0.12);
@@ -84,7 +106,7 @@
         align-items: start;
       }
 
-      .bcampx-label-feed-card .art img {
+.bcampx-label-feed-card .art img {
         display: block;
         width: 200px;
         height: 200px;
@@ -95,6 +117,9 @@
       .bcampx-label-feed-card .tralbum-wrapper-col2 {
         min-width: 0;
       }
+
+
+
 
       .bcampx-label-feed-card .item-link {
         color: #222 !important;
@@ -113,9 +138,32 @@
         font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif !important;
       }
 
+      .bcampx-label-feed-card__supporter-count {
+        margin-top: 5px;
+        color: #6a6a6a;
+        font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      .bcampx-label-feed-card__supporter-refresh {
+        margin: 0 0 0 6px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #4085b6;
+        font: inherit;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+
+      .bcampx-label-feed-card__supporter-refresh:disabled {
+        color: #999;
+        cursor: progress;
+        text-decoration: none;
+      }
+
       .bcampx-label-feed-card .buy-link {
         display: inline-block;
-        margin-top: 8px !important;
+        margin-top: 7px !important;
         border: 0 !important;
         background: transparent !important;
         padding: 0 !important;
@@ -381,6 +429,13 @@
         color: #949494;
         font-size: 11px;
         font-weight: 400;
+      }
+
+      .bcampx__slot-loading {
+        margin: 7px 0 0;
+        color: #8a8a8a;
+        font-size: 11px;
+        line-height: 1.3;
       }
 
       .bcampx__description {
@@ -686,4 +741,30 @@
 
       .bcampx--loading {
         opacity: 0.78;
+      }
+
+
+      .bcampx-label-feed-card__tags {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-top: 6px;
+        color: #7a7a7a;
+        font: 400 12px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      .bcampx-label-feed-card__tags a {
+        color: #4085b6;
+        font: inherit;
+        text-decoration: none;
+      }
+
+      .bcampx-label-feed-card__tags a:hover {
+        text-decoration: underline;
+      }
+
+      .bcampx-label-feed-card__date {
+        margin-left: auto;
       }

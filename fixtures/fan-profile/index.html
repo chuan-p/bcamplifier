@@ -292,39 +292,11 @@
         const initialCollectionCard = document.querySelector(
           '.bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-1"]',
         );
-        for (let attempt = 0; attempt < 20; attempt += 1) {
-          const text = initialCollectionCard
-            ?.querySelector(".bcampx-label-feed-card__tags")
-            ?.textContent.trim();
-          if (text) {
-            break;
-          }
-          await wait(100);
-        }
         document.documentElement.setAttribute(
           "data-bcampx-localized-dot-count",
           initialCollectionCard
             ?.querySelector(".bcampx-label-feed-card__supporter-count")
             ?.getAttribute("data-bcampx-supporter-count") || "",
-        );
-        const collectionTags =
-          initialCollectionCard &&
-          initialCollectionCard.querySelector(".bcampx-label-feed-card__tags");
-        document.documentElement.setAttribute(
-          "data-bcampx-collection-release-tags",
-          collectionTags ? collectionTags.textContent.trim() : "",
-        );
-        document.documentElement.setAttribute(
-          "data-bcampx-collection-release-tags-in-col1",
-          String(
-            Boolean(
-              collectionTags &&
-                collectionTags.parentElement &&
-                collectionTags.parentElement.classList.contains(
-                  "tralbum-wrapper-col1",
-                ),
-            ),
-          ),
         );
 
         const search = document.querySelector(

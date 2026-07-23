@@ -144,6 +144,7 @@
               <div id="pagedata" data-blob='{"identities":{"fan":{"id":42}},"fan_tralbum_data":{"is_wishlisted":true}}'></div>
               <div data-tralbum='{"current":{"id":${id},"type":"album","title":"Release ${id}","band_id":${1000 + id}},"artist":"Artist ${id}","trackinfo":${trackInfo}}'></div>
               <div id="collectors-data" data-blob='{"thumbs":[{"fan_id":1},{"fan_id":2},{"fan_id":3}],"reviews":[],"shown_reviews":[],"more_thumbs_available":false}'></div>
+              <div class="tralbum-tags">tags: <a href="/tag/fan-tag-${id}">fan-tag-${id}</a> <a href="/tag/collection-fixture">collection-fixture</a></div>
               <li class="buyItem digital"><span class="base-text-color">$5</span></li>`;
           },
           requestJson: async () => {
@@ -291,11 +292,39 @@
         const initialCollectionCard = document.querySelector(
           '.bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-1"]',
         );
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const text = initialCollectionCard
+            ?.querySelector(".bcampx-label-feed-card__tags")
+            ?.textContent.trim();
+          if (text) {
+            break;
+          }
+          await wait(100);
+        }
         document.documentElement.setAttribute(
           "data-bcampx-localized-dot-count",
           initialCollectionCard
             ?.querySelector(".bcampx-label-feed-card__supporter-count")
             ?.getAttribute("data-bcampx-supporter-count") || "",
+        );
+        const collectionTags =
+          initialCollectionCard &&
+          initialCollectionCard.querySelector(".bcampx-label-feed-card__tags");
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-release-tags",
+          collectionTags ? collectionTags.textContent.trim() : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-collection-release-tags-in-col1",
+          String(
+            Boolean(
+              collectionTags &&
+                collectionTags.parentElement &&
+                collectionTags.parentElement.classList.contains(
+                  "tralbum-wrapper-col1",
+                ),
+            ),
+          ),
         );
 
         const search = document.querySelector(
@@ -353,6 +382,36 @@
                 !earlyWishlistTracks[1].dataset.streamUrl,
             ),
           ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-loading-summary",
+          earlyWishlistCard
+            ? earlyWishlistCard
+                .querySelector(".bcampx__summary-text")
+                ?.textContent.trim() || ""
+            : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-loading-state",
+          String(
+            Boolean(
+              earlyWishlistCard &&
+                earlyWishlistCard.querySelector(
+                  ".bcampx[data-bcampx-loading-extra-context='true']",
+                ),
+            ),
+          ),
+        );
+        const slotLoading = earlyWishlistCard
+          ? earlyWishlistCard.querySelector(".bcampx__slot-loading")
+          : null;
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-slot-loading",
+          slotLoading ? slotLoading.textContent.trim() : "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-wishlist-slot-loading-visible",
+          String(Boolean(slotLoading && !slotLoading.hidden)),
         );
         await wait(900);
         const supporterCount = document.querySelector(

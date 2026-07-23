@@ -23,7 +23,9 @@
         continuousMode: false,
         autoFillMinimumPrice: false,
         showCollectionCounts: false,
-        maxConcurrentFetches: 3,
+        maxConcurrentFetches: 4,
+        maxConcurrentAutoFetches: 4,
+        maxViewSwitchPrefetchCards: 24,
         maxConcurrentSupporterCountFetches: 2,
         supporterCountPageSize: 80,
         supporterCountPageDelayMs: 120,
@@ -45,6 +47,7 @@
     const PLAYBACK_PAUSE_STALE_MS = 10000;
     const PLAYER_WISHLIST_STATE_RETRY_MS = 30000;
     const OWNED_RELEASE_COLLECTION_SEARCH_TTL_MS = 2 * 60 * 1000;
+    const LOADING_EXTRA_CONTEXT_TEXT = "Loading extra context...";
     const STATE = {
         initialized: false,
         artistMusicFeedBuilt: false,
@@ -92,6 +95,11 @@
         pageFreshTrackReleaseKeys: new Set(),
         releaseFetchQueue: [],
         activeReleaseFetchCount: 0,
+        autoFetchQueue: [],
+        autoFetchDrainScheduled: false,
+        activeAutoFetchCount: 0,
+        autoFetchSequence: 0,
+        peakAutoFetchCount: 0,
         pendingSupporterCountRequests: new Map(),
         supporterCountFetchQueue: [],
         activeSupporterCountFetchCount: 0,
@@ -2585,13 +2593,145 @@
                     if (
                         controller &&
                         !controller.loaded &&
-                        !controller.loading
+                        !controller.loading &&
+                        !controller.autoFetchQueued
                     ) {
-                        controller.fetchAndRender({ auto: true });
+                        queueAutoFetch(controller);
                     }
                 });
             },
             { rootMargin: CONFIG.observerRootMargin },
+        );
+    }
+
+    function queueAutoFetch(controller) {
+        if (
+            !controller ||
+            controller.loaded ||
+            controller.loading ||
+            controller.autoFetchQueued
+        ) {
+            return;
+        }
+
+        controller.autoFetchQueued = true;
+        applyReleaseShellLoadingState(controller);
+        STATE.autoFetchQueue.push({
+            controller,
+            sequence: ++STATE.autoFetchSequence,
+        });
+        updateAutoFetchDebugState();
+        scheduleAutoFetchQueueDrain();
+    }
+
+    function scheduleAutoFetchQueueDrain() {
+        if (STATE.autoFetchDrainScheduled) {
+            return;
+        }
+
+        STATE.autoFetchDrainScheduled = true;
+        const run = () => {
+            STATE.autoFetchDrainScheduled = false;
+            drainAutoFetchQueue();
+        };
+        if (typeof window.queueMicrotask === "function") {
+            window.queueMicrotask(run);
+        } else {
+            Promise.resolve().then(run);
+        }
+    }
+
+    function drainAutoFetchQueue() {
+        while (
+            STATE.activeAutoFetchCount < CONFIG.maxConcurrentAutoFetches &&
+            STATE.autoFetchQueue.length
+        ) {
+            const next = takeNearestAutoFetch();
+            const controller = next && next.controller;
+            if (!controller) {
+                continue;
+            }
+
+            controller.autoFetchQueued = false;
+            updateAutoFetchDebugState();
+            if (
+                controller.loaded ||
+                controller.loading ||
+                !(controller.card instanceof Element) ||
+                !controller.card.isConnected
+            ) {
+                continue;
+            }
+
+            STATE.activeAutoFetchCount += 1;
+            STATE.peakAutoFetchCount = Math.max(
+                STATE.peakAutoFetchCount,
+                STATE.activeAutoFetchCount,
+            );
+            updateAutoFetchDebugState();
+            Promise.resolve(controller.fetchAndRender({ auto: true }))
+                .catch(() => {})
+                .finally(() => {
+                    STATE.activeAutoFetchCount = Math.max(
+                        0,
+                        STATE.activeAutoFetchCount - 1,
+                    );
+                    updateAutoFetchDebugState();
+                    drainAutoFetchQueue();
+                });
+        }
+    }
+
+    function takeNearestAutoFetch() {
+        let nearestIndex = 0;
+        let nearestDistance = Infinity;
+        let nearestSequence = Infinity;
+
+        STATE.autoFetchQueue.forEach((entry, index) => {
+            const distance = getAutoFetchViewportDistance(
+                entry && entry.controller && entry.controller.card,
+            );
+            const sequence = Number(entry && entry.sequence) || 0;
+            if (
+                distance < nearestDistance ||
+                (distance === nearestDistance && sequence < nearestSequence)
+            ) {
+                nearestIndex = index;
+                nearestDistance = distance;
+                nearestSequence = sequence;
+            }
+        });
+
+        return STATE.autoFetchQueue.splice(nearestIndex, 1)[0] || null;
+    }
+
+    function getAutoFetchViewportDistance(card) {
+        if (!(card instanceof Element) || !card.isConnected) {
+            return Infinity;
+        }
+
+        const rect = card.getBoundingClientRect();
+        const viewportHeight =
+            window.innerHeight || document.documentElement.clientHeight || 0;
+        return Math.abs(rect.top + rect.height / 2 - viewportHeight / 2);
+    }
+
+    function updateAutoFetchDebugState() {
+        markDebugState(
+            "data-bcampx-auto-fetch-active-count",
+            String(STATE.activeAutoFetchCount),
+        );
+        markDebugState(
+            "data-bcampx-auto-fetch-queue-count",
+            String(STATE.autoFetchQueue.length),
+        );
+        markDebugState(
+            "data-bcampx-auto-fetch-peak-count",
+            String(STATE.peakAutoFetchCount),
+        );
+        markDebugState(
+            "data-bcampx-auto-fetch-limit",
+            String(CONFIG.maxConcurrentAutoFetches),
         );
     }
 
@@ -3963,7 +4103,7 @@
 
         const text = document.createElement("span");
         text.className = "bcampx__summary-text";
-        text.textContent = "Loading extra context...";
+        text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
 
         const toggle = document.createElement("button");
         toggle.type = "button";
@@ -3978,10 +4118,15 @@
         const controller = {
             loaded: false,
             loading: false,
+            autoFetchQueued: false,
             expanded: false,
             data: null,
             refreshPromise: null,
             card,
+            shellNode: shell,
+            metaNode: meta,
+            textNode: text,
+            toggleNode: toggle,
             releaseUrl,
             releaseRequestContext:
                 releaseRequestContext ||
@@ -4041,6 +4186,11 @@
         }
 
         const normalizedData = normalizeReleaseData(initialData);
+        const showInitialLoading = shouldShowInitialExtraContextLoading(card);
+        if (showInitialLoading) {
+            applyReleaseShellLoadingState(controller);
+        }
+
         controller.data = normalizedData;
         renderReleaseData(
             shell,
@@ -4054,6 +4204,19 @@
             fromCache: true,
             stale: false,
         });
+        if (showInitialLoading) {
+            text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
+        }
+    }
+
+    function shouldShowInitialExtraContextLoading(card) {
+        const release = card && card.__bcampxArtistMusicRelease;
+        return Boolean(
+            release &&
+                /^(fan-collection|fan-wishlist)$/.test(
+                    cleanText(release.feedKind || ""),
+                ),
+        );
     }
 
     function mountEnhancementShell(card, shell) {
@@ -4351,9 +4514,8 @@
         options,
     ) {
         controller.loading = true;
-        shell.classList.add("bcampx--loading");
-        text.textContent = "Loading extra context...";
-        toggle.disabled = true;
+        applyReleaseShellLoadingState(controller);
+        let keepLoadingForRefresh = false;
 
         try {
             const result = await getReleaseData(
@@ -4365,6 +4527,7 @@
             );
             controller.loaded = true;
             controller.data = normalizedData;
+            keepLoadingForRefresh = Boolean(result.refreshPromise);
 
             renderReleaseData(
                 shell,
@@ -4382,7 +4545,7 @@
             shell.classList.toggle("bcampx--expanded", shouldExpand);
             updateToggle(toggle, shouldExpand);
             text.textContent = result.refreshingTracks
-                ? `${buildSummaryText(normalizedData)} · refreshing previews`
+                ? LOADING_EXTRA_CONTEXT_TEXT
                 : buildLoadedSummaryText(normalizedData, result);
             if (result.refreshPromise) {
                 attachReleaseRefreshPromise(
@@ -4412,8 +4575,50 @@
             toggle.hidden = true;
         } finally {
             controller.loading = false;
-            toggle.disabled = false;
+            if (!keepLoadingForRefresh) {
+                clearReleaseShellLoadingState(controller);
+            }
+        }
+    }
+
+    function applyReleaseShellLoadingState(controller) {
+        if (!controller) {
+            return;
+        }
+
+        const shell = controller.shellNode;
+        const text = controller.textNode;
+        const toggle = controller.toggleNode;
+
+        if (shell) {
+            shell.classList.add("bcampx--loading");
+            shell.setAttribute("data-bcampx-loading-extra-context", "true");
+        }
+        if (text) {
+            text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
+        }
+        if (toggle) {
+            toggle.disabled = true;
+        }
+    }
+
+    function clearReleaseShellLoadingState(controller) {
+        if (!controller) {
+            return;
+        }
+
+        const shell = controller.shellNode;
+        const toggle = controller.toggleNode;
+
+        if (shell) {
             shell.classList.remove("bcampx--loading");
+            shell.removeAttribute("data-bcampx-loading-extra-context");
+            shell
+                .querySelectorAll(".bcampx__slot-loading")
+                .forEach((node) => node.remove());
+        }
+        if (toggle) {
+            toggle.disabled = false;
         }
     }
 
@@ -4461,38 +4666,54 @@
         toggle,
     ) {
         controller.refreshPromise = refreshPromise;
-        void refreshPromise.then((result) => {
-            if (controller.refreshPromise !== refreshPromise) {
-                return;
-            }
+        void refreshPromise
+            .then((result) => {
+                if (controller.refreshPromise !== refreshPromise) {
+                    return;
+                }
 
-            controller.refreshPromise = null;
-            const normalizedData = getRenderableReleaseData(
-                controller,
-                result,
-            );
-            controller.data = normalizedData;
-            if (!shell.isConnected) {
-                return;
-            }
-            renderReleaseData(
-                shell,
-                meta,
-                text,
-                toggle,
-                normalizedData,
-                releaseUrl,
-            );
-            shell.classList.toggle(
-                "bcampx--expanded",
-                controller.expanded,
-            );
-            updateToggle(toggle, controller.expanded);
-            text.textContent = buildLoadedSummaryText(
-                normalizedData,
-                result,
-            );
-        });
+                const normalizedData = getRenderableReleaseData(
+                    controller,
+                    result,
+                );
+                controller.data = normalizedData;
+                if (!shell.isConnected) {
+                    return;
+                }
+                renderReleaseData(
+                    shell,
+                    meta,
+                    text,
+                    toggle,
+                    normalizedData,
+                    releaseUrl,
+                );
+                shell.classList.toggle(
+                    "bcampx--expanded",
+                    controller.expanded,
+                );
+                updateToggle(toggle, controller.expanded);
+                text.textContent = buildLoadedSummaryText(
+                    normalizedData,
+                    result,
+                );
+            })
+            .catch(() => {
+                if (controller.refreshPromise !== refreshPromise) {
+                    return;
+                }
+                const fallbackData = controller.data || createEmptyReleaseData();
+                text.textContent = buildLoadedSummaryText(fallbackData, {
+                    fromCache: true,
+                    stale: true,
+                });
+            })
+            .finally(() => {
+                if (controller.refreshPromise === refreshPromise) {
+                    controller.refreshPromise = null;
+                }
+                clearReleaseShellLoadingState(controller);
+            });
     }
 
     function toggleDetails(controller, shell, toggle) {
@@ -4634,8 +4855,8 @@
             data.tracks,
             "bcampx__tracks",
             (track) => {
-            const item = document.createElement("li");
-            item.textContent = track.title;
+                const item = document.createElement("li");
+                item.textContent = track.title;
                 return item;
             },
         );
@@ -4666,6 +4887,7 @@
     }
 
     function renderSupportedSlot(meta, text, toggle, data, releaseUrl) {
+        const shell = meta.closest(".bcampx");
         const purchasedTrackTitles = getMergedTrackTitleSet(
             meta.closest(CARD_SELECTOR),
         );
@@ -4686,14 +4908,30 @@
             purchasedTrackTitles,
             autoExpandState,
         );
+        appendSupportedSlotLoading(panel, shell);
         renderSupportedSlotDescription(panel, data, autoExpandState);
-        appendSupportedSlotSubhead(panel, subhead);
-
+        if (!shell.closest(".bcampx-label-feed-card")) {
+            appendSupportedSlotSubhead(panel, subhead);
+        }
         meta.append(panel);
         scheduleSupportedSlotAutoExpand(panel, autoExpandState);
 
         toggle.hidden = true;
         text.hidden = true;
+    }
+
+    function appendSupportedSlotLoading(panel, shell) {
+        if (
+            !panel ||
+            !shell ||
+            shell.getAttribute("data-bcampx-loading-extra-context") !== "true"
+        ) {
+            return;
+        }
+
+        const loading = createClassedElement("div", "bcampx__slot-loading");
+        loading.textContent = LOADING_EXTRA_CONTEXT_TEXT;
+        panel.append(loading);
     }
 
     function renderSupportedSlotTracks(

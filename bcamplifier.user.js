@@ -26,7 +26,7 @@
     "use strict";
 
     const PLAYER_SHELL_CSS = ".bcampx-player-shell {\n        position: fixed;\n        left: 50%;\n        bottom: 18px;\n        width: min(920px, calc(100vw - 36px));\n        transform: translateX(-50%);\n        pointer-events: auto;\n        padding: 14px;\n        border: 1px solid rgba(190, 198, 204, 0.68);\n        border-radius: 18px;\n        background: rgba(247, 247, 247, 0.98);\n        box-shadow: 0 18px 40px rgba(36, 28, 20, 0.12);\n        color: #2f2f2f;\n        overflow: visible;\n        isolation: isolate;\n        font-family: \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        backdrop-filter: blur(6px);\n        -webkit-backdrop-filter: blur(6px);\n      }\n\n      .bcampx-player-controls {\n        display: flex;\n        gap: 8px;\n        align-items: center;\n        margin-bottom: 10px;\n      }\n\n      .bcampx-player-button {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        min-width: 80px;\n        min-height: 38px;\n        padding: 8px 12px;\n        border: solid 1px #dedede;\n        border-radius: 999px;\n        background-color: #fbfcfd;\n        background-image: none;\n        color: #408294;\n        font: 700 13px/1 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        white-space: nowrap;\n        text-align: center;\n        outline: none;\n        box-shadow: none;\n      }\n\n      .bcampx-player-button:disabled {\n        opacity: 0.4;\n        cursor: not-allowed;\n      }\n\n      .bcampx-player-button--circle {\n        width: 38px;\n        min-width: 38px;\n        min-height: 38px;\n        padding: 0;\n      }\n\n      .bcampx-player-button--circle svg {\n        width: 18px;\n        height: 18px;\n        display: block;\n        flex: 0 0 auto;\n      }\n\n      .bcampx-player-settings {\n        position: relative;\n        margin-left: auto;\n        display: flex;\n        align-items: center;\n        flex: 0 0 auto;\n      }\n\n      .bcampx-player-settings-toggle {\n        color: #408294;\n        border-color: #dedede;\n        background-color: #fbfcfd;\n      }\n\n      .bcampx-player-settings-toggle svg {\n        width: 19px;\n        height: 19px;\n      }\n\n      .bcampx-player-settings-toggle:hover {\n        border-color: #b8c6cf;\n        background-color: #f3f7f9;\n        color: #408294;\n      }\n\n      .bcampx-player-settings-menu {\n        position: absolute;\n        bottom: calc(100% + 8px);\n        right: 0;\n        z-index: 20;\n        min-width: 220px;\n        padding: 12px 13px;\n        border: 1px solid rgba(190, 198, 204, 0.9);\n        border-radius: 12px;\n        background: rgba(251, 252, 253, 0.98);\n        box-shadow: 0 14px 32px rgba(36, 28, 20, 0.14);\n        color: #2f2f2f;\n        max-height: min(55vh, 420px);\n        overflow: auto;\n      }\n\n      .bcampx-player-settings-row {\n        display: flex;\n        align-items: flex-start;\n        justify-content: space-between;\n        gap: 10px;\n        padding: 8px 0;\n        cursor: pointer;\n      }\n\n      .bcampx-player-settings-row + .bcampx-player-settings-row {\n        border-top: 1px solid rgba(222, 222, 222, 0.85);\n      }\n\n      .bcampx-player-settings-copy {\n        display: flex;\n        flex-direction: column;\n        gap: 3px;\n        min-width: 0;\n      }\n\n      .bcampx-player-settings-label {\n        color: #2f2f2f;\n        font: 700 13px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-player-settings-description {\n        color: #666;\n        font: 500 12px/1.4 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-player-settings-checkbox {\n        margin: 2px 0 0;\n        inline-size: 14px;\n        block-size: 14px;\n        accent-color: #408294;\n        flex: 0 0 auto;\n      }\n\n      .bcampx-player-settings-footer {\n        margin-top: 8px;\n        padding-top: 10px;\n        border-top: 1px solid rgba(222, 222, 222, 0.85);\n        color: #777;\n        font: 500 11px/1.45 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-player-settings-footer-link {\n        color: #408294;\n        text-decoration: none;\n      }\n\n      .bcampx-player-settings-footer-link:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx-player-button:hover {\n        text-decoration: none;\n        background-color: #f3f7f9;\n      }\n\n      .bcampx-player-favorite {\n        color: #408294;\n        position: relative;\n        transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, background-image 120ms ease;\n      }\n\n      .bcampx-player-favorite-outline,\n      .bcampx-player-favorite-fill {\n        transition: opacity 120ms ease;\n      }\n\n      .bcampx-player-favorite-fill {\n        opacity: 0;\n      }\n\n    .bcampx-player-favorite.active {\n      border: solid 1px #e06d2f;\n      background-color: #e06d2f;\n      background-image: none;\n      color: #fff;\n    }\n\n      .bcampx-player-favorite.active.bcampx-player-favorite--owned {\n        border: solid 1px #CB2D26;\n        background-color: #CB2D26;\n        background-image: none;\n        color: #fff;\n      }\n\n      .bcampx-player-favorite.active.bcampx-player-favorite--owned:disabled {\n       opacity: 1;\n       cursor: default;\n     }\n\n      .bcampx-player-favorite.active.bcampx-player-favorite--owned:hover {\n        border-color: #CB2D26;\n        background-color: #CB2D26;\n        color: #fff;\n      }\n\n    .bcampx-player-favorite.active:hover,\n     .bcampx-player-button--circle:hover {\n        border-color: #b8c6cf;\n        background-color: #f3f7f9;\n        color: #408294;\n      }\n\n      .bcampx-player-favorite.active:hover {\n        border-color: #d66428;\n        background-color: #d66428;\n        color: #fff;\n      }\n\n      .bcampx-player-favorite.active .bcampx-player-favorite-outline {\n        opacity: 0;\n      }\n\n      .bcampx-player-favorite.active .bcampx-player-favorite-fill {\n        opacity: 1;\n      }\n\n      .bcampx-player-meta {\n        display: flex;\n        justify-content: space-between;\n        align-items: baseline;\n        gap: 12px;\n        margin-bottom: 8px;\n      }\n\n      .bcampx-player-now {\n        display: inline-block;\n        margin-bottom: 5px;\n        font-size: 12px;\n        line-height: 1;\n        letter-spacing: 0.05em;\n        text-transform: uppercase;\n        color: #777;\n      }\n\n      .bcampx-player-track {\n        display: block;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #2f2f2f;\n        font: 700 16px/1.04 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: left;\n        text-decoration: none;\n        cursor: pointer;\n        user-select: text;\n        -webkit-user-select: text;\n        -webkit-user-drag: none;\n      }\n\n      .bcampx-player-track:hover,\n      .bcampx-player-store:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx-player-store {\n        color: #6b6b6b;\n        text-decoration: none;\n        font: 500 13px/1.05 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: right;\n        white-space: nowrap;\n      }\n\n      .bcampx-player-native {\n        margin-top: 2px;\n        background: transparent;\n      }\n\n      .bcampx-player-audio {\n        width: 100%;\n        height: 40px;\n        border-radius: 10px;\n        display: block !important;\n        visibility: visible !important;\n        opacity: 1 !important;\n        position: static !important;\n        pointer-events: auto !important;\n      }\n\n      @media (max-width: 820px) {\n        .bcampx-player-shell {\n          left: 50%;\n          bottom: 10px;\n          width: min(920px, calc(100vw - 20px));\n          transform: translateX(-50%);\n          padding: 10px 12px;\n          border-radius: 16px;\n        }\n\n        .bcampx-player-controls {\n          gap: 6px;\n          margin-bottom: 8px;\n        }\n\n        .bcampx-player-button {\n          min-height: 34px;\n          min-width: 74px;\n          padding: 7px 10px;\n          font-size: 12px;\n        }\n\n        .bcampx-player-button--circle {\n          width: 34px;\n          min-width: 34px;\n          min-height: 34px;\n        }\n\n        .bcampx-player-button--circle svg {\n          width: 17px;\n          height: 17px;\n        }\n\n        .bcampx-player-settings-menu {\n          min-width: 200px;\n          padding: 11px 12px;\n        }\n\n        .bcampx-player-settings-toggle svg {\n          width: 18px;\n          height: 18px;\n        }\n\n        .bcampx-player-meta {\n          gap: 8px;\n          margin-bottom: 7px;\n        }\n\n        .bcampx-player-track {\n          font-size: 15px;\n          line-height: 1.03;\n        }\n\n        .bcampx-player-store,\n        .bcampx-player-now {\n          font-size: 11px;\n        }\n\n        .bcampx-player-now {\n          margin-bottom: 4px;\n        }\n\n        .bcampx-player-audio {\n          height: 36px;\n        }\n      }\n";
-    const ENHANCEMENT_CSS = ".bcampx {\n        box-sizing: border-box;\n        margin: 6px 0 0;\n        padding: 0;\n        max-width: 360px;\n        color: #444;\n        font: 12px/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n      }\n\n      .bcampx * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed {\n        box-sizing: border-box;\n        width: 100%;\n        max-width: 940px;\n        margin: 0 0 28px;\n        padding: 0;\n      }\n\n      #collection-grid > .bcampx-label-feed,\n      #wishlist-grid > .bcampx-label-feed,\n      #collection-search-grid > .bcampx-label-feed,\n      #wishlist-search-grid > .bcampx-label-feed {\n        margin-right: auto;\n        margin-left: auto;\n      }\n\n      #grids > .grid > .bcampx-label-feed--other-fan {\n        margin-top: 20px;\n      }\n\n      .bcampx-label-feed__list {\n        margin: 0;\n        padding: 0;\n        list-style: none;\n      }\n\n      .bcampx-label-feed-page--enhanced .label-band-selector.fade-in-on-load {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-native-offscreen {\n        position: absolute !important;\n        left: -10000px !important;\n        top: auto !important;\n        width: 1px !important;\n        height: 1px !important;\n        max-width: 1px !important;\n        max-height: 1px !important;\n        overflow: hidden !important;\n        opacity: 0 !important;\n        pointer-events: none !important;\n      }\n\n      .bcampx-label-feed-card {\n        box-sizing: border-box;\n        display: block;\n        width: 100%;\n        min-height: 150px;\n        content-visibility: auto;\n        contain-intrinsic-size: auto 260px;\n        margin: 0 0 16px;\n        padding: 15px 18px;\n        border: 1px solid rgba(0, 0, 0, 0.12);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.92);\n        color: #333;\n        font: 400 13px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed-card .bcampx-label-feed-card__story-title {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a {\n        color: #4085b6 !important;\n        font: inherit !important;\n        font-weight: 600 !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper {\n        display: grid;\n        grid-template-columns: 200px minmax(180px, 1fr) minmax(220px, 280px);\n        gap: 18px;\n        align-items: start;\n      }\n\n      .bcampx-label-feed-card .art img {\n        display: block;\n        width: 200px;\n        height: 200px;\n        object-fit: cover;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper-col1,\n      .bcampx-label-feed-card .tralbum-wrapper-col2 {\n        min-width: 0;\n      }\n\n      .bcampx-label-feed-card .item-link {\n        color: #222 !important;\n        font: 700 15px/1.25 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .item-link:hover,\n      .bcampx-label-feed-card .buy-link:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .itemsubtext {\n        margin-top: 4px !important;\n        color: #777 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n      }\n\n      .bcampx-label-feed-card__supporter-count {\n        margin-top: 5px;\n        color: #6a6a6a;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card__supporter-refresh {\n        margin: 0 0 0 6px;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        cursor: pointer;\n        text-decoration: underline;\n      }\n\n      .bcampx-label-feed-card__supporter-refresh:disabled {\n        color: #999;\n        cursor: progress;\n        text-decoration: none;\n      }\n\n      .bcampx-label-feed-card .buy-link {\n        display: inline-block;\n        margin-top: 7px !important;\n        border: 0 !important;\n        background: transparent !important;\n        padding: 0 !important;\n        color: #4085b6 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n        cursor: pointer !important;\n      }\n\n      .bcampx-label-feed-card .buy-link:disabled,\n      .bcampx-label-feed-card .buy-link:disabled:hover {\n        color: #777 !important;\n        cursor: default !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-owners {\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot {\n        width: 100%;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot.bcampx--expanded {\n        content-visibility: auto;\n        contain-intrinsic-size: auto 360px;\n      }\n\n      .bcampx-label-feed-toggle {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: auto;\n        height: 22px;\n        min-height: 22px;\n        margin: 0 8px 10px 0;\n        padding: 1px;\n        border: 1px solid rgba(0, 0, 0, 0.13);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.9);\n        box-shadow: none;\n        color: #777;\n        cursor: pointer;\n        vertical-align: middle;\n      }\n\n      .bcampx-label-feed-toggle__icon {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: 22px;\n        height: 18px;\n        border-radius: 2px;\n        color: #777;\n      }\n\n      .bcampx-label-feed-toggle__icon + .bcampx-label-feed-toggle__icon {\n        margin-left: 2px;\n      }\n\n      .bcampx-label-feed-toggle--feed .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle svg {\n        display: block;\n      }\n\n      .bcampx-label-feed-toggle--floating {\n        position: fixed;\n        left: 14px;\n        bottom: 14px;\n        z-index: 2147483645;\n        margin: 0;\n        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);\n      }\n\n      .bcampx-label-feed-toggle--inline {\n        position: static;\n      }\n\n      .bcampx-label-feed-toggle--navbar {\n        margin: 0 0 0 auto;\n        align-self: center;\n      }\n\n      #band-navbar.bcampx-label-feed-navbar-host {\n        display: flex;\n        align-items: center;\n        gap: 0;\n      }\n\n      .bcampx-label-feed-toggle:hover {\n        border-color: rgba(64, 133, 182, 0.3);\n        color: #266a99;\n        background: rgba(255, 255, 255, 0.96);\n      }\n\n      .bcampx-label-feed-toggle:hover .bcampx-label-feed-toggle__icon {\n        color: #266a99;\n        background: rgba(64, 133, 182, 0.08);\n      }\n\n      .bcampx-label-feed-toggle--feed:hover .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original:hover .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle:focus-visible {\n        outline: 2px solid #4085b6;\n        outline-offset: 2px;\n      }\n\n      @media (max-width: 560px) {\n        .bcampx-label-feed {\n          max-width: none;\n        }\n\n        .bcampx-label-feed-card {\n          padding: 14px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper {\n          grid-template-columns: 128px minmax(0, 1fr);\n          gap: 12px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper-col2 {\n          grid-column: 1 / -1;\n          padding-top: 4px;\n        }\n\n        .bcampx-label-feed-card .art img {\n          width: 128px;\n          height: 128px;\n        }\n\n        .bcampx-label-feed-toggle {\n          margin-right: 8px;\n        }\n\n        .bcampx-label-feed-toggle--floating {\n          left: 10px;\n          bottom: 10px;\n          margin: 0;\n        }\n      }\n\n      .bcampx__meta {\n        display: block;\n        color: #555;\n        padding-top: 4px;\n      }\n\n      .bcampx__summary {\n        display: flex;\n        align-items: center;\n        gap: 10px;\n        margin-top: 4px;\n        color: #777;\n      }\n\n      .bcampx--supported-slot {\n        max-width: none;\n        margin: 0;\n        padding: 0;\n      }\n\n      .bcampx--supported-slot .bcampx__meta {\n        padding: 0;\n        max-width: none;\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx__slot-panel {\n        padding: 0;\n        border-left: 0;\n      }\n\n      .bcampx__summary-text {\n        min-width: 0;\n      }\n\n      .bcampx__merge-note {\n        margin: 8px 0 12px;\n        color: #8a8a8a;\n        font: 400 12px/1.34 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: left;\n      }\n\n      .bcampx__merge-fan {\n        color: #6d6d6d;\n        font-weight: 600;\n      }\n\n      .bcampx__merge-copy {\n        color: #8a8a8a;\n      }\n\n      .bcampx__merge-track-button {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        cursor: pointer;\n      }\n\n      .bcampx__merge-track-button:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button.bcampx__track-link--active {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button:disabled {\n        cursor: progress;\n        opacity: 0.75;\n      }\n\n      .bcampx__toggle {\n        cursor: pointer;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        text-decoration: underline;\n      }\n\n      .bcampx__toggle:disabled {\n        cursor: progress;\n        opacity: 0.68;\n      }\n\n      .bcampx__facts {\n        color: #666;\n      }\n\n      .bcampx__slot-header {\n        margin: 0 0 7px;\n        color: #757575;\n        font-size: 10px;\n        line-height: 1.2;\n        font-weight: 600;\n        letter-spacing: 0.09em;\n        text-transform: uppercase;\n      }\n\n      .bcampx__slot-subhead {\n        margin: 8px 0 0;\n        color: #949494;\n        font-size: 11px;\n        font-weight: 400;\n      }\n\n      .bcampx__description {\n        margin: 6px 0 0;\n        color: #333;\n        white-space: pre-line;\n      }\n\n      .bcampx__tracks {\n        display: none;\n        margin: 6px 0 0 18px;\n        padding: 0;\n      }\n\n      .bcampx--expanded .bcampx__tracks {\n        display: block;\n      }\n\n      .bcampx__tracks li {\n        margin: 2px 0;\n      }\n\n      .bcampx__tracks--slot {\n        display: block;\n        margin: 0;\n        padding-left: 0;\n        list-style: none;\n        counter-reset: bcampxTrackNumber;\n        color: #4a4a4a;\n        font-size: 12px;\n        font-weight: 400;\n      }\n\n      .bcampx__tracks--slot li {\n        display: grid;\n        grid-template-columns: 18px minmax(0, 1fr) auto;\n        column-gap: 7px;\n        align-items: start;\n        margin: 0;\n        padding: 2px 0 5px;\n        line-height: 1.28;\n        border-top: 0;\n      }\n\n      .bcampx__tracks--slot li:first-child {\n        border-top: 0;\n        padding-top: 0;\n      }\n\n      .bcampx__tracks--slot.bcampx__tracks--collapsed .bcampx__track-item--extra {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li::before {\n        counter-increment: bcampxTrackNumber;\n        content: counter(bcampxTrackNumber) \".\";\n        color: #aaaaaa;\n        font-variant-numeric: tabular-nums;\n        align-self: start;\n        justify-self: start;\n        padding-top: 1px;\n      }\n\n      .bcampx__track-item--purchased::before {\n        color: #4085b6;\n        font-weight: 400;\n      }\n\n      .bcampx__track-link {\n        cursor: pointer;\n        display: block;\n        width: 100%;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: inherit;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        min-width: 0;\n        margin: 0;\n      }\n\n      .bcampx__track-link:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-link--active {\n        color: #4085b6;\n        font-weight: 400;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-item--purchased .bcampx__track-link {\n        color: #333;\n        font-weight: 400;\n      }\n\n      .bcampx__track-duration {\n        color: #a0a0a0;\n        font-size: 11px;\n        font-variant-numeric: tabular-nums;\n        white-space: nowrap;\n        padding-top: 1px;\n        text-align: right;\n        opacity: 0.88;\n        align-self: start;\n      }\n\n      .bcampx__track-end {\n        display: flex;\n        justify-content: flex-end;\n        align-items: flex-start;\n        min-width: 42px;\n      }\n\n      .bcampx__track-actions {\n        display: none;\n        align-items: center;\n        gap: 6px;\n        margin-top: -1px;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-duration,\n      .bcampx__track-item--show-actions .bcampx__track-duration {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-actions,\n      .bcampx__track-item--show-actions .bcampx__track-actions {\n        display: flex;\n      }\n\n      .bcampx__track-action {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 10px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-transform: lowercase;\n      }\n\n      .bcampx__track-action:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-action:disabled {\n        cursor: default;\n        opacity: 0.7;\n      }\n\n      .bcampx__track-action--pending,\n      .bcampx__track-action--flash {\n        color: #4085b6;\n      }\n\n      .bcampx__track-action-frame {\n        position: fixed;\n        width: 1px;\n        height: 1px;\n        opacity: 0;\n        pointer-events: none;\n        left: -9999px;\n        top: -9999px;\n        border: 0;\n      }\n\n      .bcampx__track-link:disabled {\n        cursor: default;\n        opacity: 0.55;\n      }\n\n\n      .bcampx__description--slot {\n        margin-top: 10px;\n        color: #757575;\n        font-size: 12px;\n        line-height: 1.4;\n        white-space: normal;\n      }\n\n      .bcampx__description-block {\n        display: block;\n        margin-top: 10px;\n        padding-top: 0;\n        border-top: 0;\n      }\n\n      .bcampx__description--slot p {\n        margin: 0 0 5px;\n      }\n\n      .bcampx__description--slot p:last-child {\n        margin-bottom: 0;\n      }\n\n      .bcampx__description--slot.bcampx__description--collapsed {\n        max-height: calc(1.35em * 4);\n        overflow: hidden;\n      }\n\n      .bcampx__description--slot a {\n        color: #4085b6;\n        text-decoration: none;\n      }\n\n      .bcampx__description--slot a:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__slot-expand {\n        display: inline-block;\n        margin-top: 3px;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 11px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-decoration: none;\n      }\n\n\n      .bcampx__slot-expand:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      #track_play_waypoint {\n        display: none !important;\n      }\n\n      .bcampx__waypoint-toggle {\n        position: absolute;\n        right: -18px;\n        top: 50%;\n        transform: translateY(-50%);\n        min-width: 62px;\n        padding: 6px 14px;\n        border: 1px solid rgba(255, 255, 255, 0.65);\n        border-radius: 999px;\n        background: rgba(120, 120, 120, 0.92);\n        color: #fff;\n        font: 600 12px/1 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n        cursor: pointer;\n        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);\n        z-index: 4;\n      }\n\n      .bcampx__waypoint-toggle:hover {\n        background: rgba(105, 105, 105, 0.98);\n      }\n\n      .bcampx__waypoint-toggle--paused {\n        background: rgba(132, 132, 132, 0.9);\n      }\n\n\n      .bcampx__link {\n        display: inline-block;\n        margin-top: 8px;\n        color: #4085b6;\n        text-decoration: none;\n        font-size: 13px;\n        font-weight: 600;\n      }\n\n      .bcampx__link:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action {\n        display: inline-block;\n        margin: 8px 10px 0 0;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font-size: 13px;\n        font-weight: 600;\n        cursor: pointer;\n      }\n\n      .bcampx__action:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action:disabled {\n        cursor: default;\n        opacity: 0.6;\n        text-decoration: none;\n      }\n\n      .bcampx__error,\n      .bcampx__empty {\n        margin: 0 0 6px;\n        color: #66757f;\n      }\n\n      .bcampx--loading {\n        opacity: 0.78;\n      }\n";
+    const ENHANCEMENT_CSS = ".bcampx {\n        box-sizing: border-box;\n        margin: 6px 0 0;\n        padding: 0;\n        max-width: 360px;\n        color: #444;\n        font: 12px/1.5 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n      }\n\n      .bcampx * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed {\n        box-sizing: border-box;\n        width: 100%;\n        max-width: 940px;\n        margin: 0 0 28px;\n        padding: 0;\n      }\n\n      #collection-grid > .bcampx-label-feed,\n      #wishlist-grid > .bcampx-label-feed,\n      #collection-search-grid > .bcampx-label-feed,\n      #wishlist-search-grid > .bcampx-label-feed {\n        flex: 0 0 100%;\n        width: 100%;\n        max-width: 940px;\n        margin-right: auto;\n        margin-left: auto;\n      }\n\n      #grids > .grid > .bcampx-label-feed {\n        flex: 0 0 100%;\n        width: 100%;\n        max-width: 940px;\n        box-sizing: border-box;\n      }\n\n      #grids > .grid > .bcampx-label-feed--other-fan {\n        margin-top: 20px;\n      }\n\n      .bcampx-label-feed__list {\n        margin: 0;\n        padding: 0;\n        list-style: none;\n      }\n\n      .bcampx-label-feed-page--enhanced .label-band-selector.fade-in-on-load {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-native-offscreen {\n        position: absolute !important;\n        left: -10000px !important;\n        top: auto !important;\n        width: 1px !important;\n        height: 1px !important;\n        max-width: 1px !important;\n        max-height: 1px !important;\n        overflow: hidden !important;\n        opacity: 0 !important;\n        pointer-events: none !important;\n      }\n\n      .bcampx-label-feed-card {\n        box-sizing: border-box;\n        display: block;\n        width: 100%;\n        min-height: 150px;\n        content-visibility: auto;\n        contain-intrinsic-size: 260px;\n        margin: 0 0 16px;\n        padding: 15px 18px;\n        border: 1px solid rgba(0, 0, 0, 0.12);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.92);\n        color: #333;\n        font: 400 13px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card * {\n        box-sizing: border-box;\n      }\n\n      .bcampx-label-feed-card .bcampx-label-feed-card__story-title {\n        display: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a {\n        color: #4085b6 !important;\n        font: inherit !important;\n        font-weight: 600 !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .story-title a:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper {\n        display: grid;\n        grid-template-columns: 200px minmax(180px, 1fr) minmax(220px, 280px);\n        gap: 18px;\n        align-items: start;\n      }\n\n.bcampx-label-feed-card .art img {\n        display: block;\n        width: 200px;\n        height: 200px;\n        object-fit: cover;\n      }\n\n      .bcampx-label-feed-card .tralbum-wrapper-col1,\n      .bcampx-label-feed-card .tralbum-wrapper-col2 {\n        min-width: 0;\n      }\n\n\n\n\n      .bcampx-label-feed-card .item-link {\n        color: #222 !important;\n        font: 700 15px/1.25 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .item-link:hover,\n      .bcampx-label-feed-card .buy-link:hover {\n        text-decoration: underline !important;\n      }\n\n      .bcampx-label-feed-card .itemsubtext {\n        margin-top: 4px !important;\n        color: #777 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n      }\n\n      .bcampx-label-feed-card__supporter-count {\n        margin-top: 5px;\n        color: #6a6a6a;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card__supporter-refresh {\n        margin: 0 0 0 6px;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        cursor: pointer;\n        text-decoration: underline;\n      }\n\n      .bcampx-label-feed-card__supporter-refresh:disabled {\n        color: #999;\n        cursor: progress;\n        text-decoration: none;\n      }\n\n      .bcampx-label-feed-card .buy-link {\n        display: inline-block;\n        margin-top: 7px !important;\n        border: 0 !important;\n        background: transparent !important;\n        padding: 0 !important;\n        color: #4085b6 !important;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif !important;\n        text-decoration: none !important;\n        cursor: pointer !important;\n      }\n\n      .bcampx-label-feed-card .buy-link:disabled,\n      .bcampx-label-feed-card .buy-link:disabled:hover {\n        color: #777 !important;\n        cursor: default !important;\n        text-decoration: none !important;\n      }\n\n      .bcampx-label-feed-card .tralbum-owners {\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot {\n        width: 100%;\n      }\n\n      .bcampx-label-feed-card .bcampx--supported-slot.bcampx--expanded {\n        content-visibility: auto;\n        contain-intrinsic-size: auto 360px;\n      }\n\n      .bcampx-label-feed-toggle {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: auto;\n        height: 22px;\n        min-height: 22px;\n        margin: 0 8px 10px 0;\n        padding: 1px;\n        border: 1px solid rgba(0, 0, 0, 0.13);\n        border-radius: 3px;\n        background: rgba(255, 255, 255, 0.9);\n        box-shadow: none;\n        color: #777;\n        cursor: pointer;\n        vertical-align: middle;\n      }\n\n      .bcampx-label-feed-toggle__icon {\n        display: inline-flex;\n        align-items: center;\n        justify-content: center;\n        width: 22px;\n        height: 18px;\n        border-radius: 2px;\n        color: #777;\n      }\n\n      .bcampx-label-feed-toggle__icon + .bcampx-label-feed-toggle__icon {\n        margin-left: 2px;\n      }\n\n      .bcampx-label-feed-toggle--feed .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle svg {\n        display: block;\n      }\n\n      .bcampx-label-feed-toggle--floating {\n        position: fixed;\n        left: 14px;\n        bottom: 14px;\n        z-index: 2147483645;\n        margin: 0;\n        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);\n      }\n\n      .bcampx-label-feed-toggle--inline {\n        position: static;\n      }\n\n      .bcampx-label-feed-toggle--navbar {\n        margin: 0 0 0 auto;\n        align-self: center;\n      }\n\n      #band-navbar.bcampx-label-feed-navbar-host {\n        display: flex;\n        align-items: center;\n        gap: 0;\n      }\n\n      .bcampx-label-feed-toggle:hover {\n        border-color: rgba(64, 133, 182, 0.3);\n        color: #266a99;\n        background: rgba(255, 255, 255, 0.96);\n      }\n\n      .bcampx-label-feed-toggle:hover .bcampx-label-feed-toggle__icon {\n        color: #266a99;\n        background: rgba(64, 133, 182, 0.08);\n      }\n\n      .bcampx-label-feed-toggle--feed:hover .bcampx-label-feed-toggle__icon--feed,\n      .bcampx-label-feed-toggle--original:hover .bcampx-label-feed-toggle__icon--original {\n        color: #fff;\n        background: rgba(64, 133, 182, 0.86);\n      }\n\n      .bcampx-label-feed-toggle:focus-visible {\n        outline: 2px solid #4085b6;\n        outline-offset: 2px;\n      }\n\n      @media (max-width: 560px) {\n        .bcampx-label-feed {\n          max-width: none;\n        }\n\n        .bcampx-label-feed-card {\n          padding: 14px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper {\n          grid-template-columns: 128px minmax(0, 1fr);\n          gap: 12px;\n        }\n\n        .bcampx-label-feed-card .tralbum-wrapper-col2 {\n          grid-column: 1 / -1;\n          padding-top: 4px;\n        }\n\n        .bcampx-label-feed-card .art img {\n          width: 128px;\n          height: 128px;\n        }\n\n        .bcampx-label-feed-toggle {\n          margin-right: 8px;\n        }\n\n        .bcampx-label-feed-toggle--floating {\n          left: 10px;\n          bottom: 10px;\n          margin: 0;\n        }\n      }\n\n      .bcampx__meta {\n        display: block;\n        color: #555;\n        padding-top: 4px;\n      }\n\n      .bcampx__summary {\n        display: flex;\n        align-items: center;\n        gap: 10px;\n        margin-top: 4px;\n        color: #777;\n      }\n\n      .bcampx--supported-slot {\n        max-width: none;\n        margin: 0;\n        padding: 0;\n      }\n\n      .bcampx--supported-slot .bcampx__meta {\n        padding: 0;\n        max-width: none;\n        color: #5d5d5d;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx__slot-panel {\n        padding: 0;\n        border-left: 0;\n      }\n\n      .bcampx__summary-text {\n        min-width: 0;\n      }\n\n      .bcampx__merge-note {\n        margin: 8px 0 12px;\n        color: #8a8a8a;\n        font: 400 12px/1.34 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        text-align: left;\n      }\n\n      .bcampx__merge-fan {\n        color: #6d6d6d;\n        font-weight: 600;\n      }\n\n      .bcampx__merge-copy {\n        color: #8a8a8a;\n      }\n\n      .bcampx__merge-track-button {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        cursor: pointer;\n      }\n\n      .bcampx__merge-track-button:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button.bcampx__track-link--active {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__merge-track-button:disabled {\n        cursor: progress;\n        opacity: 0.75;\n      }\n\n      .bcampx__toggle {\n        cursor: pointer;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font: inherit;\n        text-decoration: underline;\n      }\n\n      .bcampx__toggle:disabled {\n        cursor: progress;\n        opacity: 0.68;\n      }\n\n      .bcampx__facts {\n        color: #666;\n      }\n\n      .bcampx__slot-header {\n        margin: 0 0 7px;\n        color: #757575;\n        font-size: 10px;\n        line-height: 1.2;\n        font-weight: 600;\n        letter-spacing: 0.09em;\n        text-transform: uppercase;\n      }\n\n      .bcampx__slot-subhead {\n        margin: 8px 0 0;\n        color: #949494;\n        font-size: 11px;\n        font-weight: 400;\n      }\n\n      .bcampx__slot-loading {\n        margin: 7px 0 0;\n        color: #8a8a8a;\n        font-size: 11px;\n        line-height: 1.3;\n      }\n\n      .bcampx__description {\n        margin: 6px 0 0;\n        color: #333;\n        white-space: pre-line;\n      }\n\n      .bcampx__tracks {\n        display: none;\n        margin: 6px 0 0 18px;\n        padding: 0;\n      }\n\n      .bcampx--expanded .bcampx__tracks {\n        display: block;\n      }\n\n      .bcampx__tracks li {\n        margin: 2px 0;\n      }\n\n      .bcampx__tracks--slot {\n        display: block;\n        margin: 0;\n        padding-left: 0;\n        list-style: none;\n        counter-reset: bcampxTrackNumber;\n        color: #4a4a4a;\n        font-size: 12px;\n        font-weight: 400;\n      }\n\n      .bcampx__tracks--slot li {\n        display: grid;\n        grid-template-columns: 18px minmax(0, 1fr) auto;\n        column-gap: 7px;\n        align-items: start;\n        margin: 0;\n        padding: 2px 0 5px;\n        line-height: 1.28;\n        border-top: 0;\n      }\n\n      .bcampx__tracks--slot li:first-child {\n        border-top: 0;\n        padding-top: 0;\n      }\n\n      .bcampx__tracks--slot.bcampx__tracks--collapsed .bcampx__track-item--extra {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li::before {\n        counter-increment: bcampxTrackNumber;\n        content: counter(bcampxTrackNumber) \".\";\n        color: #aaaaaa;\n        font-variant-numeric: tabular-nums;\n        align-self: start;\n        justify-self: start;\n        padding-top: 1px;\n      }\n\n      .bcampx__track-item--purchased::before {\n        color: #4085b6;\n        font-weight: 400;\n      }\n\n      .bcampx__track-link {\n        cursor: pointer;\n        display: block;\n        width: 100%;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: inherit;\n        font: inherit;\n        line-height: inherit;\n        text-align: left;\n        text-decoration: none;\n        min-width: 0;\n        margin: 0;\n      }\n\n      .bcampx__track-link:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-link--active {\n        color: #4085b6;\n        font-weight: 400;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-item--purchased .bcampx__track-link {\n        color: #333;\n        font-weight: 400;\n      }\n\n      .bcampx__track-duration {\n        color: #a0a0a0;\n        font-size: 11px;\n        font-variant-numeric: tabular-nums;\n        white-space: nowrap;\n        padding-top: 1px;\n        text-align: right;\n        opacity: 0.88;\n        align-self: start;\n      }\n\n      .bcampx__track-end {\n        display: flex;\n        justify-content: flex-end;\n        align-items: flex-start;\n        min-width: 42px;\n      }\n\n      .bcampx__track-actions {\n        display: none;\n        align-items: center;\n        gap: 6px;\n        margin-top: -1px;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-duration,\n      .bcampx__track-item--show-actions .bcampx__track-duration {\n        display: none;\n      }\n\n      .bcampx__tracks--slot li:hover .bcampx__track-end--has-actions .bcampx__track-actions,\n      .bcampx__track-item--show-actions .bcampx__track-actions {\n        display: flex;\n      }\n\n      .bcampx__track-action {\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 10px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-transform: lowercase;\n      }\n\n      .bcampx__track-action:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      .bcampx__track-action:disabled {\n        cursor: default;\n        opacity: 0.7;\n      }\n\n      .bcampx__track-action--pending,\n      .bcampx__track-action--flash {\n        color: #4085b6;\n      }\n\n      .bcampx__track-action-frame {\n        position: fixed;\n        width: 1px;\n        height: 1px;\n        opacity: 0;\n        pointer-events: none;\n        left: -9999px;\n        top: -9999px;\n        border: 0;\n      }\n\n      .bcampx__track-link:disabled {\n        cursor: default;\n        opacity: 0.55;\n      }\n\n\n      .bcampx__description--slot {\n        margin-top: 10px;\n        color: #757575;\n        font-size: 12px;\n        line-height: 1.4;\n        white-space: normal;\n      }\n\n      .bcampx__description-block {\n        display: block;\n        margin-top: 10px;\n        padding-top: 0;\n        border-top: 0;\n      }\n\n      .bcampx__description--slot p {\n        margin: 0 0 5px;\n      }\n\n      .bcampx__description--slot p:last-child {\n        margin-bottom: 0;\n      }\n\n      .bcampx__description--slot.bcampx__description--collapsed {\n        max-height: calc(1.35em * 4);\n        overflow: hidden;\n      }\n\n      .bcampx__description--slot a {\n        color: #4085b6;\n        text-decoration: none;\n      }\n\n      .bcampx__description--slot a:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__slot-expand {\n        display: inline-block;\n        margin-top: 3px;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #6f8eaa;\n        font: 400 11px/1.2 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n        cursor: pointer;\n        text-decoration: none;\n      }\n\n\n      .bcampx__slot-expand:hover {\n        color: #4085b6;\n        text-decoration: underline;\n      }\n\n      #track_play_waypoint {\n        display: none !important;\n      }\n\n      .bcampx__waypoint-toggle {\n        position: absolute;\n        right: -18px;\n        top: 50%;\n        transform: translateY(-50%);\n        min-width: 62px;\n        padding: 6px 14px;\n        border: 1px solid rgba(255, 255, 255, 0.65);\n        border-radius: 999px;\n        background: rgba(120, 120, 120, 0.92);\n        color: #fff;\n        font: 600 12px/1 -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n        cursor: pointer;\n        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);\n        z-index: 4;\n      }\n\n      .bcampx__waypoint-toggle:hover {\n        background: rgba(105, 105, 105, 0.98);\n      }\n\n      .bcampx__waypoint-toggle--paused {\n        background: rgba(132, 132, 132, 0.9);\n      }\n\n\n      .bcampx__link {\n        display: inline-block;\n        margin-top: 8px;\n        color: #4085b6;\n        text-decoration: none;\n        font-size: 13px;\n        font-weight: 600;\n      }\n\n      .bcampx__link:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action {\n        display: inline-block;\n        margin: 8px 10px 0 0;\n        padding: 0;\n        border: 0;\n        background: transparent;\n        color: #4085b6;\n        font-size: 13px;\n        font-weight: 600;\n        cursor: pointer;\n      }\n\n      .bcampx__action:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx__action:disabled {\n        cursor: default;\n        opacity: 0.6;\n        text-decoration: none;\n      }\n\n      .bcampx__error,\n      .bcampx__empty {\n        margin: 0 0 6px;\n        color: #66757f;\n      }\n\n      .bcampx--loading {\n        opacity: 0.78;\n      }\n\n\n      .bcampx-label-feed-card__tags {\n        grid-column: 1 / -1;\n        display: flex;\n        justify-content: space-between;\n        align-items: baseline;\n        gap: 12px;\n        margin-top: 6px;\n        color: #7a7a7a;\n        font: 400 12px/1.35 \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n      }\n\n      .bcampx-label-feed-card__tags a {\n        color: #4085b6;\n        font: inherit;\n        text-decoration: none;\n      }\n\n      .bcampx-label-feed-card__tags a:hover {\n        text-decoration: underline;\n      }\n\n      .bcampx-label-feed-card__date {\n        margin-left: auto;\n      }\n";
     const SCRIPT_VERSION = "0.3.0";
 
     const CONFIG = {
@@ -46,7 +46,9 @@
         continuousMode: false,
         autoFillMinimumPrice: false,
         showCollectionCounts: false,
-        maxConcurrentFetches: 3,
+        maxConcurrentFetches: 4,
+        maxConcurrentAutoFetches: 4,
+        maxViewSwitchPrefetchCards: 24,
         maxConcurrentSupporterCountFetches: 2,
         supporterCountPageSize: 80,
         supporterCountPageDelayMs: 120,
@@ -68,6 +70,7 @@
     const PLAYBACK_PAUSE_STALE_MS = 10000;
     const PLAYER_WISHLIST_STATE_RETRY_MS = 30000;
     const OWNED_RELEASE_COLLECTION_SEARCH_TTL_MS = 2 * 60 * 1000;
+    const LOADING_EXTRA_CONTEXT_TEXT = "Loading extra context...";
     const STATE = {
         initialized: false,
         artistMusicFeedBuilt: false,
@@ -115,6 +118,11 @@
         pageFreshTrackReleaseKeys: new Set(),
         releaseFetchQueue: [],
         activeReleaseFetchCount: 0,
+        autoFetchQueue: [],
+        autoFetchDrainScheduled: false,
+        activeAutoFetchCount: 0,
+        autoFetchSequence: 0,
+        peakAutoFetchCount: 0,
         pendingSupporterCountRequests: new Map(),
         supporterCountFetchQueue: [],
         activeSupporterCountFetchCount: 0,
@@ -1742,7 +1750,7 @@
         }
 
         if (STATE.artistMusicFeedSyncTimer) {
-            return;
+            window.clearTimeout(STATE.artistMusicFeedSyncTimer);
         }
 
         STATE.artistMusicFeedSyncTimer = window.setTimeout(
@@ -1750,7 +1758,7 @@
                 STATE.artistMusicFeedSyncTimer = 0;
                 syncArtistMusicFeedFromSourceGrid();
             },
-            0,
+            50,
         );
     }
 
@@ -2178,8 +2186,12 @@
         const nextView = view === "original" ? "original" : "feed";
         const feed = STATE.artistMusicFeedNode;
         const sourceGrid = STATE.artistMusicSourceGridNode;
+        const viewChanged = STATE.artistMusicFeedView !== nextView;
 
         STATE.artistMusicFeedView = nextView;
+        if (nextView !== "feed" && feed) {
+            cancelArtistMusicFeedAutoFetches(feed);
+        }
         if (feed) {
             feed.hidden = nextView !== "feed";
         }
@@ -2217,6 +2229,17 @@
 
         if (nextView === "feed" && feed) {
             if (!options.skipFeedWork) {
+                // A feed that was built while the native grid was visible has
+                // no card controllers yet: its synthetic cards were hidden
+                // during the initial scan.  Observing only the viewport here
+                // leaves every off-screen card as a "supported by" placeholder
+                // until it is scrolled into view. Prime every loaded card's
+                // shell when returning from the grid, but prefetch only a
+                // bounded top-of-list batch. That preserves the blank-free
+                // transition without downloading a large collection in full.
+                if (viewChanged) {
+                    primeArtistMusicFeedCards(feed);
+                }
                 scheduleScan(feed);
                 rearmArtistMusicFeedCardObservers(feed);
                 window.setTimeout(
@@ -2226,6 +2249,58 @@
                 scheduleArtistMusicFeedVisibleFetch(feed);
             }
         }
+    }
+
+    function primeArtistMusicFeedCards(feed) {
+        if (!(feed instanceof Element) || feed.hidden || !CONFIG.autoFetchOnVisible) {
+            return;
+        }
+
+        let queuedCount = 0;
+        const maxQueued = Math.max(
+            0,
+            Number(CONFIG.maxViewSwitchPrefetchCards) || 0,
+        );
+        Array.from(feed.querySelectorAll(".bcampx-label-feed-card")).forEach(
+            (card) => {
+                const releaseUrl = cleanText(
+                    card.getAttribute("data-bcampx-release-url") || "",
+                );
+                if (!releaseUrl) {
+                    return;
+                }
+
+                const controller = ensureCardController(card, releaseUrl);
+                if (
+                    controller &&
+                    !controller.loaded &&
+                    !controller.loading &&
+                    !controller.autoFetchQueued &&
+                    queuedCount < maxQueued
+                ) {
+                    queueAutoFetch(controller);
+                    queuedCount += 1;
+                }
+            },
+        );
+    }
+
+    function cancelArtistMusicFeedAutoFetches(feed) {
+        if (!(feed instanceof Element) || !STATE.autoFetchQueue.length) {
+            return;
+        }
+
+        STATE.autoFetchQueue = STATE.autoFetchQueue.filter((entry) => {
+            const controller = entry && entry.controller;
+            const card = controller && controller.card;
+            if (!(card instanceof Element) || !feed.contains(card)) {
+                return true;
+            }
+
+            controller.autoFetchQueued = false;
+            return false;
+        });
+        updateAutoFetchDebugState();
     }
 
     function rearmArtistMusicFeedCardObservers(feed) {
@@ -2243,7 +2318,8 @@
                 if (
                     !controller ||
                     controller.loaded ||
-                    controller.loading
+                    controller.loading ||
+                    controller.autoFetchQueued
                 ) {
                     return;
                 }
@@ -2301,9 +2377,10 @@
                 if (
                     controller &&
                     !controller.loaded &&
-                    !controller.loading
+                    !controller.loading &&
+                    !controller.autoFetchQueued
                 ) {
-                    controller.fetchAndRender({ auto: true });
+                    queueAutoFetch(controller);
                 }
             },
         );
@@ -2555,6 +2632,7 @@
             itemId,
             itemType: itemType || normalizeReleaseItemType("", releaseUrl),
             bandId: getArtistMusicReleaseBandId(item),
+            feedKind,
             sourceItem: item,
             gridItem: item,
             featuredItem: null,
@@ -2979,6 +3057,7 @@
         byline.textContent = `by ${release.artist || getArtistMusicBandName()}`;
         content.appendChild(byline);
 
+
         const action = document.createElement("button");
         action.type = "button";
         action.className = "buy-link bcampx-label-feed-card__buy-button";
@@ -3049,8 +3128,10 @@
         supportedLabel.textContent = "supported by";
         supportedSlot.appendChild(supportedLabel);
 
+
         wrapper.append(art, content, supportedSlot);
         body.appendChild(wrapper);
+
         innards.appendChild(body);
         card.append(headline, innards);
         if (release.initialData) {
@@ -3078,6 +3159,7 @@
         applyArtistMusicNativeCardData(card, data);
         updateArtistMusicCardSupporterCount(card, data);
         scheduleArtistMusicCardExactSupporterCount(card, data);
+        updateArtistMusicCardTags(card, data);
 
         const action = card.querySelector("[data-bcampx-release-action='buy']");
         if (!action) {
@@ -3113,25 +3195,17 @@
                 ? "Find this release in your collection"
                 : "This release is already in your collection"
             : "";
-        if (data.title) {
-            action.setAttribute("data-bcampx-release-title", data.title);
+        setAttr(action, "data-bcampx-release-title", data.title);
+        setAttr(action, "data-bcampx-digital-ownership-url", ownershipUrl);
+        setAttr(action, "data-bcampx-digital-download-url", downloadUrl);
+        setAttr(action, "data-bcampx-digital-price", data.digitalPrice);
+    }
+
+    function setAttr(element, attribute, value) {
+        if (value) {
+            element.setAttribute(attribute, value);
         } else {
-            action.removeAttribute("data-bcampx-release-title");
-        }
-        if (ownershipUrl) {
-            action.setAttribute("data-bcampx-digital-ownership-url", ownershipUrl);
-        } else {
-            action.removeAttribute("data-bcampx-digital-ownership-url");
-        }
-        if (downloadUrl) {
-            action.setAttribute("data-bcampx-digital-download-url", downloadUrl);
-        } else {
-            action.removeAttribute("data-bcampx-digital-download-url");
-        }
-        if (data.digitalPrice) {
-            action.setAttribute("data-bcampx-digital-price", data.digitalPrice);
-        } else {
-            action.removeAttribute("data-bcampx-digital-price");
+            element.removeAttribute(attribute);
         }
     }
 
@@ -3157,6 +3231,61 @@
                 nativeData.supporterCountLabel || "",
             );
             data.supporterCountAuthoritative = true;
+        }
+    }
+
+    function updateArtistMusicCardTags(card, data) {
+        let tagsContainer =
+            card && card.querySelector(".bcampx-label-feed-card__tags");
+        if (!tagsContainer) {
+            const wrapper =
+                card && card.querySelector(".tralbum-wrapper");
+            if (!wrapper) {
+                return;
+            }
+            tagsContainer = document.createElement("div");
+            tagsContainer.className = "bcampx-label-feed-card__tags";
+            tagsContainer.hidden = true;
+            wrapper.appendChild(tagsContainer);
+        }
+
+        const tags = (Array.isArray(data && data.tags)
+            ? data.tags.map((tag) => cleanText(tag)).filter(Boolean)
+            : []).slice(0, 5);
+        const dateLocation = compactJoin(
+            [formatReleaseDate(data && data.releaseDate), data && data.location],
+            " \u00b7 ",
+        );
+        if (!tags.length && !dateLocation) {
+            tagsContainer.hidden = true;
+            tagsContainer.replaceChildren();
+            return;
+        }
+
+        tagsContainer.hidden = false;
+        tagsContainer.replaceChildren();
+
+        if (tags.length) {
+            const leftSide = document.createElement("span");
+            leftSide.className = "bcampx-label-feed-card__tags-text";
+            leftSide.appendChild(document.createTextNode("tags: "));
+            tags.forEach(function(tag, index) {
+                if (index > 0) {
+                    leftSide.appendChild(document.createTextNode(", "));
+                }
+                var link = document.createElement("a");
+                link.href = "/tag/" + encodeURIComponent(tag);
+                link.textContent = tag;
+                leftSide.appendChild(link);
+            });
+            tagsContainer.appendChild(leftSide);
+        }
+
+        if (dateLocation) {
+            var rightSide = document.createElement("span");
+            rightSide.className = "bcampx-label-feed-card__date";
+            rightSide.textContent = dateLocation;
+            tagsContainer.appendChild(rightSide);
         }
     }
 
@@ -3235,28 +3364,11 @@
             "data-bcampx-supporter-count-auto-attempted",
             "true",
         );
-        card.setAttribute("data-bcampx-supporter-count-pending", "true");
-        updateArtistMusicCardSupporterRefreshPending(card, true);
-        void getExactReleaseSupporterCount(data)
-            .then((result) => {
-                if (!result || !result.count) {
-                    return;
-                }
-
-                applyArtistMusicSupporterCountResult(card, data, result);
-                if (card.isConnected) {
-                    updateArtistMusicCardSupporterCount(card, data);
-                }
-            })
-            .catch(() => {})
-            .finally(() => {
-                if (card) {
-                    card.removeAttribute("data-bcampx-supporter-count-pending");
-                }
-                if (card && card.isConnected) {
-                    updateArtistMusicCardSupporterCount(card, data);
-                }
-            });
+        void fetchArtistMusicSupporterCount(
+            card,
+            data,
+            getExactReleaseSupporterCount(data),
+        );
     }
 
     function refreshArtistMusicCardSupporterCount(card) {
@@ -3279,12 +3391,20 @@
             return Promise.resolve(null);
         }
 
+        return fetchArtistMusicSupporterCount(
+            card,
+            data,
+            getExactReleaseSupporterCount(data, {
+                forceRefresh: true,
+                ignoreLimit: true,
+            }),
+        );
+    }
+
+    function fetchArtistMusicSupporterCount(card, data, fetchPromise) {
         card.setAttribute("data-bcampx-supporter-count-pending", "true");
         updateArtistMusicCardSupporterRefreshPending(card, true);
-        return getExactReleaseSupporterCount(data, {
-            forceRefresh: true,
-            ignoreLimit: true,
-        })
+        return fetchPromise
             .then((result) => {
                 if (!result || !result.count) {
                     return result;
@@ -3298,29 +3418,25 @@
             })
             .catch(() => null)
             .finally(() => {
-                if (card) {
-                    card.removeAttribute("data-bcampx-supporter-count-pending");
-                }
-                if (card && card.isConnected) {
+                card.removeAttribute("data-bcampx-supporter-count-pending");
+                if (card.isConnected) {
                     updateArtistMusicCardSupporterCount(card, data);
                 }
             });
     }
 
     function applyArtistMusicSupporterCountResult(card, data, result) {
-        data.supporterCount = result.count;
-        data.supporterCountIsExact = result.isExact === true;
-        data.supporterMoreAvailable = result.moreAvailable === true;
-        data.supporterNextToken = cleanText(result.nextToken || "");
+        const supporterData = {
+            supporterCount: result.count,
+            supporterCountIsExact: result.isExact === true,
+            supporterMoreAvailable: result.moreAvailable === true,
+            supporterNextToken: cleanText(result.nextToken || ""),
+        };
+        Object.assign(data, supporterData);
 
         const controller = getCardController(card);
         if (controller && controller.data) {
-            controller.data.supporterCount = data.supporterCount;
-            controller.data.supporterCountIsExact =
-                data.supporterCountIsExact;
-            controller.data.supporterMoreAvailable =
-                data.supporterMoreAvailable;
-            controller.data.supporterNextToken = data.supporterNextToken;
+            Object.assign(controller.data, supporterData);
         }
     }
 
@@ -5062,13 +5178,145 @@
                     if (
                         controller &&
                         !controller.loaded &&
-                        !controller.loading
+                        !controller.loading &&
+                        !controller.autoFetchQueued
                     ) {
-                        controller.fetchAndRender({ auto: true });
+                        queueAutoFetch(controller);
                     }
                 });
             },
             { rootMargin: CONFIG.observerRootMargin },
+        );
+    }
+
+    function queueAutoFetch(controller) {
+        if (
+            !controller ||
+            controller.loaded ||
+            controller.loading ||
+            controller.autoFetchQueued
+        ) {
+            return;
+        }
+
+        controller.autoFetchQueued = true;
+        applyReleaseShellLoadingState(controller);
+        STATE.autoFetchQueue.push({
+            controller,
+            sequence: ++STATE.autoFetchSequence,
+        });
+        updateAutoFetchDebugState();
+        scheduleAutoFetchQueueDrain();
+    }
+
+    function scheduleAutoFetchQueueDrain() {
+        if (STATE.autoFetchDrainScheduled) {
+            return;
+        }
+
+        STATE.autoFetchDrainScheduled = true;
+        const run = () => {
+            STATE.autoFetchDrainScheduled = false;
+            drainAutoFetchQueue();
+        };
+        if (typeof window.queueMicrotask === "function") {
+            window.queueMicrotask(run);
+        } else {
+            Promise.resolve().then(run);
+        }
+    }
+
+    function drainAutoFetchQueue() {
+        while (
+            STATE.activeAutoFetchCount < CONFIG.maxConcurrentAutoFetches &&
+            STATE.autoFetchQueue.length
+        ) {
+            const next = takeNearestAutoFetch();
+            const controller = next && next.controller;
+            if (!controller) {
+                continue;
+            }
+
+            controller.autoFetchQueued = false;
+            updateAutoFetchDebugState();
+            if (
+                controller.loaded ||
+                controller.loading ||
+                !(controller.card instanceof Element) ||
+                !controller.card.isConnected
+            ) {
+                continue;
+            }
+
+            STATE.activeAutoFetchCount += 1;
+            STATE.peakAutoFetchCount = Math.max(
+                STATE.peakAutoFetchCount,
+                STATE.activeAutoFetchCount,
+            );
+            updateAutoFetchDebugState();
+            Promise.resolve(controller.fetchAndRender({ auto: true }))
+                .catch(() => {})
+                .finally(() => {
+                    STATE.activeAutoFetchCount = Math.max(
+                        0,
+                        STATE.activeAutoFetchCount - 1,
+                    );
+                    updateAutoFetchDebugState();
+                    drainAutoFetchQueue();
+                });
+        }
+    }
+
+    function takeNearestAutoFetch() {
+        let nearestIndex = 0;
+        let nearestDistance = Infinity;
+        let nearestSequence = Infinity;
+
+        STATE.autoFetchQueue.forEach((entry, index) => {
+            const distance = getAutoFetchViewportDistance(
+                entry && entry.controller && entry.controller.card,
+            );
+            const sequence = Number(entry && entry.sequence) || 0;
+            if (
+                distance < nearestDistance ||
+                (distance === nearestDistance && sequence < nearestSequence)
+            ) {
+                nearestIndex = index;
+                nearestDistance = distance;
+                nearestSequence = sequence;
+            }
+        });
+
+        return STATE.autoFetchQueue.splice(nearestIndex, 1)[0] || null;
+    }
+
+    function getAutoFetchViewportDistance(card) {
+        if (!(card instanceof Element) || !card.isConnected) {
+            return Infinity;
+        }
+
+        const rect = card.getBoundingClientRect();
+        const viewportHeight =
+            window.innerHeight || document.documentElement.clientHeight || 0;
+        return Math.abs(rect.top + rect.height / 2 - viewportHeight / 2);
+    }
+
+    function updateAutoFetchDebugState() {
+        markDebugState(
+            "data-bcampx-auto-fetch-active-count",
+            String(STATE.activeAutoFetchCount),
+        );
+        markDebugState(
+            "data-bcampx-auto-fetch-queue-count",
+            String(STATE.autoFetchQueue.length),
+        );
+        markDebugState(
+            "data-bcampx-auto-fetch-peak-count",
+            String(STATE.peakAutoFetchCount),
+        );
+        markDebugState(
+            "data-bcampx-auto-fetch-limit",
+            String(CONFIG.maxConcurrentAutoFetches),
         );
     }
 
@@ -6440,7 +6688,7 @@
 
         const text = document.createElement("span");
         text.className = "bcampx__summary-text";
-        text.textContent = "Loading extra context...";
+        text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
 
         const toggle = document.createElement("button");
         toggle.type = "button";
@@ -6455,10 +6703,15 @@
         const controller = {
             loaded: false,
             loading: false,
+            autoFetchQueued: false,
             expanded: false,
             data: null,
             refreshPromise: null,
             card,
+            shellNode: shell,
+            metaNode: meta,
+            textNode: text,
+            toggleNode: toggle,
             releaseUrl,
             releaseRequestContext:
                 releaseRequestContext ||
@@ -6518,6 +6771,11 @@
         }
 
         const normalizedData = normalizeReleaseData(initialData);
+        const showInitialLoading = shouldShowInitialExtraContextLoading(card);
+        if (showInitialLoading) {
+            applyReleaseShellLoadingState(controller);
+        }
+
         controller.data = normalizedData;
         renderReleaseData(
             shell,
@@ -6531,6 +6789,19 @@
             fromCache: true,
             stale: false,
         });
+        if (showInitialLoading) {
+            text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
+        }
+    }
+
+    function shouldShowInitialExtraContextLoading(card) {
+        const release = card && card.__bcampxArtistMusicRelease;
+        return Boolean(
+            release &&
+                /^(fan-collection|fan-wishlist)$/.test(
+                    cleanText(release.feedKind || ""),
+                ),
+        );
     }
 
     function mountEnhancementShell(card, shell) {
@@ -6828,9 +7099,8 @@
         options,
     ) {
         controller.loading = true;
-        shell.classList.add("bcampx--loading");
-        text.textContent = "Loading extra context...";
-        toggle.disabled = true;
+        applyReleaseShellLoadingState(controller);
+        let keepLoadingForRefresh = false;
 
         try {
             const result = await getReleaseData(
@@ -6842,6 +7112,7 @@
             );
             controller.loaded = true;
             controller.data = normalizedData;
+            keepLoadingForRefresh = Boolean(result.refreshPromise);
 
             renderReleaseData(
                 shell,
@@ -6859,7 +7130,7 @@
             shell.classList.toggle("bcampx--expanded", shouldExpand);
             updateToggle(toggle, shouldExpand);
             text.textContent = result.refreshingTracks
-                ? `${buildSummaryText(normalizedData)} · refreshing previews`
+                ? LOADING_EXTRA_CONTEXT_TEXT
                 : buildLoadedSummaryText(normalizedData, result);
             if (result.refreshPromise) {
                 attachReleaseRefreshPromise(
@@ -6889,8 +7160,50 @@
             toggle.hidden = true;
         } finally {
             controller.loading = false;
-            toggle.disabled = false;
+            if (!keepLoadingForRefresh) {
+                clearReleaseShellLoadingState(controller);
+            }
+        }
+    }
+
+    function applyReleaseShellLoadingState(controller) {
+        if (!controller) {
+            return;
+        }
+
+        const shell = controller.shellNode;
+        const text = controller.textNode;
+        const toggle = controller.toggleNode;
+
+        if (shell) {
+            shell.classList.add("bcampx--loading");
+            shell.setAttribute("data-bcampx-loading-extra-context", "true");
+        }
+        if (text) {
+            text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
+        }
+        if (toggle) {
+            toggle.disabled = true;
+        }
+    }
+
+    function clearReleaseShellLoadingState(controller) {
+        if (!controller) {
+            return;
+        }
+
+        const shell = controller.shellNode;
+        const toggle = controller.toggleNode;
+
+        if (shell) {
             shell.classList.remove("bcampx--loading");
+            shell.removeAttribute("data-bcampx-loading-extra-context");
+            shell
+                .querySelectorAll(".bcampx__slot-loading")
+                .forEach((node) => node.remove());
+        }
+        if (toggle) {
+            toggle.disabled = false;
         }
     }
 
@@ -6938,38 +7251,54 @@
         toggle,
     ) {
         controller.refreshPromise = refreshPromise;
-        void refreshPromise.then((result) => {
-            if (controller.refreshPromise !== refreshPromise) {
-                return;
-            }
+        void refreshPromise
+            .then((result) => {
+                if (controller.refreshPromise !== refreshPromise) {
+                    return;
+                }
 
-            controller.refreshPromise = null;
-            const normalizedData = getRenderableReleaseData(
-                controller,
-                result,
-            );
-            controller.data = normalizedData;
-            if (!shell.isConnected) {
-                return;
-            }
-            renderReleaseData(
-                shell,
-                meta,
-                text,
-                toggle,
-                normalizedData,
-                releaseUrl,
-            );
-            shell.classList.toggle(
-                "bcampx--expanded",
-                controller.expanded,
-            );
-            updateToggle(toggle, controller.expanded);
-            text.textContent = buildLoadedSummaryText(
-                normalizedData,
-                result,
-            );
-        });
+                const normalizedData = getRenderableReleaseData(
+                    controller,
+                    result,
+                );
+                controller.data = normalizedData;
+                if (!shell.isConnected) {
+                    return;
+                }
+                renderReleaseData(
+                    shell,
+                    meta,
+                    text,
+                    toggle,
+                    normalizedData,
+                    releaseUrl,
+                );
+                shell.classList.toggle(
+                    "bcampx--expanded",
+                    controller.expanded,
+                );
+                updateToggle(toggle, controller.expanded);
+                text.textContent = buildLoadedSummaryText(
+                    normalizedData,
+                    result,
+                );
+            })
+            .catch(() => {
+                if (controller.refreshPromise !== refreshPromise) {
+                    return;
+                }
+                const fallbackData = controller.data || createEmptyReleaseData();
+                text.textContent = buildLoadedSummaryText(fallbackData, {
+                    fromCache: true,
+                    stale: true,
+                });
+            })
+            .finally(() => {
+                if (controller.refreshPromise === refreshPromise) {
+                    controller.refreshPromise = null;
+                }
+                clearReleaseShellLoadingState(controller);
+            });
     }
 
     function toggleDetails(controller, shell, toggle) {
@@ -8734,8 +9063,8 @@
             data.tracks,
             "bcampx__tracks",
             (track) => {
-            const item = document.createElement("li");
-            item.textContent = track.title;
+                const item = document.createElement("li");
+                item.textContent = track.title;
                 return item;
             },
         );
@@ -8766,6 +9095,7 @@
     }
 
     function renderSupportedSlot(meta, text, toggle, data, releaseUrl) {
+        const shell = meta.closest(".bcampx");
         const purchasedTrackTitles = getMergedTrackTitleSet(
             meta.closest(CARD_SELECTOR),
         );
@@ -8786,14 +9116,30 @@
             purchasedTrackTitles,
             autoExpandState,
         );
+        appendSupportedSlotLoading(panel, shell);
         renderSupportedSlotDescription(panel, data, autoExpandState);
-        appendSupportedSlotSubhead(panel, subhead);
-
+        if (!shell.closest(".bcampx-label-feed-card")) {
+            appendSupportedSlotSubhead(panel, subhead);
+        }
         meta.append(panel);
         scheduleSupportedSlotAutoExpand(panel, autoExpandState);
 
         toggle.hidden = true;
         text.hidden = true;
+    }
+
+    function appendSupportedSlotLoading(panel, shell) {
+        if (
+            !panel ||
+            !shell ||
+            shell.getAttribute("data-bcampx-loading-extra-context") !== "true"
+        ) {
+            return;
+        }
+
+        const loading = createClassedElement("div", "bcampx__slot-loading");
+        loading.textContent = LOADING_EXTRA_CONTEXT_TEXT;
+        panel.append(loading);
     }
 
     function renderSupportedSlotTracks(
@@ -12427,6 +12773,9 @@
         if (normalizedData.tracks && normalizedData.tracks.length) {
             parts.push(`${normalizedData.tracks.length} tracks`);
         }
+        if (normalizedData.tags && normalizedData.tags.length) {
+            parts.push(`${normalizedData.tags.length} tags`);
+        }
         return parts.length ? parts.join(" · ") : "Extra context loaded";
     }
 
@@ -12460,6 +12809,7 @@
             formatReleaseDate(data.releaseDate) ||
             data.location ||
             data.description ||
+            (data.tags && data.tags.length) ||
             (data.tracks && data.tracks.length),
         );
     }

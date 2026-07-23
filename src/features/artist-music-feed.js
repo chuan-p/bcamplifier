@@ -467,7 +467,7 @@
         }
 
         if (STATE.artistMusicFeedSyncTimer) {
-            return;
+            window.clearTimeout(STATE.artistMusicFeedSyncTimer);
         }
 
         STATE.artistMusicFeedSyncTimer = window.setTimeout(
@@ -475,7 +475,7 @@
                 STATE.artistMusicFeedSyncTimer = 0;
                 syncArtistMusicFeedFromSourceGrid();
             },
-            0,
+            50,
         );
     }
 
@@ -903,8 +903,12 @@
         const nextView = view === "original" ? "original" : "feed";
         const feed = STATE.artistMusicFeedNode;
         const sourceGrid = STATE.artistMusicSourceGridNode;
+        const viewChanged = STATE.artistMusicFeedView !== nextView;
 
         STATE.artistMusicFeedView = nextView;
+        if (nextView !== "feed" && feed) {
+            cancelArtistMusicFeedAutoFetches(feed);
+        }
         if (feed) {
             feed.hidden = nextView !== "feed";
         }
@@ -942,6 +946,17 @@
 
         if (nextView === "feed" && feed) {
             if (!options.skipFeedWork) {
+                // A feed that was built while the native grid was visible has
+                // no card controllers yet: its synthetic cards were hidden
+                // during the initial scan.  Observing only the viewport here
+                // leaves every off-screen card as a "supported by" placeholder
+                // until it is scrolled into view. Prime every loaded card's
+                // shell when returning from the grid, but prefetch only a
+                // bounded top-of-list batch. That preserves the blank-free
+                // transition without downloading a large collection in full.
+                if (viewChanged) {
+                    primeArtistMusicFeedCards(feed);
+                }
                 scheduleScan(feed);
                 rearmArtistMusicFeedCardObservers(feed);
                 window.setTimeout(
@@ -951,6 +966,58 @@
                 scheduleArtistMusicFeedVisibleFetch(feed);
             }
         }
+    }
+
+    function primeArtistMusicFeedCards(feed) {
+        if (!(feed instanceof Element) || feed.hidden || !CONFIG.autoFetchOnVisible) {
+            return;
+        }
+
+        let queuedCount = 0;
+        const maxQueued = Math.max(
+            0,
+            Number(CONFIG.maxViewSwitchPrefetchCards) || 0,
+        );
+        Array.from(feed.querySelectorAll(".bcampx-label-feed-card")).forEach(
+            (card) => {
+                const releaseUrl = cleanText(
+                    card.getAttribute("data-bcampx-release-url") || "",
+                );
+                if (!releaseUrl) {
+                    return;
+                }
+
+                const controller = ensureCardController(card, releaseUrl);
+                if (
+                    controller &&
+                    !controller.loaded &&
+                    !controller.loading &&
+                    !controller.autoFetchQueued &&
+                    queuedCount < maxQueued
+                ) {
+                    queueAutoFetch(controller);
+                    queuedCount += 1;
+                }
+            },
+        );
+    }
+
+    function cancelArtistMusicFeedAutoFetches(feed) {
+        if (!(feed instanceof Element) || !STATE.autoFetchQueue.length) {
+            return;
+        }
+
+        STATE.autoFetchQueue = STATE.autoFetchQueue.filter((entry) => {
+            const controller = entry && entry.controller;
+            const card = controller && controller.card;
+            if (!(card instanceof Element) || !feed.contains(card)) {
+                return true;
+            }
+
+            controller.autoFetchQueued = false;
+            return false;
+        });
+        updateAutoFetchDebugState();
     }
 
     function rearmArtistMusicFeedCardObservers(feed) {
@@ -968,7 +1035,8 @@
                 if (
                     !controller ||
                     controller.loaded ||
-                    controller.loading
+                    controller.loading ||
+                    controller.autoFetchQueued
                 ) {
                     return;
                 }
@@ -1026,9 +1094,10 @@
                 if (
                     controller &&
                     !controller.loaded &&
-                    !controller.loading
+                    !controller.loading &&
+                    !controller.autoFetchQueued
                 ) {
-                    controller.fetchAndRender({ auto: true });
+                    queueAutoFetch(controller);
                 }
             },
         );
@@ -1280,6 +1349,7 @@
             itemId,
             itemType: itemType || normalizeReleaseItemType("", releaseUrl),
             bandId: getArtistMusicReleaseBandId(item),
+            feedKind,
             sourceItem: item,
             gridItem: item,
             featuredItem: null,
@@ -1704,6 +1774,7 @@
         byline.textContent = `by ${release.artist || getArtistMusicBandName()}`;
         content.appendChild(byline);
 
+
         const action = document.createElement("button");
         action.type = "button";
         action.className = "buy-link bcampx-label-feed-card__buy-button";
@@ -1774,8 +1845,10 @@
         supportedLabel.textContent = "supported by";
         supportedSlot.appendChild(supportedLabel);
 
+
         wrapper.append(art, content, supportedSlot);
         body.appendChild(wrapper);
+
         innards.appendChild(body);
         card.append(headline, innards);
         if (release.initialData) {
@@ -1803,6 +1876,7 @@
         applyArtistMusicNativeCardData(card, data);
         updateArtistMusicCardSupporterCount(card, data);
         scheduleArtistMusicCardExactSupporterCount(card, data);
+        updateArtistMusicCardTags(card, data);
 
         const action = card.querySelector("[data-bcampx-release-action='buy']");
         if (!action) {
@@ -1838,25 +1912,17 @@
                 ? "Find this release in your collection"
                 : "This release is already in your collection"
             : "";
-        if (data.title) {
-            action.setAttribute("data-bcampx-release-title", data.title);
+        setAttr(action, "data-bcampx-release-title", data.title);
+        setAttr(action, "data-bcampx-digital-ownership-url", ownershipUrl);
+        setAttr(action, "data-bcampx-digital-download-url", downloadUrl);
+        setAttr(action, "data-bcampx-digital-price", data.digitalPrice);
+    }
+
+    function setAttr(element, attribute, value) {
+        if (value) {
+            element.setAttribute(attribute, value);
         } else {
-            action.removeAttribute("data-bcampx-release-title");
-        }
-        if (ownershipUrl) {
-            action.setAttribute("data-bcampx-digital-ownership-url", ownershipUrl);
-        } else {
-            action.removeAttribute("data-bcampx-digital-ownership-url");
-        }
-        if (downloadUrl) {
-            action.setAttribute("data-bcampx-digital-download-url", downloadUrl);
-        } else {
-            action.removeAttribute("data-bcampx-digital-download-url");
-        }
-        if (data.digitalPrice) {
-            action.setAttribute("data-bcampx-digital-price", data.digitalPrice);
-        } else {
-            action.removeAttribute("data-bcampx-digital-price");
+            element.removeAttribute(attribute);
         }
     }
 
@@ -1882,6 +1948,61 @@
                 nativeData.supporterCountLabel || "",
             );
             data.supporterCountAuthoritative = true;
+        }
+    }
+
+    function updateArtistMusicCardTags(card, data) {
+        let tagsContainer =
+            card && card.querySelector(".bcampx-label-feed-card__tags");
+        if (!tagsContainer) {
+            const wrapper =
+                card && card.querySelector(".tralbum-wrapper");
+            if (!wrapper) {
+                return;
+            }
+            tagsContainer = document.createElement("div");
+            tagsContainer.className = "bcampx-label-feed-card__tags";
+            tagsContainer.hidden = true;
+            wrapper.appendChild(tagsContainer);
+        }
+
+        const tags = (Array.isArray(data && data.tags)
+            ? data.tags.map((tag) => cleanText(tag)).filter(Boolean)
+            : []).slice(0, 5);
+        const dateLocation = compactJoin(
+            [formatReleaseDate(data && data.releaseDate), data && data.location],
+            " \u00b7 ",
+        );
+        if (!tags.length && !dateLocation) {
+            tagsContainer.hidden = true;
+            tagsContainer.replaceChildren();
+            return;
+        }
+
+        tagsContainer.hidden = false;
+        tagsContainer.replaceChildren();
+
+        if (tags.length) {
+            const leftSide = document.createElement("span");
+            leftSide.className = "bcampx-label-feed-card__tags-text";
+            leftSide.appendChild(document.createTextNode("tags: "));
+            tags.forEach(function(tag, index) {
+                if (index > 0) {
+                    leftSide.appendChild(document.createTextNode(", "));
+                }
+                var link = document.createElement("a");
+                link.href = "/tag/" + encodeURIComponent(tag);
+                link.textContent = tag;
+                leftSide.appendChild(link);
+            });
+            tagsContainer.appendChild(leftSide);
+        }
+
+        if (dateLocation) {
+            var rightSide = document.createElement("span");
+            rightSide.className = "bcampx-label-feed-card__date";
+            rightSide.textContent = dateLocation;
+            tagsContainer.appendChild(rightSide);
         }
     }
 
@@ -1960,28 +2081,11 @@
             "data-bcampx-supporter-count-auto-attempted",
             "true",
         );
-        card.setAttribute("data-bcampx-supporter-count-pending", "true");
-        updateArtistMusicCardSupporterRefreshPending(card, true);
-        void getExactReleaseSupporterCount(data)
-            .then((result) => {
-                if (!result || !result.count) {
-                    return;
-                }
-
-                applyArtistMusicSupporterCountResult(card, data, result);
-                if (card.isConnected) {
-                    updateArtistMusicCardSupporterCount(card, data);
-                }
-            })
-            .catch(() => {})
-            .finally(() => {
-                if (card) {
-                    card.removeAttribute("data-bcampx-supporter-count-pending");
-                }
-                if (card && card.isConnected) {
-                    updateArtistMusicCardSupporterCount(card, data);
-                }
-            });
+        void fetchArtistMusicSupporterCount(
+            card,
+            data,
+            getExactReleaseSupporterCount(data),
+        );
     }
 
     function refreshArtistMusicCardSupporterCount(card) {
@@ -2004,12 +2108,20 @@
             return Promise.resolve(null);
         }
 
+        return fetchArtistMusicSupporterCount(
+            card,
+            data,
+            getExactReleaseSupporterCount(data, {
+                forceRefresh: true,
+                ignoreLimit: true,
+            }),
+        );
+    }
+
+    function fetchArtistMusicSupporterCount(card, data, fetchPromise) {
         card.setAttribute("data-bcampx-supporter-count-pending", "true");
         updateArtistMusicCardSupporterRefreshPending(card, true);
-        return getExactReleaseSupporterCount(data, {
-            forceRefresh: true,
-            ignoreLimit: true,
-        })
+        return fetchPromise
             .then((result) => {
                 if (!result || !result.count) {
                     return result;
@@ -2023,29 +2135,25 @@
             })
             .catch(() => null)
             .finally(() => {
-                if (card) {
-                    card.removeAttribute("data-bcampx-supporter-count-pending");
-                }
-                if (card && card.isConnected) {
+                card.removeAttribute("data-bcampx-supporter-count-pending");
+                if (card.isConnected) {
                     updateArtistMusicCardSupporterCount(card, data);
                 }
             });
     }
 
     function applyArtistMusicSupporterCountResult(card, data, result) {
-        data.supporterCount = result.count;
-        data.supporterCountIsExact = result.isExact === true;
-        data.supporterMoreAvailable = result.moreAvailable === true;
-        data.supporterNextToken = cleanText(result.nextToken || "");
+        const supporterData = {
+            supporterCount: result.count,
+            supporterCountIsExact: result.isExact === true,
+            supporterMoreAvailable: result.moreAvailable === true,
+            supporterNextToken: cleanText(result.nextToken || ""),
+        };
+        Object.assign(data, supporterData);
 
         const controller = getCardController(card);
         if (controller && controller.data) {
-            controller.data.supporterCount = data.supporterCount;
-            controller.data.supporterCountIsExact =
-                data.supporterCountIsExact;
-            controller.data.supporterMoreAvailable =
-                data.supporterMoreAvailable;
-            controller.data.supporterNextToken = data.supporterNextToken;
+            Object.assign(controller.data, supporterData);
         }
     }
 

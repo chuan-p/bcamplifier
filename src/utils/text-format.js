@@ -285,6 +285,9 @@
         if (normalizedData.tracks && normalizedData.tracks.length) {
             parts.push(`${normalizedData.tracks.length} tracks`);
         }
+        if (normalizedData.tags && normalizedData.tags.length) {
+            parts.push(`${normalizedData.tags.length} tags`);
+        }
         return parts.length ? parts.join(" · ") : "Extra context loaded";
     }
 
@@ -318,6 +321,7 @@
             formatReleaseDate(data.releaseDate) ||
             data.location ||
             data.description ||
+            (data.tags && data.tags.length) ||
             (data.tracks && data.tracks.length),
         );
     }

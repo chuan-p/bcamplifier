@@ -32,7 +32,7 @@ cmd = [
     "--disable-gpu",
     "--host-resolver-rules=MAP bandcamp.com 127.0.0.1",
     "--window-size=1400,1600",
-    "--virtual-time-budget=10000",
+    "--virtual-time-budget=16000",
     "--dump-dom",
     f"http://bandcamp.com:{port}/fixturefan",
 ]
@@ -58,10 +58,16 @@ checks = {
     'data-bcampx-wishlist-count-exact="true"': "wishlist native count remained authoritative",
     'data-bcampx-localized-dot-count="1234"': "dot-separated localized collection counts parsed correctly",
     'data-bcampx-localized-space-count="1234"': "space-separated localized collection counts parsed correctly",
+    'data-bcampx-collection-release-tags="tags: fan-tag-1, collection-fixture"': "fan collection cards rendered release tags",
+    'data-bcampx-collection-release-tags-in-col1="false"': "fan collection tags rendered in the full-width metadata row",
     'data-bcampx-supporter-request-count="0"': "native counts avoided supporter pagination requests",
     'data-bcampx-cached-tracklist-early-count="2"': "cached fan tracklists rendered before the release refresh completed",
     'data-bcampx-cached-native-stream="https://example.com/4.mp3"': "cached tracklists reused the page-fresh native preview",
     'data-bcampx-cached-stale-stream-cleared="true"': "cached tracklists did not expose stale non-native preview URLs",
+    'data-bcampx-wishlist-loading-summary="Loading extra context..."': "wishlist cards showed loading while release context refreshed",
+    'data-bcampx-wishlist-loading-state="true"': "wishlist cards carried the loading state while release context refreshed",
+    'data-bcampx-wishlist-slot-loading="Loading extra context..."': "wishlist tracklist slot showed the loading message while release context refreshed",
+    'data-bcampx-wishlist-slot-loading-visible="true"': "wishlist tracklist slot loading message was not hidden",
     'data-bcampx-wishlist-refreshed-stream="https://example.com/4.mp3"': "stale playable track caches refreshed before replacing native preview data",
     'data-bcampx-wishlist-second-refreshed-stream="https://example.com/404.mp3"': "background refresh restored the remaining playable track URLs",
     'data-bcampx-wishlist-player-enabled="true"': "wishlist enhanced cards enabled the player wishlist button",
@@ -77,6 +83,10 @@ checks = {
     'data-bcampx-tab-enhance-delta="0"': "fan tab switching did not rebuild enhanced cards",
     'data-bcampx-tab-sync-delta="0"': "clean fan grids skipped source reconciliation during tab switching",
     'data-bcampx-tab-scan-delta="0"': "fan tab switching did not schedule full feed scans",
+    'data-bcampx-auto-fetch-limit="4"': "automatic release fetches used the configured concurrency limit",
+    'data-bcampx-auto-fetch-peak-count="4"': "automatic release fetches filled but did not exceed the concurrency limit",
+    'data-bcampx-auto-fetch-active-count="0"': "automatic release fetches settled after the fixture run",
+    'data-bcampx-auto-fetch-queue-count="0"': "automatic release fetch queue drained after the fixture run",
 }
 
 missing = [label for token, label in checks.items() if token not in stdout]

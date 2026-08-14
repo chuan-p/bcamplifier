@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+    const { isBandcampHostname, normalizeCustomHostPermissionPattern } =
+        globalThis.__BCAMPX_EXT_SHARED__;
     const runtimeApi = getExtensionApi();
     const params = new URLSearchParams(window.location.search);
     const requestId = String(params.get("requestId") || "").trim();
@@ -11,6 +13,7 @@
     const cancelButton = document.querySelector("#cancel-button");
     const statusNode = document.querySelector("#status");
     const domainLabel = document.querySelector("#domain-label");
+    let existingGranted = false;
 
     if (domainLabel) {
         domainLabel.textContent = originPattern || "Invalid custom domain request";
@@ -36,6 +39,7 @@
                 origins: [originPattern],
             });
             if (granted) {
+                existingGranted = true;
                 allowButton.textContent = "Continue";
                 setStatus("Access for this domain is already granted.");
             }
@@ -55,7 +59,7 @@
             });
 
             await finish(granted, granted ? "" : "Permission was not granted.", {
-                alreadyGranted: false,
+                alreadyGranted: existingGranted,
             });
         } catch (error) {
             await finish(
@@ -103,34 +107,6 @@
         if (cancelButton) {
             cancelButton.disabled = disabled;
         }
-    }
-
-    function normalizeCustomHostPermissionPattern(rawUrl) {
-        if (typeof rawUrl !== "string" || !rawUrl) {
-            return "";
-        }
-
-        let parsed;
-        try {
-            parsed = new URL(rawUrl);
-        } catch (_error) {
-            return "";
-        }
-
-        if (parsed.protocol !== "https:") {
-            return "";
-        }
-
-        if (!parsed.hostname || isBandcampHostname(parsed.hostname)) {
-            return "";
-        }
-
-        return `${parsed.origin}/*`;
-    }
-
-    function isBandcampHostname(rawHostname) {
-        const hostname = String(rawHostname || "").trim().toLowerCase();
-        return hostname === "bandcamp.com" || hostname.endsWith(".bandcamp.com");
     }
 
     function callPermissionsMethod(methodName, payload) {

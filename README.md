@@ -146,6 +146,7 @@ node --check bcamplifier.user.js
 ./scripts/smoke-test-firefox.sh
 ./scripts/test-feed-fixture.sh
 ./scripts/test-label-music-fixture.sh
+./scripts/test-buy-link-fixture.sh
 ```
 
 The verification helpers are:
@@ -155,6 +156,7 @@ The verification helpers are:
 - [`scripts/smoke-test-firefox.sh`](./scripts/smoke-test-firefox.sh): installs the Firefox package temporarily and verifies the shared core against a local HTTPS fixture
 - [`scripts/test-feed-fixture.sh`](./scripts/test-feed-fixture.sh): serves a local fixture and verifies that the shared core injects enhancement UI
 - [`scripts/test-label-music-fixture.sh`](./scripts/test-label-music-fixture.sh): verifies artist and label `/music` pages are converted into enhanced feed cards
+- [`scripts/test-buy-link-fixture.sh`](./scripts/test-buy-link-fixture.sh): verifies that a release titled like "FREE DOWNLOAD ..." does not get its title swallowed by the buy-button update
 
 ## Configuration
 

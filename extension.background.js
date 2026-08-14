@@ -1,7 +1,12 @@
 "use strict";
 
+if (typeof importScripts === "function") {
+    importScripts("extension.shared.js");
+}
+const { isBandcampHostname, normalizeCustomHostPermissionPattern } =
+    globalThis.__BCAMPX_EXT_SHARED__;
+
 const runtimeApi = getExtensionApi();
-const ALLOWED_FETCH_HOSTS = ["bandcamp.com"];
 const ALLOWED_FETCH_METHODS = new Set(["GET", "POST"]);
 const ALLOWED_REQUEST_HEADERS = new Set(["accept", "content-type"]);
 const ALLOWED_FETCH_CREDENTIALS = new Set(["include", "omit"]);
@@ -17,9 +22,11 @@ if (runtimeApi && runtimeApi.runtime) {
 
         if (message.type === "bcampx:fetch") {
             handleFetchRequest(message, sender)
-                .then((response) => sendResponse({ ok: true, response }))
+                .then((response) =>
+                    safeSendResponse(sendResponse, { ok: true, response }),
+                )
                 .catch((error) =>
-                    sendResponse({
+                    safeSendResponse(sendResponse, {
                         ok: false,
                         error:
                             error && error.message
@@ -32,9 +39,11 @@ if (runtimeApi && runtimeApi.runtime) {
 
         if (message.type === "bcampx:get-host-permissions") {
             handleGetHostPermissions(sender)
-                .then((origins) => sendResponse({ ok: true, origins }))
+                .then((origins) =>
+                    safeSendResponse(sendResponse, { ok: true, origins }),
+                )
                 .catch((error) =>
-                    sendResponse({
+                    safeSendResponse(sendResponse, {
                         ok: false,
                         error:
                             error && error.message
@@ -47,9 +56,11 @@ if (runtimeApi && runtimeApi.runtime) {
 
         if (message.type === "bcampx:start-host-permission-request") {
             handleStartHostPermissionRequest(message, sender)
-                .then((result) => sendResponse({ ok: true, result }))
+                .then((result) =>
+                    safeSendResponse(sendResponse, { ok: true, result }),
+                )
                 .catch((error) =>
-                    sendResponse({
+                    safeSendResponse(sendResponse, {
                         ok: false,
                         error:
                             error && error.message
@@ -62,9 +73,11 @@ if (runtimeApi && runtimeApi.runtime) {
 
         if (message.type === "bcampx:host-permission-result") {
             handleHostPermissionResult(message, sender)
-                .then((result) => sendResponse({ ok: true, result }))
+                .then((result) =>
+                    safeSendResponse(sendResponse, { ok: true, result }),
+                )
                 .catch((error) =>
-                    sendResponse({
+                    safeSendResponse(sendResponse, {
                         ok: false,
                         error:
                             error && error.message
@@ -77,6 +90,28 @@ if (runtimeApi && runtimeApi.runtime) {
 
         return undefined;
     });
+}
+
+if (runtimeApi && runtimeApi.tabs && runtimeApi.tabs.onRemoved) {
+    runtimeApi.tabs.onRemoved.addListener((tabId) => {
+        pendingHostPermissionRequests.forEach((pending, requestId) => {
+            if (
+                pending.sourceTabId === tabId ||
+                pending.permissionTabId === tabId
+            ) {
+                pendingHostPermissionRequests.delete(requestId);
+            }
+        });
+    });
+}
+
+function safeSendResponse(sendResponse, payload) {
+    try {
+        sendResponse(payload);
+    } catch (_error) {
+        // The originating tab may have navigated away; there is nothing to
+        // respond to, and a second throw here would be an unhandled rejection.
+    }
 }
 
 function getExtensionApi() {
@@ -182,17 +217,21 @@ async function handleStartHostPermissionRequest(message, sender) {
         throw new Error("Could not identify the Bandcamp tab for this request.");
     }
 
-    pendingHostPermissionRequests.set(requestId, {
-        sourceTabId,
-        originPattern,
-    });
-
     const pageUrl = new URL(runtimeApi.runtime.getURL(HOST_PERMISSION_REQUEST_PAGE));
     pageUrl.searchParams.set("requestId", requestId);
     pageUrl.searchParams.set("origin", originPattern);
-    await createTab({
+    const createdTab = await createTab({
         url: pageUrl.toString(),
         active: true,
+    });
+
+    pendingHostPermissionRequests.set(requestId, {
+        sourceTabId,
+        permissionTabId:
+            createdTab && Number.isInteger(createdTab.id)
+                ? createdTab.id
+                : -1,
+        originPattern,
     });
 
     return {
@@ -394,11 +433,7 @@ async function normalizeAllowedFetchUrl(rawUrl) {
         return parsed.toString();
     }
 
-    const originPattern = normalizeCustomHostPermissionPattern(parsed.toString());
-    if (!originPattern) {
-        return "";
-    }
-
+    const originPattern = `${parsed.origin}/*`;
     if (!(await hasOptionalOriginPermission(originPattern))) {
         throw new Error(`Host permission required for ${originPattern}`);
     }
@@ -406,39 +441,9 @@ async function normalizeAllowedFetchUrl(rawUrl) {
     return parsed.toString();
 }
 
-function normalizeCustomHostPermissionPattern(rawUrl) {
-    if (typeof rawUrl !== "string" || !rawUrl) {
-        return "";
-    }
-
-    let parsed;
-    try {
-        parsed = new URL(rawUrl);
-    } catch (_error) {
-        return "";
-    }
-
-    if (parsed.protocol !== "https:") {
-        return "";
-    }
-
-    if (!parsed.hostname || isBandcampHostname(parsed.hostname)) {
-        return "";
-    }
-
-    return `${parsed.origin}/*`;
-}
-
 function normalizeRequestId(rawRequestId) {
     const requestId = String(rawRequestId || "").trim();
     return requestId ? requestId : "";
-}
-
-function isBandcampHostname(rawHostname) {
-    const hostname = String(rawHostname || "").trim().toLowerCase();
-    return ALLOWED_FETCH_HOSTS.some(
-        (host) => hostname === host || hostname.endsWith(`.${host}`),
-    );
 }
 
 async function hasOptionalOriginPermission(originPattern) {
@@ -560,7 +565,7 @@ function sanitizeHeaders(headers) {
     }
 
     const entries = Object.entries(headers).filter(([key, value]) => {
-        if (typeof key !== "string" || value == null) {
+        if (typeof key !== "string" || typeof value !== "string") {
             return false;
         }
 

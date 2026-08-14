@@ -277,16 +277,15 @@
     }
 
     function buildSummaryText(data) {
-        const normalizedData = normalizeReleaseData(data);
         const parts = [];
-        if (normalizedData.description) {
+        if (data && data.description) {
             parts.push("Description");
         }
-        if (normalizedData.tracks && normalizedData.tracks.length) {
-            parts.push(`${normalizedData.tracks.length} tracks`);
+        if (data && Array.isArray(data.tracks) && data.tracks.length) {
+            parts.push(`${data.tracks.length} tracks`);
         }
-        if (normalizedData.tags && normalizedData.tags.length) {
-            parts.push(`${normalizedData.tags.length} tags`);
+        if (data && Array.isArray(data.tags) && data.tags.length) {
+            parts.push(`${data.tags.length} tags`);
         }
         return parts.length ? parts.join(" · ") : "Extra context loaded";
     }

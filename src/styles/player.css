@@ -234,6 +234,11 @@
         margin-bottom: 8px;
       }
 
+      .bcampx-player-primary {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
       .bcampx-player-now {
         display: inline-block;
         margin-bottom: 5px;
@@ -257,6 +262,7 @@
         user-select: text;
         -webkit-user-select: text;
         -webkit-user-drag: none;
+        overflow-wrap: anywhere;
       }
 
       .bcampx-player-track:hover,
@@ -267,9 +273,11 @@
       .bcampx-player-store {
         color: #6b6b6b;
         text-decoration: none;
-        font: 500 13px/1.05 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font: 500 13px/1.3 "Helvetica Neue", Helvetica, Arial, sans-serif;
         text-align: right;
-        white-space: nowrap;
+        min-width: 0;
+        max-width: 44%;
+        overflow-wrap: anywhere;
       }
 
       .bcampx-player-native {

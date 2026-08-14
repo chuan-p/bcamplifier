@@ -7,6 +7,7 @@ DIST_DIR="$ROOT_DIR/dist"
 
 COMMON_FILES="
 bcamplifier.user.js
+extension.shared.js
 extension.content.js
 extension.background.js
 extension.host-permission.html

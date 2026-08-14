@@ -202,6 +202,12 @@
         ".new_releases",
     ].join(",");
 
+    const COLLECT_CONTROLS_SELECTOR = ".tralbum-wrapper-collect-controls";
+    const BUY_ACTION_TEXT_RE =
+        /^(?:buy now|pre.?order|hear more|free download)(?:\s*\([^)]*\))?$/i;
+    const COLLECT_ACTION_TEXT_RE =
+        /^(?:buy now|wishlist|hear more|buy track|pre.?order|stream|free download)(?:\s*\([^)]*\))?$/i;
+
     const SVG_NS = "http://www.w3.org/2000/svg";
     // __BCAMPX_PLAYER_ICONS__
 
@@ -1198,8 +1204,8 @@
             .map((node) => normalizedText(node).toLowerCase())
             .filter(Boolean);
         return (
-            actionTexts.some((text) => text.includes("follow")) &&
-            actionTexts.some((text) => text.includes("view collection"))
+            actionTexts.some((text) => /\bfollow\b/.test(text)) &&
+            actionTexts.some((text) => /\bview collection\b/.test(text))
         );
     }
 
@@ -2939,7 +2945,7 @@
         });
 
         enhanceScannableCards(scannableCards);
-        mergeAdjacentTrackPurchaseCards(scannableCards);
+        mergeAdjacentTrackPurchaseCards();
     }
 
     function classifyStoryCard(card) {
@@ -3216,25 +3222,43 @@
         );
     }
 
-    function mergeAdjacentTrackPurchaseCards(cards = []) {
-        cards.forEach((card) => {
+    function mergeAdjacentTrackPurchaseCards() {
+        let previousCandidate = null;
+
+        getStoryCardsFromRoots([document]).forEach((card) => {
             if (card.getAttribute(MERGED_CHILD_ATTR) === "true") {
+                return;
+            }
+
+            if (
+                !looksLikeFeedCard(card) ||
+                isMalformedFeedCard(card) ||
+                card.closest(EXCLUDED_SECTION_SELECTOR)
+            ) {
+                previousCandidate = null;
                 return;
             }
 
             const candidate = getTrackPurchaseMergeCandidate(card);
             if (!candidate) {
+                previousCandidate = null;
                 return;
             }
 
-            const previousCandidate = findPreviousAdjacentMergeCandidate(candidate);
-            if (previousCandidate && previousCandidate.card !== card) {
+            if (
+                previousCandidate &&
+                getTrackPurchaseMergeKey(previousCandidate) ===
+                    getTrackPurchaseMergeKey(candidate)
+            ) {
                 mergeTrackPurchaseCard(
                     previousCandidate.card,
                     card,
                     candidate.trackTitle,
                 );
+                return;
             }
+
+            previousCandidate = candidate;
         });
     }
 
@@ -3244,40 +3268,6 @@
             candidate.activityType,
             candidate.releaseGroupKey,
         ].join("::");
-    }
-
-    function findPreviousAdjacentMergeCandidate(candidate) {
-        const cards = getStoryCardsFromRoots([document]);
-        const currentIndex = cards.indexOf(candidate.card);
-        if (currentIndex <= 0) {
-            return null;
-        }
-
-        const previous = cards
-            .slice(0, currentIndex)
-            .reverse()
-            .find((card) => card.getAttribute(MERGED_CHILD_ATTR) !== "true");
-
-        if (
-            !previous ||
-            previous.getAttribute(MERGED_CHILD_ATTR) === "true" ||
-            !looksLikeFeedCard(previous) ||
-            isMalformedFeedCard(previous) ||
-            previous.closest(EXCLUDED_SECTION_SELECTOR)
-        ) {
-            return null;
-        }
-
-        const previousCandidate = getTrackPurchaseMergeCandidate(previous);
-        if (
-            previousCandidate &&
-            getTrackPurchaseMergeKey(previousCandidate) ===
-                getTrackPurchaseMergeKey(candidate)
-        ) {
-            return previousCandidate;
-        }
-
-        return null;
     }
 
     function getTrackPurchaseMergeCandidate(card) {
@@ -4257,13 +4247,7 @@
             return tagLine;
         }
 
-        const actionLink = Array.from(card.querySelectorAll("a")).find(
-            (link) => {
-                return /\b(buy now|wishlist|hear more|buy track|pre-order|stream)\b/i.test(
-                    normalizedText(link),
-                );
-            },
-        );
+        const actionLink = findCardActionLink(card, COLLECT_ACTION_TEXT_RE);
 
         if (actionLink) {
             return findUsefulActionRow(actionLink, card) || actionLink;
@@ -4299,7 +4283,7 @@
             card,
             "supportedByLabel",
             "div, span, p, strong, h2, h3, h4",
-            /supported by/i,
+            /\bsupported by\b/i,
         );
         if (!label) {
             return null;
@@ -4409,13 +4393,10 @@
 
     function findUsefulActionRow(node, stopAt) {
         return nearestAncestorWithin(node, stopAt, (current) => {
-            const text = normalizedText(current);
             const linkCount = current.querySelectorAll("a").length;
             return (
                 linkCount >= 2 &&
-                /\b(buy now|wishlist|hear more|buy track|pre-order|stream)\b/i.test(
-                    text,
-                )
+                Boolean(findCardActionLink(current, COLLECT_ACTION_TEXT_RE))
             );
         });
     }
@@ -4429,6 +4410,19 @@
             current = current.parentElement;
         }
         return null;
+    }
+
+    function findCardActionLink(root, pattern, selector = "a[href], button") {
+        if (!(root instanceof Element)) {
+            return null;
+        }
+
+        const scope = root.querySelector(COLLECT_CONTROLS_SELECTOR) || root;
+        return (
+            Array.from(scope.querySelectorAll(selector)).find((node) =>
+                pattern.test(cleanText(node.textContent || "")),
+            ) || null
+        );
     }
 
     function findElementByText(root, selector, pattern) {
@@ -4623,9 +4617,9 @@
     }
 
     function getRenderableReleaseData(controller, result) {
-        const normalizedData = normalizeReleaseData(result && result.data);
+        const data = (result && result.data) || createEmptyReleaseData();
         if (!(result && result.refreshingTracks)) {
-            return normalizedData;
+            return data;
         }
 
         const release =
@@ -4638,7 +4632,7 @@
         const nativeTracks = Array.isArray(nativeData.tracks)
             ? nativeData.tracks
             : [];
-        normalizedData.tracks = normalizedData.tracks.map((track) => {
+        const tracks = data.tracks.map((track) => {
             const nativeTrack = nativeTracks.find(
                 (candidate) =>
                     (track.trackId &&
@@ -4653,7 +4647,7 @@
                     (nativeTrack && nativeTrack.streamUrl) || "",
             };
         });
-        return normalizedData;
+        return { ...data, tracks };
     }
 
     function attachReleaseRefreshPromise(
@@ -4772,13 +4766,11 @@
             return;
         }
 
-        const buyLinks = Array.from(
-            card.querySelectorAll(RELEASE_LINK_SELECTOR),
+        const buyLink = findCardActionLink(
+            card,
+            BUY_ACTION_TEXT_RE,
+            RELEASE_LINK_SELECTOR,
         );
-        const buyLink = buyLinks.find((link) => {
-            const text = cleanText(link.textContent || "").toLowerCase();
-            return /buy now|pre.order|hear more|free download/i.test(text);
-        });
         if (!buyLink) {
             return;
         }
@@ -6051,119 +6043,6 @@
         ) || 0;
     }
 
-    async function requestTrackBasket(context) {
-        const payload = new URLSearchParams();
-        payload.set("req", "add");
-        payload.set(
-            "local_id",
-            `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        );
-        payload.set(
-            "item_type",
-            getShortItemType(context.current.type || "track"),
-        );
-        payload.set("item_id", String(context.current.id || ""));
-        payload.set("unit_price", String(context.unitPrice || 0));
-        payload.set("quantity", "1");
-        payload.set("option_id", "");
-        payload.set("discount_id", "");
-        payload.set("discount_type", "");
-        payload.set("download_type", "");
-        payload.set("download_id", "");
-        payload.set("purchase_note", "");
-        payload.set("notify_me", "false");
-        payload.set("notify_me_label", "false");
-        payload.set(
-            "band_id",
-            String(context.bandData.id || context.current.band_id || ""),
-        );
-        payload.set("releases", "");
-        payload.set(
-            "ip_country_code",
-            cleanText(
-                context.pagedataBlob.user_territory ||
-                    context.pagedataBlob.identities?.ip_country_code ||
-                    context.pagedataBlob.ip_location_country_code ||
-                    "",
-            ) || "US",
-        );
-        payload.set(
-            "associated_license_id",
-            String(context.current.licensed_item_id || ""),
-        );
-        payload.set("checkout_now", "false");
-        payload.set("shipping_exception_mode", "");
-        payload.set("is_cardable", "true");
-        payload.set("cart_length", String(getCurrentCartLength()));
-        payload.set(
-            "client_id",
-            `bcampx-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-        );
-        payload.set("sync_num", "1");
-        if (context.fanId) {
-            payload.set("fan_id", String(context.fanId));
-        }
-        if (context.refToken) {
-            payload.set("ref_token", context.refToken);
-        }
-
-        const response = await requestJson(`${context.origin}/cart/cb`, {
-            method: "POST",
-            data: payload.toString(),
-            headers: {
-                "Content-Type":
-                    "application/x-www-form-urlencoded; charset=UTF-8",
-                Accept: "application/json, text/javascript, */*; q=0.01",
-            },
-        });
-
-        if (!response || response.unexpected_error || response.error) {
-            throw new Error(
-                response && response.error_message
-                    ? response.error_message
-                    : "Add to basket failed.",
-            );
-        }
-    }
-
-    function getShortItemType(value) {
-        const type = cleanText(value).toLowerCase();
-        if (type === "track" || type === "t") {
-            return "t";
-        }
-        if (type === "album" || type === "a") {
-            return "a";
-        }
-        if (type === "bundle" || type === "b") {
-            return "b";
-        }
-        return type.slice(0, 1) || "t";
-    }
-
-    function getCurrentFanId() {
-        const blob =
-            parseJsonAttribute(
-                document.querySelector("#pagedata"),
-                "data-blob",
-            ) || {};
-        return (
-            Number(blob.identities?.fan?.id || blob.fan_info?.fan_id || 0) || 0
-        );
-    }
-
-    function getCurrentCartLength() {
-        const blob =
-            parseJsonAttribute(
-                document.querySelector("#pagedata"),
-                "data-blob",
-            ) || {};
-        const quantity =
-            blob.menubar && typeof blob.menubar.cart_quantity !== "undefined"
-                ? Number(blob.menubar.cart_quantity)
-                : 0;
-        return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
-    }
-
     function isFullDiscographyReleaseData(data) {
         const title = cleanText(data && data.title);
         return /\bfull(?:\s+digital)?\s+discography\b/i.test(title);
@@ -6911,6 +6790,7 @@
         meta.className = "bcampx-player-meta";
 
         const metaPrimary = document.createElement("div");
+        metaPrimary.className = "bcampx-player-primary";
         const now = document.createElement("div");
         now.className = "bcampx-player-now";
         now.textContent = "Now Playing";

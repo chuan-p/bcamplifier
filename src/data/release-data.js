@@ -1255,7 +1255,7 @@
         const shouldSuppress =
             !hasBodyDescriptionSource ||
             isLikelyTracklistText(cleanDescription, tracks) ||
-            isLikelyTracklistHtml(normalizedHtml, tracks);
+            (!cleanDescription && isLikelyTracklistHtml(normalizedHtml, tracks));
 
         return {
             description: shouldSuppress ? "" : truncatedDescription,

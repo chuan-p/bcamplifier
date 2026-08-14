@@ -22,6 +22,7 @@
   ],
   "background": {
     "scripts": [
+      "extension.shared.js",
       "extension.background.js"
     ]
   },
@@ -36,6 +37,7 @@
         "https://*.bandcamp.com/*"
       ],
       "js": [
+        "extension.shared.js",
         "extension.content.js",
         "bcamplifier.user.js"
       ],

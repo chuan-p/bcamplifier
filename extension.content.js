@@ -1,6 +1,8 @@
 "use strict";
 
 (() => {
+    const { isBandcampHostname, normalizeCustomHostPermissionPattern } =
+        globalThis.__BCAMPX_EXT_SHARED__;
     const runtimeApi = getExtensionApi();
     const grantedHostOrigins = new Set();
     const pendingHostPermissionRequests = new Map();
@@ -18,6 +20,7 @@
 
     setupRuntimeMessageBridge();
     setupStorageChangeBridge();
+    setupGrantedHostPermissionRefresh();
     refreshGrantedHostPermissions();
 
     globalThis.__BCAMPX_HOST__ = {
@@ -304,6 +307,31 @@
         return pending;
     }
 
+    function setupGrantedHostPermissionRefresh() {
+        const permissions = runtimeApi && runtimeApi.permissions;
+        if (
+            !permissions ||
+            !permissions.onAdded ||
+            typeof permissions.onAdded.addListener !== "function"
+        ) {
+            return;
+        }
+
+        permissions.onAdded.addListener((granted) => {
+            const origins =
+                granted && Array.isArray(granted.origins)
+                    ? granted.origins
+                    : [];
+            origins.forEach((originPattern) => {
+                const normalized =
+                    normalizeCustomHostPermissionPattern(originPattern);
+                if (normalized) {
+                    grantedHostOrigins.add(normalized);
+                }
+            });
+        });
+    }
+
     function refreshGrantedHostPermissions() {
         sendRuntimeMessage({ type: "bcampx:get-host-permissions" })
             .then((payload) => {
@@ -360,7 +388,7 @@
 
     function storageGet(key, fallback) {
         return callStorageMethod("get", [key]).then((items) => {
-            if (!items || !(key in items)) {
+            if (!items || typeof items !== "object" || !(key in items)) {
                 return fallback;
             }
 
@@ -439,36 +467,6 @@
         return `bcampx-host-${Date.now()}-${Math.random()
             .toString(36)
             .slice(2, 10)}`;
-    }
-
-    function normalizeCustomHostPermissionPattern(rawUrl) {
-        if (typeof rawUrl !== "string" || !rawUrl) {
-            return "";
-        }
-
-        let parsed;
-        try {
-            parsed = new URL(rawUrl);
-        } catch (_error) {
-            return "";
-        }
-
-        if (parsed.protocol !== "https:") {
-            return "";
-        }
-
-        if (!parsed.hostname || isBandcampHostname(parsed.hostname)) {
-            return "";
-        }
-
-        return `${parsed.origin}/*`;
-    }
-
-    function isBandcampHostname(rawHostname) {
-        const hostname = String(rawHostname || "").trim().toLowerCase();
-        return (
-            hostname === "bandcamp.com" || hostname.endsWith(".bandcamp.com")
-        );
     }
 
     function normalizeExtensionError(error) {

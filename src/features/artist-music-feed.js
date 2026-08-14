@@ -604,6 +604,7 @@
         if (STATE.artistMusicLoadMoreScrollPending) {
             if (appendedCards.length) {
                 STATE.artistMusicLoadMoreScrollPending = false;
+                window.clearTimeout(artistMusicLoadMoreScrollTimer);
                 scrollToNewArtistMusicFeedCards(appendedCards);
             }
         }
@@ -637,6 +638,8 @@
         );
     }
 
+    let artistMusicLoadMoreScrollTimer = 0;
+
     function handleArtistMusicNativeLoadMoreClick(event) {
         if (
             STATE.artistMusicFeedView !== "feed" ||
@@ -654,6 +657,10 @@
         }
 
         STATE.artistMusicLoadMoreScrollPending = true;
+        window.clearTimeout(artistMusicLoadMoreScrollTimer);
+        artistMusicLoadMoreScrollTimer = window.setTimeout(() => {
+            STATE.artistMusicLoadMoreScrollPending = false;
+        }, 5000);
         markDebugState("data-bcampx-label-feed-load-more-clicked", "true");
     }
 
@@ -698,7 +705,19 @@
         });
     }
 
+    let pageChromeOffsetCache = 0;
+    let pageChromeOffsetCacheAt = 0;
+    const PAGE_CHROME_OFFSET_CACHE_TTL_MS = 750;
+
     function getArtistMusicPageChromeOffset() {
+        const now = Date.now();
+        if (
+            pageChromeOffsetCache > 0 &&
+            now - pageChromeOffsetCacheAt < PAGE_CHROME_OFFSET_CACHE_TTL_MS
+        ) {
+            return pageChromeOffsetCache;
+        }
+
         const topChromeBottom = Array.from(document.body.children)
             .map((node) => {
                 if (!(node instanceof Element)) {
@@ -722,7 +741,10 @@
             })
             .reduce((max, value) => Math.max(max, value), 0);
 
-        return Math.max(12, Math.ceil(topChromeBottom + 12));
+        const offset = Math.max(12, Math.ceil(topChromeBottom + 12));
+        pageChromeOffsetCache = offset;
+        pageChromeOffsetCacheAt = now;
+        return offset;
     }
 
     function getReleaseGridFeedContext() {
@@ -1868,6 +1890,41 @@
         return link;
     }
 
+    let ownedLinkCacheVersion = -1;
+    const ownedLinkHrefs = new Set();
+
+    function hasNativeOwnedLink(releaseUrl) {
+        if (!releaseUrl) {
+            return false;
+        }
+
+        if (STATE.memoVersion !== ownedLinkCacheVersion) {
+            ownedLinkHrefs.clear();
+            ownedLinkCacheVersion = STATE.memoVersion;
+            document
+                .querySelectorAll("a.you-own-this-link[href]")
+                .forEach((link) => {
+                    const raw = link.getAttribute("href") || "";
+                    if (raw) {
+                        ownedLinkHrefs.add(raw);
+                        const resolvedRaw = normalizeReleaseUrl(raw);
+                        if (resolvedRaw) {
+                            ownedLinkHrefs.add(resolvedRaw);
+                        }
+                    }
+                    const normalized = normalizeReleaseUrl(link.href);
+                    if (normalized) {
+                        ownedLinkHrefs.add(normalized);
+                    }
+                });
+        }
+
+        return (
+            ownedLinkHrefs.has(releaseUrl) ||
+            ownedLinkHrefs.has(normalizeReleaseUrl(releaseUrl))
+        );
+    }
+
     function updateArtistMusicCardBuyAction(card, data) {
         if (!card || !data) {
             return;
@@ -1886,15 +1943,12 @@
         const releaseUrl = card.getAttribute(
             "data-bcampx-release-url",
         );
-        if (releaseUrl && !isOwnedDigitalPrice(data.digitalPrice)) {
-            const nativeLink = document.querySelector(
-                'a.you-own-this-link[href="' +
-                    CSS.escape(releaseUrl) +
-                    '"]',
-            );
-            if (nativeLink) {
-                data.digitalPrice = "you own this";
-            }
+        if (
+            releaseUrl &&
+            !isOwnedDigitalPrice(data.digitalPrice) &&
+            hasNativeOwnedLink(releaseUrl)
+        ) {
+            data.digitalPrice = "you own this";
         }
 
         const isOwned = isOwnedDigitalPrice(data.digitalPrice);
@@ -2061,6 +2115,8 @@
         );
     }
 
+    const SUPPORTER_COUNT_AUTO_RETRY_MS = 30 * 1000;
+
     function scheduleArtistMusicCardExactSupporterCount(card, data) {
         if (
             !CONFIG.showCollectionCounts ||
@@ -2069,23 +2125,37 @@
             data.supporterCountAuthoritative === true ||
             data.supporterCountIsExact === true ||
             !data.supporterMoreAvailable ||
-            card.hasAttribute(
-                "data-bcampx-supporter-count-auto-attempted",
-            ) ||
-            card.hasAttribute("data-bcampx-supporter-count-pending")
+            card.hasAttribute("data-bcampx-supporter-count-pending") ||
+            hasRecentSupporterCountAutoAttempt(card)
         ) {
             return;
         }
 
         card.setAttribute(
             "data-bcampx-supporter-count-auto-attempted",
-            "true",
+            String(Date.now()),
         );
         void fetchArtistMusicSupporterCount(
             card,
             data,
             getExactReleaseSupporterCount(data),
         );
+    }
+
+    function hasRecentSupporterCountAutoAttempt(card) {
+        const raw = cleanText(
+            card.getAttribute("data-bcampx-supporter-count-auto-attempted"),
+        );
+        if (!raw) {
+            return false;
+        }
+
+        const attemptAt = Number(raw);
+        if (!Number.isFinite(attemptAt) || attemptAt <= 0) {
+            return true;
+        }
+
+        return Date.now() - attemptAt < SUPPORTER_COUNT_AUTO_RETRY_MS;
     }
 
     function refreshArtistMusicCardSupporterCount(card) {

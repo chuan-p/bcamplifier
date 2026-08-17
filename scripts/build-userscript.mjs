@@ -3,6 +3,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { minify } from "terser";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(scriptDir, "..");
@@ -68,9 +69,22 @@ const bundle = `${meta.trimEnd()}\n\n${injectCoreConstants(
 
 validateBuiltBundle(bundle);
 
+const minified = await minify(bundle, {
+    compress: true,
+    mangle: true,
+    format: {
+        comments: (node, comment) => {
+            const value = comment.value.trim();
+            return value.startsWith("@") || value.startsWith("==");
+        },
+        max_line_len: false,
+    },
+});
+const output = minified && minified.code ? minified.code : bundle;
+
 await mkdir(distDir, { recursive: true });
-await writeFile(rootOutputPath, bundle, "utf8");
-await writeFile(distOutputPath, bundle, "utf8");
+await writeFile(rootOutputPath, output, "utf8");
+await writeFile(distOutputPath, output, "utf8");
 
 console.log(`Built userscript: ${rootOutputPath}`);
 console.log(`Built userscript: ${distOutputPath}`);
@@ -218,12 +232,25 @@ function injectStyles(core, playerStyles, enhancementStyles) {
     return core
         .replace(
             'const PLAYER_SHELL_CSS = "";',
-            `const PLAYER_SHELL_CSS = ${JSON.stringify(playerStyles)};`,
+            `const PLAYER_SHELL_CSS = ${JSON.stringify(
+                minifyCss(playerStyles),
+            )};`,
         )
         .replace(
             'const ENHANCEMENT_CSS = "";',
-            `const ENHANCEMENT_CSS = ${JSON.stringify(enhancementStyles)};`,
+            `const ENHANCEMENT_CSS = ${JSON.stringify(
+                minifyCss(enhancementStyles),
+            )};`,
         );
+}
+
+function minifyCss(css) {
+    return css
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(" ");
 }
 
 function injectCoreConstants(core, scriptVersion) {

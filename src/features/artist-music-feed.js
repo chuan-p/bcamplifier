@@ -97,6 +97,20 @@
         );
     }
 
+    function isOwnFanTrackRelease(release) {
+        return Boolean(
+            release &&
+                release.ownFanCollection === true &&
+                release.itemType === "track",
+        );
+    }
+
+    function isOwnFanTrackCard(card) {
+        return isOwnFanTrackRelease(
+            card && card.__bcampxArtistMusicRelease,
+        );
+    }
+
     function setupFanCollectionTabObserver() {
         if (
             !("MutationObserver" in window) ||
@@ -1010,6 +1024,15 @@
                 }
 
                 const controller = ensureCardController(card, releaseUrl);
+
+                if (isOwnFanTrackCard(card)) {
+                    // Own collection tracks never prefetch release pages, but
+                    // they still need a shell/Tracklist built here. Otherwise
+                    // switching from grid view back to list view leaves only
+                    // the "supported by" placeholder on single-track cards.
+                    return;
+                }
+
                 if (
                     controller &&
                     !controller.loaded &&
@@ -1053,6 +1076,10 @@
 
         Array.from(feed.querySelectorAll(".bcampx-label-feed-card")).forEach(
             (card) => {
+                if (isOwnFanTrackCard(card)) {
+                    return;
+                }
+
                 const controller = getCardController(card);
                 if (
                     !controller ||
@@ -1094,6 +1121,10 @@
 
         Array.from(feed.querySelectorAll(".bcampx-label-feed-card")).forEach(
             (card) => {
+                if (isOwnFanTrackCard(card)) {
+                    return;
+                }
+
                 if (
                     !isArtistMusicFeedCardVisible(
                         card,
@@ -1319,6 +1350,9 @@
         const candidatesByKey = new Map();
         const candidates = [];
         const sourceGrid = feedContext && feedContext.sourceGrid;
+        const feedKind = feedContext && feedContext.kind;
+        const ownFanCollection =
+            feedKind === "fan-collection" && isCurrentFanProfileOwner();
         const items = Array.from(
             (sourceGrid || document).querySelectorAll(
                 "li.collection-item-container[data-playerdata], li.collection-item-container",
@@ -1331,7 +1365,8 @@
                 seen,
                 item,
                 candidatesByKey,
-                feedContext && feedContext.kind,
+                feedKind,
+                ownFanCollection,
             );
         });
 
@@ -1344,6 +1379,7 @@
         item,
         candidatesByKey,
         feedKind,
+        ownFanCollection,
     ) {
         if (!(item instanceof Element)) {
             return;
@@ -1355,7 +1391,24 @@
                 item.getAttribute("data-itemtype") ||
                 "",
         );
-        const releaseUrl = getFanCollectionReleaseUrl(item, playerData, itemType);
+        const fallbackReleaseUrl = getFanCollectionReleaseUrl(
+            item,
+            playerData,
+            itemType,
+        );
+        const resolvedItemType =
+            itemType || normalizeReleaseItemType("", fallbackReleaseUrl);
+        const ownTrackItem =
+            ownFanCollection &&
+            (resolvedItemType === "track" ||
+                /\/track\//.test(
+                    normalizeReleaseUrl(playerData && playerData.url),
+                ) ||
+                Boolean(item.querySelector('a[href*="/track/"]')));
+        const releaseItemType = ownTrackItem ? "track" : resolvedItemType;
+        const releaseUrl = ownTrackItem
+            ? getFanCollectionReleaseUrl(item, playerData, itemType, true)
+            : fallbackReleaseUrl;
         if (!releaseUrl) {
             return;
         }
@@ -1369,9 +1422,10 @@
             artist,
             artUrl: getArtistMusicReleaseArtUrl(item),
             itemId,
-            itemType: itemType || normalizeReleaseItemType("", releaseUrl),
+            itemType: releaseItemType,
             bandId: getArtistMusicReleaseBandId(item),
             feedKind,
+            ownFanCollection,
             sourceItem: item,
             gridItem: item,
             featuredItem: null,
@@ -1385,6 +1439,19 @@
                 feedKind,
             ),
         };
+
+        if (isOwnFanTrackRelease(release)) {
+            // Own collection tracks stay independent. Deduplicate only by
+            // element identity so adjacent singles from the same album are
+            // not merged into one card.
+            if (seen.has(item)) {
+                return;
+            }
+            seen.add(item);
+            candidates.push(release);
+            return;
+        }
+
         const dedupeKeys = getArtistMusicReleaseDedupeKeys(release);
         const existingKey = dedupeKeys.find((key) => seen.has(key));
         if (existingKey) {
@@ -1403,12 +1470,28 @@
         candidates.push(release);
     }
 
-    function getFanCollectionReleaseUrl(item, playerData, itemType) {
+    function getFanCollectionReleaseUrl(
+        item,
+        playerData,
+        itemType,
+        preferTrackLink = false,
+    ) {
         const albumUrl = cleanText(playerData && playerData.album && playerData.album.url);
         const trackUrl = cleanText(playerData && playerData.url);
         const linkUrl = normalizeReleaseUrl(
             item.querySelector(RELEASE_LINK_SELECTOR)?.href || "",
         );
+
+        if (preferTrackLink) {
+            const trackLinkUrl = normalizeReleaseUrl(
+                Array.from(item.querySelectorAll('a[href*="/track/"]'))
+                    .map((link) => normalizeReleaseUrl(link.href))
+                    .find(Boolean) || "",
+            );
+            return normalizeReleaseUrl(
+                trackUrl || trackLinkUrl || linkUrl || albumUrl,
+            );
+        }
 
         return normalizeReleaseUrl(
             itemType === "track"
@@ -1447,7 +1530,12 @@
         artist,
         feedKind,
     ) {
-        const track = createFanCollectionPreviewTrack(playerData);
+        const itemId = getArtistMusicReleaseItemId(item);
+        const track = createFanCollectionPreviewTrack(playerData, {
+            title,
+            itemId,
+            url: releaseUrl,
+        });
         const isCollection = feedKind === "fan-collection";
         const supporterCountLabel = getFanCollectionSupporterCountLabel(item);
         const hasNativeSupporterCount = Boolean(supporterCountLabel);
@@ -1472,7 +1560,7 @@
             supporterMoreAvailable: false,
             supporterCountLabel,
             supporterCountAuthoritative: hasNativeSupporterCount,
-            supporterItemId: getArtistMusicReleaseItemId(item),
+            supporterItemId: itemId,
             supporterItemType: normalizeSupporterItemType(
                 item.getAttribute("data-tralbumtype") ||
                     item.getAttribute("data-itemtype") ||
@@ -1493,17 +1581,104 @@
         return cleanText((link && link.href) || "");
     }
 
-    function createFanCollectionPreviewTrack(playerData) {
+    function createFanCollectionPreviewTrack(playerData, fallback = {}) {
         if (!playerData || typeof playerData !== "object") {
+            playerData = {};
+        }
+
+        const cleanFallback =
+            fallback && typeof fallback === "object" ? fallback : {};
+        const trackId = cleanText(
+            playerData.id || cleanFallback.itemId || "",
+        );
+        const fallbackTitle = cleanText(
+            playerData.title || cleanFallback.title || "",
+        );
+        const previewTrack = findFeedPreviewTrack(trackId, fallbackTitle);
+        const previewStreamUrl = cleanText(
+            previewTrack &&
+                previewTrack.streaming_url &&
+                previewTrack.streaming_url["mp3-128"],
+        );
+
+        return createTrackData(
+            fallbackTitle ||
+                (previewTrack && previewTrack.title) ||
+                cleanFallback.title ||
+                "",
+            trackId,
+            extractFanCollectionPlayerStreamUrl(playerData) ||
+                previewStreamUrl ||
+                "",
+            playerData.duration ||
+                (previewTrack && previewTrack.duration) ||
+                "",
+            playerData.url ||
+                (previewTrack && previewTrack.track_url) ||
+                cleanFallback.url ||
+                "",
+        );
+    }
+
+    function extractFanCollectionPlayerStreamUrl(playerData) {
+        if (!playerData || typeof playerData !== "object") {
+            return "";
+        }
+
+        const candidates = [
+            playerData.stream_url,
+            playerData.preview_url,
+            playerData.streaming_url &&
+                typeof playerData.streaming_url === "object"
+                ? playerData.streaming_url["mp3-128"]
+                : "",
+        ];
+
+        const file = playerData.file;
+        if (file && typeof file === "object") {
+            candidates.push(
+                file["mp3-128"],
+                file.mp3_128,
+                file.mp3,
+                file["mp3"],
+                file["mp3-v0"],
+                file["flac"],
+            );
+        }
+
+        for (const candidate of candidates) {
+            const streamUrl = cleanText(candidate);
+            if (streamUrl) {
+                return streamUrl;
+            }
+        }
+
+        return "";
+    }
+
+    function findFeedPreviewTrack(trackId, title) {
+        const byId = trackId
+            ? getFeedPreviewTrackMap().get(trackId)
+            : null;
+        if (byId) {
+            return byId;
+        }
+
+        const normalizedTitle = cleanText(title).toLowerCase();
+        if (!normalizedTitle) {
             return null;
         }
 
-        return createTrackData(
-            playerData.title || "",
-            playerData.id || "",
-            playerData.stream_url || "",
-            playerData.duration || "",
-            playerData.url || "",
+        return (
+            getFeedPreviewTracks().find((track) => {
+                const trackTitle = cleanText(track && track.title).toLowerCase();
+                return (
+                    trackTitle &&
+                    (trackTitle === normalizedTitle ||
+                        trackTitle.includes(normalizedTitle) ||
+                        normalizedTitle.includes(trackTitle))
+                );
+            }) || null
         );
     }
 
@@ -1720,6 +1895,9 @@
     function createArtistMusicFeedCard(release) {
         const card = document.createElement("article");
         card.className = "feed-item story bcampx-label-feed-card";
+        if (release.ownFanCollection && release.itemType === "track") {
+            card.classList.add("bcampx-label-feed-card--own-track");
+        }
         card.__bcampxArtistMusicRelease = release;
         card.setAttribute("data-bcampx-release-url", release.releaseUrl);
         if (release.bandId) {

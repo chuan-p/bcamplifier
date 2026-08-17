@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.1 - 2026-08-17
+
+### Changed
+
+- Keep singles in your own Bandcamp collection as standalone tracks instead of merging adjacent singles from the same album.
+- Use native collection data for single-track previews and play them on demand without crawling release pages upfront.
+- Minify the released userscript with Terser to shrink the distribution size.
+- Bump version to 3.1.
+
 ## 0.3.0 - 2026-06-25
 
 ### Added

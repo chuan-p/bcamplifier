@@ -1,0 +1,12 @@
+{
+  "name": "bcamplifier",
+  "version": "3.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-userscript.mjs"
+  },
+  "devDependencies": {
+    "terser": "^5.31.0"
+  }
+}

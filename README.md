@@ -108,8 +108,11 @@ Use the dev loader during active work:
 Build the single-file userscript after editing files in [`src/`](./src):
 
 ```sh
+npm install
 node scripts/build-userscript.mjs
 ```
+
+The build uses [Terser](https://github.com/terser/terser) to minify the released userscript. Readable source lives in [`src/`](./src).
 
 Start a local server from the repository root:
 

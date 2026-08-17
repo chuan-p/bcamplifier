@@ -818,6 +818,10 @@
                     !controller.data.tracks.length) &&
                 !controller.loading
             ) {
+                if (isOwnFanTrackCard(card)) {
+                    // Own collection tracks never auto-fetch. Nothing to play yet.
+                    return;
+                }
                 await controller.fetchAndRender({ auto: false });
             }
         } catch (_error) {
@@ -827,10 +831,25 @@
         const data = controller.data;
         const track = findFeaturedTrackForCard(card, trigger, data);
         if (!track || !track.streamUrl) {
+            if (isOwnFanTrackCard(card)) {
+                const fallbackTrack =
+                    data &&
+                    Array.isArray(data.tracks) &&
+                    data.tracks[0];
+                if (fallbackTrack) {
+                    await playOwnFanTrackAfterLoadingStream(
+                        trigger,
+                        fallbackTrack,
+                        data,
+                        releaseUrl,
+                        card,
+                    );
+                }
+            }
             return;
         }
 
-        playTrackForCard(card, null, track, data, releaseUrl);
+        playTrackForCard(card, trigger, track, data, releaseUrl);
     }
 
     function isActiveReleaseForCard(releaseUrl) {
@@ -2615,7 +2634,8 @@
             !controller ||
             controller.loaded ||
             controller.loading ||
-            controller.autoFetchQueued
+            controller.autoFetchQueued ||
+            isOwnFanTrackCard(controller.card)
         ) {
             return;
         }
@@ -4197,9 +4217,19 @@
         if (showInitialLoading) {
             text.textContent = LOADING_EXTRA_CONTEXT_TEXT;
         }
+
+        // Own collection tracks use native item data only. Mark them as
+        // loaded so the auto-fetch path never crawls release pages for them.
+        if (isOwnFanTrackCard(card)) {
+            controller.loaded = true;
+        }
     }
 
     function shouldShowInitialExtraContextLoading(card) {
+        if (isOwnFanTrackCard(card)) {
+            return false;
+        }
+
         const release = card && card.__bcampxArtistMusicRelease;
         return Boolean(
             release &&
@@ -4880,9 +4910,8 @@
 
     function renderSupportedSlot(meta, text, toggle, data, releaseUrl) {
         const shell = meta.closest(".bcampx");
-        const purchasedTrackTitles = getMergedTrackTitleSet(
-            meta.closest(CARD_SELECTOR),
-        );
+        const card = meta.closest(CARD_SELECTOR);
+        const purchasedTrackTitles = getMergedTrackTitleSet(card);
         const subhead = compactJoin(
             [formatReleaseDate(data.releaseDate), data.location],
             " · ",
@@ -4899,6 +4928,7 @@
             releaseUrl,
             purchasedTrackTitles,
             autoExpandState,
+            card,
         );
         appendSupportedSlotLoading(panel, shell);
         renderSupportedSlotDescription(panel, data, autoExpandState);
@@ -4932,6 +4962,7 @@
         releaseUrl,
         purchasedTrackTitles,
         autoExpandState,
+        card = null,
     ) {
         if (!data.tracks || !data.tracks.length) {
             return;
@@ -4952,6 +4983,7 @@
                     data,
                     releaseUrl,
                     purchasedTrackTitles,
+                    card,
                 ),
         );
 
@@ -4981,6 +5013,7 @@
         data,
         releaseUrl,
         purchasedTrackTitles,
+        card = null,
     ) {
         const item = document.createElement("li");
         item.classList.add("bcampx__track-item");
@@ -4995,12 +5028,29 @@
         button.type = "button";
         button.className = "bcampx__track-link";
         button.textContent = track.title;
-        button.disabled = !track.streamUrl;
+        const ownFanTrackCard = isOwnFanTrackCard(card);
+        button.disabled = !track.streamUrl && !ownFanTrackCard;
         button.dataset.trackId = track.trackId || "";
         button.dataset.streamUrl = track.streamUrl || "";
-        button.addEventListener("click", () =>
-            playSharedTrack(button, track, data, releaseUrl),
-        );
+        if (!track.streamUrl && ownFanTrackCard) {
+            button.classList.add("bcampx__track-link--needs-load");
+        }
+        button.addEventListener("click", () => {
+            if (track.streamUrl) {
+                playSharedTrack(button, track, data, releaseUrl);
+                return;
+            }
+
+            if (ownFanTrackCard) {
+                void playOwnFanTrackAfterLoadingStream(
+                    button,
+                    track,
+                    data,
+                    releaseUrl,
+                    card,
+                );
+            }
+        });
         item.append(button);
         item.append(createSupportedSlotTrackEnd(track, releaseUrl));
         return item;
@@ -5028,6 +5078,101 @@
         }
 
         return end;
+    }
+
+    function getOwnFanTrackPageUrl(release, track, releaseUrl) {
+        const playerTrackUrl = normalizeReleaseUrl(
+            release && release.playerData && release.playerData.url,
+        );
+        if (playerTrackUrl && /\/track\//.test(playerTrackUrl)) {
+            return playerTrackUrl;
+        }
+
+        const normalizedReleaseUrl = normalizeReleaseUrl(releaseUrl);
+        if (/\/track\//.test(normalizedReleaseUrl)) {
+            return normalizedReleaseUrl;
+        }
+
+        const sourceItem = release && release.sourceItem;
+        const sourceTrackLink =
+            sourceItem &&
+            sourceItem.querySelector &&
+            sourceItem.querySelector('a[href*="/track/"]');
+        const sourceTrackUrl = normalizeReleaseUrl(
+            sourceTrackLink && sourceTrackLink.href,
+        );
+        if (sourceTrackUrl) {
+            return sourceTrackUrl;
+        }
+
+        const titleLink = normalizeReleaseUrl(track && track.titleLink);
+        if (titleLink && /\/track\//.test(titleLink)) {
+            return titleLink;
+        }
+
+        return "";
+    }
+
+    async function playOwnFanTrackAfterLoadingStream(
+        button,
+        track,
+        data,
+        releaseUrl,
+        card,
+    ) {
+        if (!button || !card || !track) {
+            return;
+        }
+
+        const release = card && card.__bcampxArtistMusicRelease;
+        const resolvedTrackUrl =
+            getOwnFanTrackPageUrl(release, track, releaseUrl) ||
+            normalizeReleaseUrl(releaseUrl);
+        if (!resolvedTrackUrl) {
+            return;
+        }
+
+        button.disabled = true;
+        button.classList.add("bcampx__track-link--loading");
+        try {
+            const result = await getReleaseData({ releaseUrl: resolvedTrackUrl });
+            const loadedData = result && result.data;
+            const loadedTrack =
+                findPlayableTrackByTitle(loadedData, track.title) ||
+                (loadedData &&
+                    Array.isArray(loadedData.tracks) &&
+                    loadedData.tracks.find((entry) => entry && entry.streamUrl)) ||
+                null;
+            if (!loadedTrack || !loadedTrack.streamUrl) {
+                button.disabled = false;
+                button.classList.remove("bcampx__track-link--loading");
+                return;
+            }
+
+            // Update the button and track object so the next click plays
+            // directly from the already-loaded stream.
+            track.streamUrl = loadedTrack.streamUrl || "";
+            track.trackId = loadedTrack.trackId || track.trackId || "";
+            if (loadedTrack.titleLink) {
+                track.titleLink = loadedTrack.titleLink;
+            }
+            button.dataset.streamUrl = track.streamUrl;
+            button.dataset.trackId = track.trackId || "";
+            button.disabled = false;
+            button.classList.remove("bcampx__track-link--needs-load");
+            button.classList.remove("bcampx__track-link--loading");
+
+            playTrackForCard(
+                card,
+                button,
+                track,
+                data,
+                resolvedTrackUrl,
+            );
+        } catch (_error) {
+            button.disabled = false;
+            button.classList.remove("bcampx__track-link--loading");
+        }
     }
 
     function createTrackActionButtons(trackActionUrl) {

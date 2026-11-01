@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bandcamplifier Description URL Fixture</title>
+    <meta property="og:site_name" content="Bandcamp" />
+    <style>
+      body {
+        margin: 0;
+        padding: 32px;
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f3f4f6;
+        color: #111827;
+      }
+
+      main {
+        max-width: 420px;
+      }
+
+      .feed-item {
+        list-style: none;
+        margin: 0;
+        padding: 20px;
+        min-height: 220px;
+        border: 1px solid #d1d5db;
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      }
+
+      .story-title {
+        margin-bottom: 14px;
+        font-size: 16px;
+      }
+
+      .item-link {
+        color: #1d4ed8;
+      }
+
+      .tralbum-wrapper {
+        display: grid;
+        grid-template-columns: 160px 1fr;
+        gap: 18px;
+      }
+
+      .art img {
+        display: block;
+        width: 160px;
+        height: 160px;
+        object-fit: cover;
+        border-radius: 12px;
+      }
+
+      .tralbum-wrapper-col1 > * + * {
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="pagedata" data-blob="{}"></div>
+    <main>
+      <article id="description-card" class="feed-item">
+        <div class="story-title">
+          <a class="fan-name" href="https://bandcamp.com/testfan">Test Fan</a>
+          bought
+          <a
+            class="item-link"
+            href="https://fixture.bandcamp.com/track/feed-description-url"
+            >Feed Description URL</a
+          >
+        </div>
+
+        <div class="story-innards">
+          <div class="story-body">
+            <div class="tralbum-wrapper">
+              <div class="art">
+                <img
+                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Crect width='160' height='160' fill='%23d1d5db'/%3E%3C/svg%3E"
+                  alt="Fixture art"
+                />
+              </div>
+
+              <div class="tralbum-wrapper-col1">
+                <a
+                  class="item-link"
+                  href="https://fixture.bandcamp.com/track/feed-description-url"
+                  >Feed Description URL</a
+                >
+                <div class="tag-line">tags: fixture</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </main>
+
+    <script>
+      (() => {
+        const releaseUrl =
+          "https://fixture.bandcamp.com/track/feed-description-url";
+        const releaseHtml = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Feed Description URL | Fixture Artist</title>
+  </head>
+  <body>
+    <div
+      data-tralbum='{"current":{"title":"Feed Description URL","release_date":"2024-01-02","about":"music video: www.youtube.com/watch?v=BwjMHwDNRjo&list=RDBwjMHwDNRjo&start_radio=1","id":321,"type":"track","band_id":654},"album_title":"Feed Description URL","artist":"Fixture Artist","album_release_date":"2024-01-02","trackinfo":[{"title":"Feed Description URL","track_id":"1","file":{"mp3-128":"https://example.com/feed-description-url.mp3"},"duration":123}]}'
+    ></div>
+    <div id="band-name-location">
+      <span class="location">Shanghai</span>
+    </div>
+    <div class="tralbum-about">
+      <p>music video: <a href="https://www.youtube.com/watch?v=BwjMHwDNRjo&amp;list=RDBwjMHwDNRjo&amp;start_radio=1" rel="nofollow ugc">www.youtube.com/watch?v=BwjMHwDNRjo&amp;list=RDBwjMHwDNRjo&amp;start_radio=1</a></p>
+    </div>
+  </body>
+</html>`;
+
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async (url) => {
+            if (url === releaseUrl) {
+              return releaseHtml;
+            }
+            throw new Error(`Unexpected fixture request for ${url}`);
+          },
+          requestJson: async () => {
+            throw new Error("requestJson is not used in this fixture");
+          },
+          storageGet: async (_key, fallback) => fallback,
+          storageSet: async () => {},
+        };
+
+        window.setTimeout(() => {
+          const card = document.querySelector("#description-card");
+          const column = card.querySelector(".tralbum-wrapper-col1");
+          const descriptions = Array.from(
+            card.querySelectorAll(".bcampx__description"),
+          );
+          const cardRect = card.getBoundingClientRect();
+          const columnRight = column.getBoundingClientRect().right;
+          const descriptionOverflow = descriptions.reduce(
+            (max, node) => Math.max(max, node.scrollWidth - node.clientWidth),
+            0,
+          );
+          const layoutFits =
+            card.scrollWidth <= card.clientWidth + 1 &&
+            columnRight <= cardRect.right + 1 &&
+            document.documentElement.scrollWidth <=
+              document.documentElement.clientWidth + 1;
+
+          document.documentElement.setAttribute(
+            "data-bcampx-description-count",
+            String(descriptions.length),
+          );
+          document.documentElement.setAttribute(
+            "data-bcampx-description-overflow",
+            String(descriptionOverflow),
+          );
+          document.documentElement.setAttribute(
+            "data-bcampx-layout-fits",
+            layoutFits ? "true" : "false",
+          );
+          document.documentElement.setAttribute(
+            "data-bcampx-description-text",
+            descriptions
+              .map((node) => (node.textContent || "").trim())
+              .join("|"),
+          );
+        }, 2500);
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+  </body>
+</html>

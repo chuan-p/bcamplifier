@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tag Search Disabled Fixture | Bandcamp</title>
+  </head>
+  <body>
+    <div
+      id="pagedata"
+      data-blob='{"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42},"collection_data":{"last_token":"fixture-token","item_count":1,"batch_size":20,"sequence":["a"]},"wishlist_data":{"last_token":"fixture-token","item_count":0,"batch_size":20,"sequence":[]},"item_cache":{"collection":{"a":{"item_id":901,"item_type":"album","tralbum_id":901,"tralbum_type":"a","band_id":901,"item_url":"https://fixture.bandcamp.com/album/release-901","item_title":"Release 901","band_name":"Fixture Artist"}}}}'
+      hidden
+    ></div>
+
+    <div id="collection-search">
+      <input type="search" class="search-box" placeholder="search your collection" />
+    </div>
+
+    <div class="collection-tabs">
+      <ol>
+        <li class="active" data-tab="collection" data-grid-id="collection-grid">
+          collection
+        </li>
+      </ol>
+    </div>
+
+    <div id="grids">
+      <div id="collection-grid" class="grid active">
+        <div class="collection-items">
+          <ol class="collection-grid"></ol>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const storage = new Map([
+          // No enableTagSearch: the default is off.
+          ["bcampx:userSettings", { showCollectionCounts: false }],
+        ]);
+
+        globalThis.__fixtureTagRequestCount = 0;
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async () => {
+            throw new Error("tag search is disabled");
+          },
+          requestJson: async () => {
+            globalThis.__fixtureTagRequestCount += 1;
+            return { error: true };
+          },
+          storageGet: async (key, fallback) =>
+            storage.has(key) ? storage.get(key) : fallback,
+          storageSet: async (key, value) => {
+            storage.set(key, value);
+          },
+          storageGetByPrefix: async (prefix) => {
+            const values = {};
+            storage.forEach((value, key) => {
+              if (key.startsWith(prefix)) {
+                values[key] = value;
+              }
+            });
+            return values;
+          },
+          storageRemove: async (key) => {
+            storage.delete(key);
+          },
+        };
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+    <script>
+      window.setTimeout(() => {
+        const root = document.documentElement;
+        const input = document.querySelector("#collection-search input");
+        if (input instanceof HTMLInputElement) {
+          input.value = "techno";
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+
+        window.setTimeout(() => {
+          root.setAttribute(
+            "data-bcampx-fixture-tag-requests",
+            String(globalThis.__fixtureTagRequestCount || 0),
+          );
+          root.setAttribute(
+            "data-bcampx-fixture-setup",
+            String(root.hasAttribute("data-bcampx-tag-search-setup")),
+          );
+          root.setAttribute(
+            "data-bcampx-fixture-matches",
+            root.getAttribute("data-bcampx-tag-search-matches") || "none",
+          );
+          root.setAttribute(
+            "data-bcampx-fixture-index-state",
+            root.getAttribute("data-bcampx-tag-index-state") || "none",
+          );
+        }, 1500);
+      }, 4500);
+    </script>
+  </body>
+</html>

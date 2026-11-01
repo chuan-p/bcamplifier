@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bandcamplifier
 // @namespace    https://github.com/chuan-p/bcamplifier
-// @version      3.1
+// @version      3.3.1
 // @description  Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.
 // @author       chuan
 // @match        https://bandcamp.com/feed*
@@ -14,6 +14,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_deleteValue
 // @grant        GM_addValueChangeListener
 // @grant        GM_removeValueChangeListener
 // @run-at       document-idle

@@ -12,9 +12,24 @@
     ></div>
     <div
       id="pagedata"
-      data-blob='{"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42}}'
+      data-blob='{"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42},"collection_data":{"last_token":"fixture-collection-token","item_count":3,"batch_size":20,"sequence":[]}}'
       hidden
     ></div>
+
+    <div id="collection-search">
+      <input
+        type="search"
+        class="search-box"
+        placeholder="search your collection"
+      />
+    </div>
+    <div id="wishlist-search">
+      <input
+        type="search"
+        class="search-box"
+        placeholder="search your wishlist"
+      />
+    </div>
 
     <div class="collection-tabs">
       <ol>
@@ -59,7 +74,7 @@
     <script>
       (() => {
         const storage = new Map([
-          ["bcampx:userSettings", { showCollectionCounts: true }],
+          ["bcampx:userSettings", { showCollectionCounts: true, enableTagSearch: true }],
           ["bcampx:artistMusicView", "feed"],
           [
             "bcampx:release:https://fixture.bandcamp.com/album/release-4",
@@ -86,7 +101,7 @@
                     "https://fixture.bandcamp.com/album/release-4/track-4b",
                 },
               ],
-              schemaVersion: 17,
+              schemaVersion: 18,
               fetchedAt: Date.now() - 60 * 60 * 1000,
             },
           ],
@@ -123,6 +138,15 @@
           },
         };
 
+        const fixtureReleaseTags = {
+          1: ["nativeleft"],
+          2: ["nativeleft"],
+          9: ["techno"],
+          10: ["leftfield", "tech house"],
+          11: ["jazz"],
+          21: ["indexart"],
+          30: ["fallback"],
+        };
         globalThis.__BCAMPX_HOST__ = {
           kind: "webextension",
           requestHtml: async (url) => {
@@ -134,7 +158,9 @@
               );
             }
             const trackInfo =
-              id === 4
+              id === 30
+                ? "[]"
+                : id === 4
                 ? `[
                     {"title":"Track 4","track_id":4,"file":{"mp3-128":"https://example.com/4.mp3"},"duration":120},
                     {"title":"Track 4B","track_id":404,"file":{"mp3-128":"https://example.com/404.mp3"},"duration":150}
@@ -144,10 +170,55 @@
               <div id="pagedata" data-blob='{"identities":{"fan":{"id":42}},"fan_tralbum_data":{"is_wishlisted":true}}'></div>
               <div data-tralbum='{"current":{"id":${id},"type":"album","title":"Release ${id}","band_id":${1000 + id}},"artist":"Artist ${id}","trackinfo":${trackInfo}}'></div>
               <div id="collectors-data" data-blob='{"thumbs":[{"fan_id":1},{"fan_id":2},{"fan_id":3}],"reviews":[],"shown_reviews":[],"more_thumbs_available":false}'></div>
-              <div class="tralbum-tags">tags: <a href="/tag/fan-tag-${id}">fan-tag-${id}</a> <a href="/tag/collection-fixture">collection-fixture</a></div>
+              <div class="tralbum-tags">${(fixtureReleaseTags[id] || [])
+                .map(
+                  (tag) =>
+                    `<a href="/tag/${tag.replace(/ /g, "-")}">${tag}</a>`,
+                )
+                .join(" ")}</div>
               <li class="buyItem digital"><span class="base-text-color">$5</span></li>`;
           },
-          requestJson: async () => {
+          requestJson: async (url) => {
+            if (url.includes("/api/fancollection/1/collection_items")) {
+              return {
+                items: [
+                  __makeFanIndexItem(9, "techno"),
+                  __makeFanIndexItem(10, "tech house"),
+                  __makeFanIndexItem(11, "jazz"),
+                  __makeFanIndexItem(21, "indexart", { artId: 54321 }),
+                  __makeFanIndexItem(30, "fallback", { artId: 30303 }),
+                ],
+                more_available: false,
+                last_token: "",
+                tracklists: {},
+                redownload_urls: {},
+                item_lookup: {},
+              };
+            }
+            if (url.includes("/api/mobile/24/tralbum_details")) {
+              const id = Number(
+                (url.match(/tralbum_id=(\d+)/) || [])[1] || 0,
+              );
+              return {
+                id,
+                about: `About ${id}`,
+                tracks:
+                  id === 30
+                    ? [
+                        {
+                          track_id: 3001,
+                          title: "API Track 30",
+                          duration: 120,
+                          streaming_url: {
+                            "mp3-128": "https://example.com/api-30.mp3",
+                          },
+                          track_url: `https://fixture.bandcamp.com/track/api-30`,
+                        },
+                      ]
+                    : [],
+                tags: (fixtureReleaseTags[id] || []).map((name) => ({ name })),
+              };
+            }
             globalThis.__fixtureSupporterRequestCount += 1;
             return { results: [], more_available: false };
           },
@@ -156,6 +227,37 @@
           storageSet: async (key, value) => {
             storage.set(key, value);
           },
+          storageGetByPrefix: async (prefix) => {
+            const values = {};
+            storage.forEach((value, key) => {
+              if (key.startsWith(prefix)) {
+                values[key] = value;
+              }
+            });
+            return values;
+          },
+          storageRemove: async (key) => {
+            storage.delete(key);
+          },
+        };
+
+        globalThis.__makeFanIndexItem = (id, tag, options = {}) => {
+          const releaseUrl = `https://fixture.bandcamp.com/album/release-${id}`;
+          return {
+            item_id: id,
+            item_type: "album",
+            tralbum_id: id,
+            tralbum_type: "a",
+            band_id: 1000 + id,
+            item_title: `Release ${id}`,
+            band_name: `Artist ${id}`,
+            item_url: releaseUrl,
+            item_art_id: Number(options.artId) || 12345,
+            also_collected_count: 7,
+            featured_track: id,
+            featured_track_title: `Track ${id}`,
+            tags: [tag],
+          };
         };
 
         globalThis.__makeFanFixtureItem = (id, options = {}) => {
@@ -549,18 +651,40 @@
         setActiveGrid("wishlist-grid");
         await wait(100);
 
-        const wishlistTrackButton = document.querySelector(
-          ".bcampx-label-feed .bcampx__track-link",
-        );
+        // The wishlist cards are built asynchronously; wait for the first
+        // track row before clicking it.
+        let wishlistTrackButton = null;
+        for (let attempt = 0; attempt < 40 && !wishlistTrackButton; attempt += 1) {
+          wishlistTrackButton = document.querySelector(
+            ".bcampx-label-feed .bcampx__track-link",
+          );
+          if (!wishlistTrackButton) {
+            await wait(100);
+          }
+        }
         if (wishlistTrackButton) {
           wishlistTrackButton.click();
-          await wait(900);
+          // Release 4's stubbed page fetch takes 700 ms; leave enough room for
+          // the fetch, parse and favourite-state sync to settle.
+          await wait(1600);
         }
         const playerHost = document.querySelector("#bcampx-player-host");
-        const favoriteButton =
+        const readFavoriteButton = () =>
           playerHost &&
           playerHost.shadowRoot &&
           playerHost.shadowRoot.querySelector(".bcampx-player-favorite");
+        // The favourite state is fetched asynchronously; wait for it instead
+        // of sampling one instant.
+        let favoriteButton = readFavoriteButton();
+        for (
+          let attempt = 0;
+          attempt < 30 &&
+          !(favoriteButton && favoriteButton.getAttribute("aria-pressed") === "true");
+          attempt += 1
+        ) {
+          await wait(100);
+          favoriteButton = readFavoriteButton();
+        }
         document.documentElement.setAttribute(
           "data-bcampx-wishlist-player-enabled",
           String(Boolean(favoriteButton && !favoriteButton.disabled)),
@@ -599,6 +723,420 @@
             ),
           );
         }
+
+        // Tag-aware search: Bandcamp's own search index only covers titles and
+        // artists, so a tag-only match has to come from the locally built tag
+        // index and is appended after the native results.
+        setActiveGrid("collection-search-grid");
+        const collectionSearchGrid = document.querySelector(
+          "#collection-search-grid .collection-grid",
+        );
+        collectionSearchGrid.replaceChildren(__makeFanFixtureItem(3));
+        await wait(200);
+
+        const searchInput = document.querySelector("#collection-search input");
+        searchInput.value = "techno";
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          if (
+            Number(
+              document.documentElement.getAttribute(
+                "data-bcampx-tag-search-matches",
+              ) || 0,
+            ) > 0
+          ) {
+            break;
+          }
+          await wait(100);
+        }
+        await wait(600);
+
+        const feedCardUrls = Array.from(
+          document.querySelectorAll(
+            ".bcampx-label-feed__list .bcampx-label-feed-card[data-bcampx-release-url]",
+          ),
+        ).map((card) => card.getAttribute("data-bcampx-release-url"));
+        const tagSearchCards = Array.from(
+          document.querySelectorAll(
+            '.bcampx-label-feed__list .bcampx-label-feed-card[data-bcampx-tag-source="tags"]',
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-card-count",
+          String(tagSearchCards.length),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-card-url",
+          tagSearchCards[0]?.getAttribute("data-bcampx-release-url") || "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-card-order",
+          feedCardUrls.join(","),
+        );
+
+        // Every tag result must end up with its tracklist, not just the first
+        // visible card.
+        await wait(2500);
+        const tagCardsNow = Array.from(
+          document.querySelectorAll(
+            '.bcampx-label-feed__list .bcampx-label-feed-card[data-bcampx-tag-source="tags"]',
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-cards-total",
+          String(tagCardsNow.length),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-cards-with-tracks",
+          String(
+            tagCardsNow.filter((card) =>
+              card.querySelector(".bcampx__track-link"),
+            ).length,
+          ),
+        );
+
+        // Tag-only results belong to the enhanced list. The native grid must
+        // stay free of injected cards and of a tag block.
+        const viewToggle = document.querySelector(".bcampx-label-feed-toggle");
+        if (viewToggle) {
+          viewToggle.click();
+          await wait(900);
+        }
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-view",
+          document.documentElement.getAttribute(
+            "data-bcampx-label-feed-view",
+          ) || "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-section-count",
+          String(document.querySelectorAll(".bcampx-tag-results").length),
+        );
+        if (viewToggle) {
+          viewToggle.click();
+          await wait(900);
+        }
+
+        // Bandcamp's native search response arrives after the local tag
+        // matches. The card that already loaded its tracklist must survive.
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          if (tagSearchCards[0]?.querySelector(".bcampx__track-link")) {
+            break;
+          }
+          await wait(100);
+        }
+        const probeCard = tagSearchCards[0];
+        if (probeCard) {
+          probeCard.setAttribute("data-bcampx-probe", "1");
+        }
+        collectionSearchGrid.append(__makeFanFixtureItem(9));
+        await wait(900);
+        const probedCard = document.querySelector(
+          '.bcampx-label-feed__list .bcampx-label-feed-card[data-bcampx-probe="1"]',
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-card-survived",
+          String(
+            Boolean(probedCard) &&
+              Boolean(probedCard.querySelector(".bcampx__track-link")),
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-card-copies",
+          String(
+            Array.from(
+              document.querySelectorAll(
+                '.bcampx-label-feed__list .bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-9"]',
+              ),
+            ).length,
+          ),
+        );
+
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-matched-before-clear",
+          document.documentElement.getAttribute(
+            "data-bcampx-tag-search-matches",
+          ) || "",
+        );
+
+        // Clearing the box must drop the tag-only cards and the native block.
+        searchInput.value = "";
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+        await wait(800);
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-cleared-matches",
+          document.documentElement.getAttribute(
+            "data-bcampx-tag-search-matches",
+          ) || "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-cleared-feed-count",
+          String(
+            document.querySelectorAll(
+              '.bcampx-label-feed__list .bcampx-label-feed-card[data-bcampx-tag-source="tags"]',
+            ).length,
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-cleared-section",
+          String(Boolean(document.querySelector(".bcampx-tag-results"))),
+        );
+
+        // A tag-only query leaves Bandcamp with no native matches, so it prints
+        // its own "There are no matches for ..." notice next to our results.
+        setActiveGrid("collection-search-grid");
+        const noMatchToggle = document.querySelector(
+          ".bcampx-label-feed-toggle",
+        );
+        if (noMatchToggle) {
+          noMatchToggle.click();
+          await wait(900);
+        }
+        const noMatch = document.createElement("div");
+        noMatch.className = "no-match";
+        noMatch.textContent = "There are no matches for “leftfield”.";
+        collectionSearchGrid.replaceChildren(noMatch);
+        searchInput.value = "leftfield";
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          if (
+            Number(
+              document.documentElement.getAttribute(
+                "data-bcampx-tag-search-matches",
+              ) || 0,
+            ) === 1
+          ) {
+            break;
+          }
+          await wait(100);
+        }
+        await wait(800);
+
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-no-match-hidden",
+          String(
+            Boolean(
+              noMatch.isConnected &&
+                window.getComputedStyle(noMatch).display === "none",
+            ),
+          ),
+        );
+        if (noMatchToggle) {
+          noMatchToggle.click();
+          await wait(900);
+        }
+        const feedNode = document.querySelector(".bcampx-label-feed");
+        document.documentElement.setAttribute(
+          "data-bcampx-feed-outside-grid",
+          String(Boolean(feedNode && !feedNode.closest(".grid"))),
+        );
+        if (feedNode && feedNode.parentElement) {
+          const feedRect = feedNode.getBoundingClientRect();
+          const parentRect = feedNode.parentElement.getBoundingClientRect();
+          document.documentElement.setAttribute(
+            "data-bcampx-feed-centered",
+            String(
+              Math.abs(
+                feedRect.left -
+                  parentRect.left -
+                  (parentRect.right - feedRect.right),
+              ) < 3,
+            ),
+          );
+        }
+        const noMatchCards = Array.from(
+          document.querySelectorAll(
+            '.bcampx-label-feed-card[data-bcampx-tag-source="tags"]',
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-no-match-card",
+          noMatchCards[0]?.getAttribute("data-bcampx-release-url") || "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-search-no-match-leak",
+          String(
+            noMatchCards.some((card) =>
+              /There are no matches/i.test(card.textContent || ""),
+            ),
+          ),
+        );
+
+        const playerHostEl = document.querySelector("#bcampx-player-host");
+        const settingsRows =
+          playerHostEl && playerHostEl.shadowRoot
+            ? Array.from(
+                playerHostEl.shadowRoot.querySelectorAll(
+                  ".bcampx-player-settings-row",
+                ),
+              )
+            : [];
+        const tagSettingRow = settingsRows[settingsRows.length - 1] || null;
+        const tagSettingLabel =
+          tagSettingRow?.querySelector(".bcampx-player-settings-label")
+            ?.textContent || "";
+        const tagSettingDesc =
+          tagSettingRow?.querySelector(".bcampx-player-settings-description")
+            ?.textContent || "";
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-tag-setting-label",
+          tagSettingLabel,
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-tag-setting-desc",
+          tagSettingDesc,
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-tag-setting-progress",
+          String(/\(\d+\/\d+\)/.test(tagSettingDesc)),
+        );
+
+        // Matches that already exist as native cards reuse the native item, so
+        // the first page of a collection keeps its cover art and preview data.
+        searchInput.value = "nativeleft";
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          if (
+            Number(
+              document.documentElement.getAttribute(
+                "data-bcampx-tag-search-matches",
+              ) || 0,
+            ) === 2
+          ) {
+            break;
+          }
+          await wait(100);
+        }
+        await wait(900);
+        const nativeTagCards = Array.from(
+          document.querySelectorAll(
+            '.bcampx-label-feed__list .bcampx-label-feed-card[data-bcampx-tag-source="tags"]',
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-native-origins",
+          nativeTagCards
+            .map((card) => card.getAttribute("data-bcampx-tag-origin"))
+            .join(","),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-native-art",
+          String(
+            nativeTagCards.length === 2 &&
+              nativeTagCards.every((card) =>
+                Boolean(
+                  card
+                    .querySelector(".art img")
+                    ?.getAttribute("src"),
+                ),
+              ),
+          ),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-native-playerdata",
+          String(
+            nativeTagCards.length === 2 &&
+              nativeTagCards.every((card) =>
+                Boolean(card.querySelector("[data-playerdata]")),
+              ),
+          ),
+        );
+
+        // A match that is not on the page is rendered from the index record, so
+        // its cover art has to be derived from the stored art id.
+        searchInput.value = "indexart";
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          if (
+            Number(
+              document.documentElement.getAttribute(
+                "data-bcampx-tag-search-matches",
+              ) || 0,
+            ) === 1
+          ) {
+            break;
+          }
+          await wait(100);
+        }
+        await wait(900);
+        const indexTagCard = document.querySelector(
+          '.bcampx-label-feed__list .bcampx-label-feed-card[data-bcampx-tag-origin="index"]',
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-index-origin",
+          indexTagCard?.getAttribute("data-bcampx-tag-origin") || "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-index-art",
+          indexTagCard?.querySelector(".art img")?.getAttribute("src") || "",
+        );
+
+        // A release page that parses without a tracklist still gets one from
+        // the mobile release API.
+        searchInput.value = "fallback";
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          if (
+            Number(
+              document.documentElement.getAttribute(
+                "data-bcampx-tag-search-matches",
+              ) || 0,
+            ) === 1
+          ) {
+            break;
+          }
+          await wait(100);
+        }
+        const fallbackCardSelectors = [
+          '.bcampx-label-feed__list .bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-30"]',
+          '.bcampx-tag-results .bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/release-30"]',
+        ];
+        let fallbackTrackLink = null;
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          fallbackTrackLink = fallbackCardSelectors
+            .map((selector) =>
+              document.querySelector(`${selector} .bcampx__track-link`),
+            )
+            .find(Boolean);
+          if (fallbackTrackLink) {
+            break;
+          }
+          await wait(100);
+        }
+        document.documentElement.setAttribute(
+          "data-bcampx-tracklist-source",
+          document.documentElement.getAttribute(
+            "data-bcampx-tracklist-source",
+          ) || "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-api-tracklist-label",
+          fallbackTrackLink?.textContent || "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-api-tracklist-stream",
+          fallbackTrackLink?.dataset.streamUrl || "",
+        );
+
+        // The tracklist must survive the feed syncs and index-progress
+        // refreshes that follow; re-check after a delay instead of sampling
+        // the instant it first appeared.
+        await wait(2500);
+        const fallbackTrackLinkAfter = fallbackCardSelectors
+          .map((selector) =>
+            document.querySelector(`${selector} .bcampx__track-link`),
+          )
+          .find(Boolean);
+        document.documentElement.setAttribute(
+          "data-bcampx-api-tracklist-after",
+          fallbackTrackLinkAfter ? "present" : "missing",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-api-tracklist-after-label",
+          fallbackTrackLinkAfter?.textContent || "",
+        );
+
       })();
     </script>
   </body>

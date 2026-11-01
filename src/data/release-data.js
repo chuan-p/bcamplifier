@@ -52,6 +52,7 @@
                 const cacheValue = buildReleaseCacheValue(data);
 
                 await storageSet(cacheKey, cacheValue);
+                void trackReleaseCacheEntry(cacheKey).catch(() => {});
                 if (hasPlayableTracks(cacheValue)) {
                     STATE.pageFreshTrackReleaseKeys.add(cacheKey);
                 }
@@ -377,6 +378,7 @@
                 method: "GET",
                 url,
                 timeout: CONFIG.fetchTimeoutMs,
+                withCredentials: true,
                 headers: {
                     Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 },
@@ -393,50 +395,6 @@
                     reject(new Error("Network request timed out.")),
             });
         });
-    }
-
-    function requestWishlistStateHtml(url) {
-        if (canUseExternalHostMethod("requestHtml")) {
-            return Promise.resolve(
-                getExternalHostApi().requestHtml(
-                    url,
-                    getHostRequestOptions({
-                        credentials: "include",
-                        headers: {
-                            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                        },
-                    }),
-                ),
-            );
-        }
-
-    return new Promise((resolve, reject) => {
-        if (typeof GM_xmlhttpRequest !== "function") {
-            reject(new Error("GM_xmlhttpRequest is not available."));
-            return;
-        }
-
-        GM_xmlhttpRequest({
-            method: "GET",
-            url,
-            timeout: CONFIG.fetchTimeoutMs,
-            withCredentials: true,
-            headers: {
-                Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            },
-            onload: (response) => {
-                if (response.status >= 200 && response.status < 300) {
-                    resolve(response.responseText || "");
-                    return;
-                }
-
-                reject(new Error(`HTTP ${response.status}`));
-            },
-            onerror: () => reject(new Error("Network request failed.")),
-            ontimeout: () =>
-                reject(new Error("Network request timed out.")),
-        });
-    });
     }
 
     function requestJson(url, options = {}) {
@@ -460,6 +418,9 @@
                 url,
                 data: options.data,
                 timeout: CONFIG.fetchTimeoutMs,
+                // Collection and tag lookups belong to the signed-in fan, so
+                // they need the page's cookies in the userscript path too.
+                withCredentials: options.credentials === "include",
                 headers: options.headers || {
                     Accept: "application/json, text/javascript, */*; q=0.01",
                 },
@@ -700,6 +661,7 @@
                         fetchedAt: Date.now(),
                         schemaVersion: CACHE_SCHEMA_VERSION,
                     });
+                    void trackReleaseCacheEntry(cacheKey).catch(() => {});
                 }
                 return result;
             },
@@ -776,9 +738,19 @@
         const maxExactCount = options.ignoreLimit
             ? 0
             : normalizeNonNegativeInteger(CONFIG.maxSupporterExactCount);
+        // Even an unbounded refresh needs a hard ceiling so a single click
+        // cannot issue an unbounded number of requests, and so a server that
+        // keeps reporting more_available without advancing its token cannot
+        // loop forever.
+        const maxPages = Math.max(
+            1,
+            normalizeNonNegativeInteger(CONFIG.maxSupporterRefreshPages) || 1,
+        );
         let count = state.count;
         let token = state.nextToken;
         let moreAvailable = state.moreAvailable;
+        let pagesFetched = 0;
+        let serverReportsMore = false;
 
         if (maxExactCount && count >= maxExactCount) {
             return buildReleaseSupporterCountResult(count, false, {
@@ -788,6 +760,12 @@
         }
 
         while (moreAvailable && token) {
+            if (pagesFetched >= maxPages) {
+                serverReportsMore = true;
+                break;
+            }
+
+            pagesFetched += 1;
             const response = await requestReleaseSupporterCountPage(apiUrl, {
                 tralbum_type: state.itemType,
                 tralbum_id: state.itemId,
@@ -801,11 +779,20 @@
                     : [];
             count += results.length;
             moreAvailable = Boolean(response && response.more_available);
+            serverReportsMore = moreAvailable;
 
+            const previousToken = token;
             const last = results[results.length - 1];
             token = cleanText(last && last.token);
             if (!results.length) {
+                // An empty page that still claims more results cannot be
+                // trusted as an exact total.
                 moreAvailable = false;
+            } else if (token && token === previousToken) {
+                // The API stopped advancing its cursor, so the pages seen so
+                // far are not a trustworthy complete total.
+                moreAvailable = false;
+                serverReportsMore = true;
             }
 
             if (maxExactCount && count >= maxExactCount) {
@@ -819,10 +806,14 @@
             }
         }
 
-        return buildReleaseSupporterCountResult(count, !moreAvailable, {
-            moreAvailable,
-            nextToken: token,
-        });
+        return buildReleaseSupporterCountResult(
+            count,
+            !moreAvailable && !serverReportsMore,
+            {
+                moreAvailable,
+                nextToken: token,
+            },
+        );
     }
 
     async function requestReleaseSupporterCountPage(apiUrl, payload) {

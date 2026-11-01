@@ -264,9 +264,51 @@
             return "";
         }
 
-        const date = new Date(value);
+        const text = cleanText(value);
+        if (!text) {
+            return "";
+        }
+
+        // Bandcamp reports release dates as date-only values (YYYY-MM-DD). Those
+        // parse as UTC midnight, so rendering them in local time shows the
+        // previous day for everybody west of UTC. Build a local date instead.
+        //
+        // Only bare date-only values take this path: a full timestamp carries
+        // its own time and offset, and rewriting it as local midnight would
+        // shift the calendar day in the other direction.
+        const dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (dateOnly) {
+            const year = Number(dateOnly[1]);
+            const month = Number(dateOnly[2]);
+            const day = Number(dateOnly[3]);
+            const localDate = new Date(year, month - 1, day);
+            // Reject impossible dates (2026-13-45, 2026-02-30): Date rolls
+            // those over instead of failing, so compare every field back.
+            if (
+                month >= 1 &&
+                month <= 12 &&
+                day >= 1 &&
+                day <= 31 &&
+                localDate.getFullYear() === year &&
+                localDate.getMonth() === month - 1 &&
+                localDate.getDate() === day
+            ) {
+                return localDate.toLocaleDateString(undefined, {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                });
+            }
+
+            // The value claimed to be a date-only string but cannot be one.
+            // Do not fall through to Date, which silently rolls 2026-02-30
+            // over to March 1.
+            return text;
+        }
+
+        const date = new Date(text);
         if (Number.isNaN(date.getTime())) {
-            return cleanText(value);
+            return text;
         }
 
         return date.toLocaleDateString(undefined, {

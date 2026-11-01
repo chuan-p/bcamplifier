@@ -3,50 +3,30 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-PORT=${PORT:-8768}
+PORT=${PORT:-8772}
 CHROME_BIN=$("$ROOT_DIR/scripts/find-chrome.sh")
 SERVER_LOG=${SERVER_LOG:-/tmp/bcampx-label-music-grid-to-list-fixture-server.log}
-
-cd "$ROOT_DIR"
-
-python3 -m http.server "$PORT" --bind 127.0.0.1 >"$SERVER_LOG" 2>&1 &
-SERVER_PID=$!
-
-cleanup() {
-    kill "$SERVER_PID" >/dev/null 2>&1 || true
-}
-
-trap cleanup EXIT INT TERM
+. "$ROOT_DIR/scripts/lib/fixture.sh"
+fixture_start "$ROOT_DIR" "$PORT" "$SERVER_LOG"
 
 sleep 1
 
-python3 - "$CHROME_BIN" "$PORT" <<'PY'
-import subprocess
+fixture_python - "$CHROME_BIN" "$PORT" "$fixture_profile" <<'PY'
 import sys
 
-chrome_bin, port = sys.argv[1:3]
-result = subprocess.run(
-    [
-        chrome_bin,
-        "--headless=new",
-        "--no-sandbox",
-        "--disable-gpu",
-        "--window-size=1400,480",
-        "--virtual-time-budget=6000",
-        "--dump-dom",
-        f"http://127.0.0.1:{port}/fixtures/label-music/music/?view=original",
-    ],
-    capture_output=True,
-    timeout=24,
-)
-stdout = result.stdout.decode("utf-8", "ignore")
-stderr = result.stderr.decode("utf-8", "ignore")
+from chrome_fixture import report_failed_run, run_chrome
 
-if result.returncode != 0:
-    print("label_music_grid_to_list_fixture_test=failed")
-    print("chrome_exit_code=" + str(result.returncode))
-    if stderr:
-        print(stderr)
+chrome_bin, port, profile_dir = sys.argv[1:4]
+returncode, stdout, stderr = run_chrome(
+    chrome_bin,
+    f"http://127.0.0.1:{port}/fixtures/label-music/music/?view=original",
+    profile_dir,
+    budget=6000,
+    timeout=24,
+    window="1400,480",
+)
+if returncode != 0:
+    report_failed_run("label_music_grid_to_list_fixture_test", returncode, stderr)
     sys.exit(1)
 
 checks = {

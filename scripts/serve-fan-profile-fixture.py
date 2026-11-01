@@ -6,6 +6,11 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+# 1x1 transparent PNG.
+TINY_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "890000000a49444154789c6360000002000154a24f9d0000000049454e44ae426082"
+)
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8767
 
 
@@ -20,6 +25,38 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 "text/html; charset=utf-8",
             )
             return
+        if self.path.split("?", 1)[0] == "/fixturefan-uptodate":
+            self.send_file(
+                ROOT_DIR / "fixtures" / "fan-profile" / "up-to-date.html",
+                "text/html; charset=utf-8",
+            )
+            return
+        if self.path.split("?", 1)[0] == "/fixturefan-disabled":
+            self.send_file(
+                ROOT_DIR / "fixtures" / "fan-profile" / "disabled.html",
+                "text/html; charset=utf-8",
+            )
+            return
+        if self.path.split("?", 1)[0] == "/fixturefan-resume":
+            self.send_file(
+                ROOT_DIR / "fixtures" / "fan-profile" / "resume.html",
+                "text/html; charset=utf-8",
+            )
+            return
+        if self.path.split("?", 1)[0] == "/fixturefan-ratelimit":
+            self.send_file(
+                ROOT_DIR / "fixtures" / "fan-profile" / "rate-limit.html",
+                "text/html; charset=utf-8",
+            )
+            return
+        # Tag cards derive real bcbits artwork URLs. Serve them locally so the
+        # headless run never waits on the network for an image.
+        if self.path.split("?", 1)[0].startswith("/img/"):
+            self.send_bytes(
+                TINY_PNG,
+                "image/png",
+            )
+            return
         if self.path.split("?", 1)[0] == "/bcamplifier.user.js":
             self.send_file(
                 ROOT_DIR / "bcamplifier.user.js",
@@ -28,6 +65,13 @@ class FixtureHandler(BaseHTTPRequestHandler):
             return
 
         self.send_error(404)
+
+    def send_bytes(self, body, content_type):
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def send_file(self, path, content_type):
         body = path.read_bytes()

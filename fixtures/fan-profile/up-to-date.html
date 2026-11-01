@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Up To Date Fixture | Bandcamp</title>
+  </head>
+  <body>
+    <div
+      id="pagedata"
+      data-blob='{"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42},"collection_data":{"last_token":"fixture-token","item_count":5,"batch_size":20,"sequence":[]},"wishlist_data":{"last_token":"fixture-token","item_count":5,"batch_size":20,"sequence":[]}}'
+      hidden
+    ></div>
+
+    <div class="collection-tabs">
+      <ol>
+        <li class="active" data-tab="collection" data-grid-id="collection-grid">
+          collection
+        </li>
+      </ol>
+    </div>
+
+    <div id="grids">
+      <div id="collection-grid" class="grid active">
+        <div class="collection-items">
+          <ol class="collection-grid"></ol>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const now = Date.now();
+        const status = {
+          version: 4,
+          itemsCount: 5,
+          resolvedCount: 5,
+          taggedCount: 5,
+          itemsComplete: true,
+          itemsUpdatedAt: now,
+          tagsUpdatedAt: now,
+          failures: {},
+          // The seed page is empty here, so the stored signature is empty too.
+          seedIds: "",
+        };
+        // A backoff written by the tag fetch must not hide a complete index
+        // or block the up-to-date path.
+        const cooldown = {
+          until: now + 60 * 60 * 1000,
+          level: 2,
+          version: 4,
+          source: "tags",
+          updatedAt: now,
+        };
+        const makeItems = (base) =>
+          [1, 2, 3, 4, 5].map((offset) => ({
+            id: base + offset,
+            type: "album",
+            tralbumId: base + offset,
+            tralbumType: "a",
+            bandId: 900,
+            title: `Release ${base + offset}`,
+            artist: "Fixture Artist",
+            url: `https://fixture.bandcamp.com/album/release-${base + offset}`,
+            art: "",
+          }));
+        const makeTags = (base) =>
+          Object.fromEntries(
+            [1, 2, 3, 4, 5].map((offset) => [
+              `a${base + offset}`,
+              { tags: ["fixture"], ts: now },
+            ]),
+          );
+        const storage = new Map([
+          ["bcampx:userSettings", { enableTagSearch: true }],
+          ["bcampx:tagIndexStatus:42:collection", status],
+          ["bcampx:tagIndexStatus:42:wishlist", { ...status }],
+          [
+            "bcampx:tagIndex:42:collection",
+            {
+              version: 4,
+              items: makeItems(0),
+              token: "fixture-token",
+              itemsComplete: true,
+              itemsUpdatedAt: now,
+            },
+          ],
+          [
+            "bcampx:tagIndex:42:wishlist",
+            {
+              version: 4,
+              items: makeItems(100),
+              token: "fixture-token",
+              itemsComplete: true,
+              itemsUpdatedAt: now,
+            },
+          ],
+          [
+            "bcampx:releaseTags",
+            { ...makeTags(0), ...makeTags(100) },
+          ],
+          ["bcampx:tagIndexCooldown", cooldown],
+        ]);
+
+        globalThis.__fixtureTagRequestCount = 0;
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async () => {
+            throw new Error("A complete tag index must not fetch release pages.");
+          },
+          requestJson: async () => {
+            globalThis.__fixtureTagRequestCount += 1;
+            return { error: true };
+          },
+          storageGet: async (key, fallback) =>
+            storage.has(key) ? storage.get(key) : fallback,
+          storageSet: async (key, value) => {
+            storage.set(key, value);
+          },
+          storageGetByPrefix: async (prefix) => {
+            const values = {};
+            storage.forEach((value, key) => {
+              if (key.startsWith(prefix)) {
+                values[key] = value;
+              }
+            });
+            return values;
+          },
+          storageRemove: async (key) => {
+            storage.delete(key);
+          },
+        };
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+    <script>
+      window.setTimeout(() => {
+        const root = document.documentElement;
+        root.setAttribute(
+          "data-bcampx-fixture-tag-requests",
+          String(globalThis.__fixtureTagRequestCount || 0),
+        );
+        const state =
+          typeof globalThis.__bcampxTagIndexState === "function"
+            ? globalThis.__bcampxTagIndexState()
+            : null;
+        root.setAttribute(
+          "data-bcampx-fixture-hook-state",
+          state ? state.state : "missing",
+        );
+        root.setAttribute(
+          "data-bcampx-fixture-hook-items",
+          String(state ? state.items : -1),
+        );
+        root.setAttribute(
+          "data-bcampx-fixture-hook-complete",
+          String(Boolean(state && state.itemsComplete)),
+        );
+        let summary = null;
+        try {
+          summary = JSON.parse(
+            root.getAttribute("data-bcampx-tag-index") || "null",
+          );
+        } catch (_error) {
+          summary = null;
+        }
+        root.setAttribute(
+          "data-bcampx-fixture-summary-state",
+          summary ? summary.state : "missing",
+        );
+        root.setAttribute(
+          "data-bcampx-fixture-summary-items",
+          String(summary ? summary.items : -1),
+        );
+        root.setAttribute(
+          "data-bcampx-fixture-summary-store",
+          summary ? summary.store : "missing",
+        );
+      }, 4200);
+    </script>
+  </body>
+</html>

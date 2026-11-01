@@ -24,7 +24,15 @@ const artistMusicFeedPath = path.join(
     "features",
     "artist-music-feed.js",
 );
+const playerPath = path.join(rootDir, "src", "features", "player.js");
+const trackActionsPath = path.join(
+    rootDir,
+    "src",
+    "features",
+    "track-actions.js",
+);
 const releaseDataPath = path.join(rootDir, "src", "data", "release-data.js");
+const tagIndexPath = path.join(rootDir, "src", "data", "tag-index.js");
 const textFormatUtilsPath = path.join(
     rootDir,
     "src",
@@ -40,7 +48,10 @@ const playerStyles = await readFile(playerStylesPath, "utf8");
 const enhancementStyles = await readFile(enhancementStylesPath, "utf8");
 const playerIcons = await readFile(playerIconsPath, "utf8");
 const artistMusicFeed = await readFile(artistMusicFeedPath, "utf8");
+const player = await readFile(playerPath, "utf8");
+const trackActions = await readFile(trackActionsPath, "utf8");
 const releaseData = await readFile(releaseDataPath, "utf8");
+const tagIndex = await readFile(tagIndexPath, "utf8");
 const textFormatUtils = await readFile(textFormatUtilsPath, "utf8");
 
 validateUserscriptMeta(meta);
@@ -49,7 +60,10 @@ validateStyles(playerStyles, playerStylesPath);
 validateStyles(enhancementStyles, enhancementStylesPath);
 validatePlayerIcons(playerIcons);
 validateArtistMusicFeed(artistMusicFeed);
+validatePlayer(player);
+validateTrackActions(trackActions);
 validateReleaseData(releaseData);
+validateTagIndex(tagIndex);
 validateTextFormatUtils(textFormatUtils);
 
 const scriptVersion = getUserscriptVersion(meta);
@@ -58,7 +72,10 @@ const bundle = `${meta.trimEnd()}\n\n${injectCoreConstants(
         injectSourceFragments(core.trimStart(), {
             playerIcons,
             artistMusicFeed,
+            player,
+            trackActions,
             releaseData,
+            tagIndex,
             textFormatUtils,
         }),
         playerStyles,
@@ -70,7 +87,10 @@ const bundle = `${meta.trimEnd()}\n\n${injectCoreConstants(
 validateBuiltBundle(bundle);
 
 const minified = await minify(bundle, {
-    compress: true,
+    // The bundle targets current Chrome/Firefox and Tampermonkey, so Terser may
+    // use modern syntax and a second pass; this trims ~1.5 KB from the release.
+    ecma: 2020,
+    compress: { passes: 2 },
     mangle: true,
     format: {
         comments: (node, comment) => {
@@ -127,8 +147,22 @@ function validateUserscriptCore(value) {
         );
     }
 
+    if (!value.includes("// __BCAMPX_PLAYER__")) {
+        throw new Error("Userscript core must include player placeholder.");
+    }
+
+    if (!value.includes("// __BCAMPX_TRACK_ACTIONS__")) {
+        throw new Error(
+            "Userscript core must include track action placeholder.",
+        );
+    }
+
     if (!value.includes("// __BCAMPX_RELEASE_DATA__")) {
         throw new Error("Userscript core must include release data placeholder.");
+    }
+
+    if (!value.includes("// __BCAMPX_TAG_INDEX__")) {
+        throw new Error("Userscript core must include tag index placeholder.");
     }
 
     if (!value.includes("// __BCAMPX_TEXT_FORMAT_UTILS__")) {
@@ -170,6 +204,30 @@ function validateArtistMusicFeed(value) {
     }
 }
 
+function validatePlayer(value) {
+    if (!value.includes("function ensurePlayerShell")) {
+        throw new Error("Player source must define ensurePlayerShell.");
+    }
+
+    if (!value.includes("function playSharedTrack")) {
+        throw new Error("Player source must define playSharedTrack.");
+    }
+}
+
+function validateTrackActions(value) {
+    if (!value.includes("function runTrackActionHelper")) {
+        throw new Error(
+            "Track action source must define runTrackActionHelper.",
+        );
+    }
+
+    if (!value.includes("function executeTrackAction")) {
+        throw new Error(
+            "Track action source must define executeTrackAction.",
+        );
+    }
+}
+
 function validateReleaseData(value) {
     if (!value.includes("async function getReleaseData")) {
         throw new Error("Release data source must define getReleaseData.");
@@ -177,6 +235,18 @@ function validateReleaseData(value) {
 
     if (!value.includes("function parseReleasePage")) {
         throw new Error("Release data source must define parseReleasePage.");
+    }
+}
+
+function validateTagIndex(value) {
+    if (!value.includes("function runFanTagIndexBuild")) {
+        throw new Error("Tag index source must define runFanTagIndexBuild.");
+    }
+
+    if (!value.includes("function findFanTagSearchMatches")) {
+        throw new Error(
+            "Tag index source must define findFanTagSearchMatches.",
+        );
     }
 }
 
@@ -194,7 +264,10 @@ function validateBuiltBundle(value) {
     const placeholders = [
         "__BCAMPX_PLAYER_ICONS__",
         "__BCAMPX_ARTIST_MUSIC_FEED__",
+        "__BCAMPX_PLAYER__",
+        "__BCAMPX_TRACK_ACTIONS__",
         "__BCAMPX_RELEASE_DATA__",
+        "__BCAMPX_TAG_INDEX__",
         "__BCAMPX_TEXT_FORMAT_UTILS__",
     ];
     const remainingPlaceholder = placeholders.find((placeholder) =>
@@ -216,7 +289,15 @@ function getUserscriptVersion(meta) {
 
 function injectSourceFragments(
     core,
-    { playerIcons, artistMusicFeed, releaseData, textFormatUtils },
+    {
+        playerIcons,
+        artistMusicFeed,
+        player,
+        trackActions,
+        releaseData,
+        tagIndex,
+        textFormatUtils,
+    },
 ) {
     return core
         .replace("// __BCAMPX_PLAYER_ICONS__", playerIcons.trimEnd())
@@ -224,7 +305,10 @@ function injectSourceFragments(
             "// __BCAMPX_ARTIST_MUSIC_FEED__",
             artistMusicFeed.trimEnd(),
         )
+        .replace("// __BCAMPX_PLAYER__", player.trimEnd())
+        .replace("// __BCAMPX_TRACK_ACTIONS__", trackActions.trimEnd())
         .replace("// __BCAMPX_RELEASE_DATA__", releaseData.trimEnd())
+        .replace("// __BCAMPX_TAG_INDEX__", tagIndex.trimEnd())
         .replace("// __BCAMPX_TEXT_FORMAT_UTILS__", textFormatUtils.trimEnd());
 }
 

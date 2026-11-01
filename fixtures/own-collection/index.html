@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Own Collection Singles | Bandcamp</title>
+  </head>
+  <body>
+    <div id="pagedata" hidden></div>
+
+    <div class="collection-tabs">
+      <ol>
+        <li class="active" data-tab="collection" data-grid-id="collection-grid">
+          collection
+        </li>
+      </ol>
+    </div>
+
+    <div id="grids">
+      <div id="collection-grid" class="grid active">
+        <div class="collection-items">
+          <ol class="collection-grid" id="items"></ol>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const mode =
+          new URLSearchParams(window.location.search).get("mode") ||
+          "own-album";
+        const own = mode.startsWith("own");
+        const trackTyped = mode.endsWith("track");
+
+        document.getElementById("pagedata").setAttribute(
+          "data-blob",
+          own
+            ? mode === "own-identities"
+              ? '{"fan_data":{"fan_id":42},"identities":{"fan":{"id":42}}}'
+              : '{"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42}}'
+            : '{"fan_data":{"fan_id":7,"is_own_page":false,"name":"Other Fan"},"current_fan":{"fan_id":42}}',
+        );
+
+        // Two single-track purchases from the same album. When Bandcamp reports
+        // them as album tralbums they share one release URL, but each purchase
+        // still carries its own download link.
+        globalThis.__makeCollectionSingle = (options) => {
+          const item = document.createElement("li");
+          const albumUrl = "https://fixture.bandcamp.com/album/shared";
+          const trackUrl = `https://fixture.bandcamp.com/track/shared-song-${options.trackId}`;
+          item.className = "collection-item-container";
+          item.setAttribute(
+            "data-tralbumid",
+            trackTyped ? String(options.trackId) : "100",
+          );
+          item.setAttribute("data-tralbumtype", trackTyped ? "t" : "a");
+          item.setAttribute(
+            "data-itemid",
+            trackTyped ? String(options.trackId) : "100",
+          );
+          item.setAttribute("data-bandid", "900");
+          item.setAttribute(
+            "data-playerdata",
+            JSON.stringify({
+              album: {
+                id: 100,
+                title: "Shared Album",
+                url: albumUrl,
+                is_owned: true,
+              },
+              id: options.trackId,
+              title: options.title,
+              artist_name: "Fixture Artist",
+              url: trackTyped ? trackUrl : albumUrl,
+              duration: 120,
+            }),
+          );
+          item.innerHTML = `
+            <a class="item-link" href="${trackTyped ? trackUrl : albumUrl}">
+              <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" />
+              <span class="collection-item-title">${options.title}</span>
+              <span class="collection-item-artist">by Fixture Artist</span>
+            </a>
+            <span class="redownload-item">
+              <a href="https://bandcamp.com/download/${options.downloadToken}">download</a>
+            </span>`;
+          return item;
+        };
+
+        document.getElementById("items").append(
+          __makeCollectionSingle({
+            trackId: 11,
+            title: "Shared Song One",
+            downloadToken: "song-one",
+          }),
+          __makeCollectionSingle({
+            trackId: 12,
+            title: "Shared Song Two",
+            downloadToken: "song-two",
+          }),
+        );
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+    <script>
+      (async () => {
+        const mode =
+          new URLSearchParams(window.location.search).get("mode") ||
+          "own-album";
+        const wait = (ms) =>
+          new Promise((resolve) => window.setTimeout(resolve, ms));
+        await wait(2500);
+
+        // "*-sync" modes touch an observed attribute on the source grid after
+        // the feed was built, which forces the reconciliation path. Single-track
+        // purchases from one album must survive it as separate cards.
+        if (mode.endsWith("-sync")) {
+          const firstItem = document.querySelector(
+            "#items li.collection-item-container",
+          );
+          if (firstItem) {
+            firstItem.setAttribute(
+              "data-itemid",
+              firstItem.getAttribute("data-itemid") || "100",
+            );
+          }
+          await wait(2500);
+        }
+
+        const cards = Array.from(
+          document.querySelectorAll(
+            ".bcampx-label-feed-card[data-bcampx-release-url]",
+          ),
+        );
+        const downloads = cards
+          .map((card) => {
+            const action = card.querySelector(
+              "[data-bcampx-release-action='buy']",
+            );
+            return action
+              ? action.getAttribute("data-bcampx-digital-download-url") || ""
+              : "";
+          })
+          .filter(Boolean);
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-card-count",
+          String(cards.length),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-release-urls",
+          cards
+            .map((card) => card.getAttribute("data-bcampx-release-url"))
+            .join("|"),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-titles",
+          cards
+            .map((card) => {
+              const link = card.querySelector(
+                ".bcampx-label-feed-card__story-title .item-link",
+              );
+              return link ? link.textContent : "";
+            })
+            .join("|"),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-downloads",
+          downloads.join("|"),
+        );
+      })();
+    </script>
+  </body>
+</html>

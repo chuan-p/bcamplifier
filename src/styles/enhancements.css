@@ -5,6 +5,7 @@
         max-width: 360px;
         color: #444;
         font: 12px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        overflow-wrap: anywhere;
       }
 
       .bcampx * {
@@ -37,8 +38,44 @@
         box-sizing: border-box;
       }
 
+      /* The feed now sits next to the tab grids instead of inside one, so it
+         needs the same centered column the grid itself uses. */
+      #grids > .bcampx-label-feed {
+        flex: 0 0 100%;
+        width: 100%;
+        max-width: 940px;
+        box-sizing: border-box;
+        margin-right: auto;
+        margin-left: auto;
+      }
+
+      #grids > .bcampx-label-feed--other-fan {
+        margin-top: 20px;
+      }
+
       #grids > .grid > .bcampx-label-feed--other-fan {
         margin-top: 20px;
+      }
+
+      .bcampx-label-feed__more {
+        display: flex;
+        justify-content: center;
+        margin: 12px 0 4px;
+      }
+
+      .bcampx-label-feed__more-button {
+        padding: 7px 16px;
+        border: 1px solid rgba(0, 0, 0, 0.18);
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.92);
+        color: #333;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .bcampx-label-feed__more-button:hover {
+        border-color: rgba(0, 0, 0, 0.32);
+        background: #fff;
       }
 
       .bcampx-label-feed__list {
@@ -64,13 +101,26 @@
         pointer-events: none !important;
       }
 
+      /* Batchcamp (https://github.com/hyphmongo/batchcamp) puts a checkbox in
+         every native collection item and floats its Select All / Download
+         controls over the page. Its checkboxes only exist inside Bandcamp's own
+         grid, and the enhanced feed moves that grid offscreen (with pointer
+         events disabled), so the list view also hides the floating controls:
+         otherwise Select All would silently tick checkboxes nobody can see.
+         Showing the grid removes the class and Batchcamp is fully usable again,
+         with whatever it had selected still selected. */
+      .bcampx-label-feed-page--enhanced #select-all,
+      .bcampx-label-feed-page--enhanced .bc-select-all-wrapper,
+      .bcampx-label-feed-page--enhanced .bc-download-wrapper,
+      .bcampx-label-feed-page--enhanced .bc-dropdown {
+        display: none !important;
+      }
+
       .bcampx-label-feed-card {
         box-sizing: border-box;
         display: block;
         width: 100%;
         min-height: 150px;
-        content-visibility: auto;
-        contain-intrinsic-size: 260px;
         margin: 0 0 16px;
         padding: 15px 18px;
         border: 1px solid rgba(0, 0, 0, 0.12);
@@ -78,6 +128,16 @@
         background: rgba(255, 255, 255, 0.92);
         color: #333;
         font: 400 13px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+
+      /* Let the browser skip style, layout and paint for tag result cards
+         outside the viewport. This is the native equivalent of virtualising
+         the list; it was removed earlier on a wrong hypothesis about missing
+         tracklists (the real cause was the feed living inside Bandcamp's
+         grid, fixed separately). */
+      .bcampx-label-feed-card[data-bcampx-tag-source="tags"] {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 220px;
       }
 
       .bcampx-label-feed-card * {
@@ -187,11 +247,6 @@
 
       .bcampx-label-feed-card .bcampx--supported-slot {
         width: 100%;
-      }
-
-      .bcampx-label-feed-card .bcampx--supported-slot.bcampx--expanded {
-        content-visibility: auto;
-        contain-intrinsic-size: auto 360px;
       }
 
       .bcampx-label-feed-toggle {

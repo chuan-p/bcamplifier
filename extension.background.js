@@ -12,6 +12,11 @@ const ALLOWED_REQUEST_HEADERS = new Set(["accept", "content-type"]);
 const ALLOWED_FETCH_CREDENTIALS = new Set(["include", "omit"]);
 const MAX_FETCH_TIMEOUT_MS = 15000;
 const HOST_PERMISSION_REQUEST_PAGE = "extension.host-permission.html";
+const HOST_PERMISSION_STORAGE_KEY = "bcampx:pendingHostPermissionRequests";
+const HOST_PERMISSION_REQUEST_TTL_MS = 10 * 60 * 1000;
+// Mirror of the persisted host-permission requests. The MV3 service worker can
+// be torn down while the permission tab is open, so the authoritative copy
+// lives in storage.session and this map is only a warm cache.
 const pendingHostPermissionRequests = new Map();
 
 if (runtimeApi && runtimeApi.runtime) {
@@ -32,6 +37,23 @@ if (runtimeApi && runtimeApi.runtime) {
                             error && error.message
                                 ? error.message
                                 : "Network request failed.",
+                    }),
+                );
+            return true;
+        }
+
+        if (message.type === "bcampx:storage-get-by-prefix") {
+            handleGetStorageByPrefix(message, sender)
+                .then((values) =>
+                    safeSendResponse(sendResponse, { ok: true, values }),
+                )
+                .catch((error) =>
+                    safeSendResponse(sendResponse, {
+                        ok: false,
+                        error:
+                            error && error.message
+                                ? error.message
+                                : "Storage read failed.",
                     }),
                 );
             return true;
@@ -94,14 +116,181 @@ if (runtimeApi && runtimeApi.runtime) {
 
 if (runtimeApi && runtimeApi.tabs && runtimeApi.tabs.onRemoved) {
     runtimeApi.tabs.onRemoved.addListener((tabId) => {
-        pendingHostPermissionRequests.forEach((pending, requestId) => {
-            if (
-                pending.sourceTabId === tabId ||
-                pending.permissionTabId === tabId
-            ) {
-                pendingHostPermissionRequests.delete(requestId);
+        void handleTrackedTabRemoved(tabId);
+    });
+}
+
+void pruneStalePendingHostPermissionRequests();
+
+async function handleTrackedTabRemoved(tabId) {
+    const records = await readPendingHostPermissionRequests();
+
+    await Promise.all(
+        Object.entries(records).map(async ([requestId, pending]) => {
+            if (!pending || typeof pending !== "object") {
+                await deletePendingHostPermissionRequest(requestId);
+                return;
             }
+
+            if (pending.sourceTabId === tabId) {
+                await deletePendingHostPermissionRequest(requestId);
+                return;
+            }
+
+            if (pending.permissionTabId !== tabId) {
+                return;
+            }
+
+            await deletePendingHostPermissionRequest(requestId);
+            try {
+                await sendMessageToTab(pending.sourceTabId, {
+                    type: "bcampx:host-permission-result",
+                    requestId,
+                    originPattern: pending.originPattern,
+                    granted: false,
+                    alreadyGranted: false,
+                    error: "Permission request was cancelled.",
+                });
+            } catch (_error) {
+                // The requesting tab may already be gone.
+            }
+        }),
+    );
+}
+
+async function readPendingHostPermissionRequests() {
+    const area = getSessionStorageArea();
+    if (!area) {
+        return Object.fromEntries(pendingHostPermissionRequests);
+    }
+
+    try {
+        const stored = await callStorageAreaMethod(
+            area,
+            "get",
+            HOST_PERMISSION_STORAGE_KEY,
+        );
+        const records =
+            stored && typeof stored[HOST_PERMISSION_STORAGE_KEY] === "object"
+                ? stored[HOST_PERMISSION_STORAGE_KEY]
+                : {};
+        syncPendingHostPermissionCache(records);
+        return records;
+    } catch (_error) {
+        return Object.fromEntries(pendingHostPermissionRequests);
+    }
+}
+
+function syncPendingHostPermissionCache(records) {
+    pendingHostPermissionRequests.clear();
+    Object.entries(records || {}).forEach(([requestId, record]) => {
+        pendingHostPermissionRequests.set(requestId, record);
+    });
+}
+
+async function writePendingHostPermissionRequests(records) {
+    syncPendingHostPermissionCache(records);
+
+    const area = getSessionStorageArea();
+    if (!area) {
+        return;
+    }
+
+    try {
+        await callStorageAreaMethod(area, "set", {
+            [HOST_PERMISSION_STORAGE_KEY]: records,
         });
+    } catch (_error) {
+        // The in-memory mirror still serves this worker's lifetime.
+    }
+}
+
+async function getPendingHostPermissionRequest(requestId) {
+    const records = await readPendingHostPermissionRequests();
+    const pending = records[requestId];
+    return pending && typeof pending === "object" ? pending : null;
+}
+
+async function savePendingHostPermissionRequest(requestId, pending) {
+    const records = await readPendingHostPermissionRequests();
+    records[requestId] = pending;
+    await writePendingHostPermissionRequests(records);
+}
+
+async function deletePendingHostPermissionRequest(requestId) {
+    const records = await readPendingHostPermissionRequests();
+    if (!(requestId in records)) {
+        pendingHostPermissionRequests.delete(requestId);
+        return;
+    }
+
+    delete records[requestId];
+    await writePendingHostPermissionRequests(records);
+}
+
+async function pruneStalePendingHostPermissionRequests() {
+    const records = await readPendingHostPermissionRequests();
+    const now = Date.now();
+    let changed = false;
+
+    Object.entries(records).forEach(([requestId, pending]) => {
+        const createdAt = Number(pending && pending.createdAt) || 0;
+        if (!createdAt || now - createdAt > HOST_PERMISSION_REQUEST_TTL_MS) {
+            delete records[requestId];
+            changed = true;
+        }
+    });
+
+    if (changed) {
+        await writePendingHostPermissionRequests(records);
+    }
+}
+
+function getSessionStorageArea() {
+    const storage = runtimeApi && runtimeApi.storage;
+    if (!storage) {
+        return null;
+    }
+
+    return storage.session || null;
+}
+
+function callStorageAreaMethod(area, methodName, payload) {
+    if (!area || typeof area[methodName] !== "function") {
+        return Promise.reject(
+            new Error(`storage.${methodName} is unavailable.`),
+        );
+    }
+
+    if (runtimeApi.kind === "browser") {
+        try {
+            return Promise.resolve(
+                payload === undefined
+                    ? area[methodName]()
+                    : area[methodName](payload),
+            );
+        } catch (error) {
+            return Promise.reject(error);
+        }
+    }
+
+    return new Promise((resolve, reject) => {
+        const callback = (result) => {
+            const error = runtimeApi.runtime && runtimeApi.runtime.lastError;
+            if (error) {
+                reject(new Error(error.message || `${methodName} failed.`));
+                return;
+            }
+
+            resolve(result);
+        };
+
+        if (payload === undefined) {
+            area[methodName](callback);
+            return;
+        }
+
+        area[methodName](payload, callback);
     });
 }
 
@@ -178,6 +367,44 @@ async function handleFetchRequest(message, sender) {
     throw normalizeFetchError(lastError);
 }
 
+async function handleGetStorageByPrefix(message, sender) {
+    if (!isTrustedRuntimeSender(sender)) {
+        throw new Error("Rejected storage read from an unknown sender.");
+    }
+    const prefix = String((message && message.prefix) || "");
+    if (!prefix.startsWith("bcampx:")) {
+        throw new Error("Rejected unexpected storage prefix.");
+    }
+    const storage = runtimeApi && runtimeApi.storage && runtimeApi.storage.local;
+    if (!storage || typeof storage.get !== "function") {
+        throw new Error("storage.local is unavailable.");
+    }
+    const items = await new Promise((resolve, reject) => {
+        if (runtimeApi.kind === "browser") {
+            Promise.resolve()
+                .then(() => storage.get(null))
+                .then(resolve)
+                .catch(reject);
+            return;
+        }
+        storage.get(null, (result) => {
+            const error = runtimeApi.runtime && runtimeApi.runtime.lastError;
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve(result);
+        });
+    });
+    const values = {};
+    Object.keys(items || {}).forEach((key) => {
+        if (key.startsWith(prefix)) {
+            values[key] = items[key];
+        }
+    });
+    return values;
+}
+
 async function handleGetHostPermissions(sender) {
     if (!isTrustedRuntimeSender(sender)) {
         throw new Error("Rejected host permission lookup from an unknown sender.");
@@ -220,19 +447,30 @@ async function handleStartHostPermissionRequest(message, sender) {
     const pageUrl = new URL(runtimeApi.runtime.getURL(HOST_PERMISSION_REQUEST_PAGE));
     pageUrl.searchParams.set("requestId", requestId);
     pageUrl.searchParams.set("origin", originPattern);
-    const createdTab = await createTab({
-        url: pageUrl.toString(),
-        active: true,
+    await savePendingHostPermissionRequest(requestId, {
+        sourceTabId,
+        permissionTabId: -1,
+        originPattern,
+        createdAt: Date.now(),
     });
 
-    pendingHostPermissionRequests.set(requestId, {
-        sourceTabId,
-        permissionTabId:
-            createdTab && Number.isInteger(createdTab.id)
-                ? createdTab.id
-                : -1,
-        originPattern,
-    });
+    try {
+        const createdTab = await createTab({
+            url: pageUrl.toString(),
+            active: true,
+        });
+        const pending = await getPendingHostPermissionRequest(requestId);
+        if (pending) {
+            pending.permissionTabId =
+                createdTab && Number.isInteger(createdTab.id)
+                    ? createdTab.id
+                    : -1;
+            await savePendingHostPermissionRequest(requestId, pending);
+        }
+    } catch (error) {
+        await deletePendingHostPermissionRequest(requestId);
+        throw error;
+    }
 
     return {
         requestId,
@@ -253,13 +491,13 @@ async function handleHostPermissionResult(message, sender) {
         throw new Error("Host permission result is missing an id.");
     }
 
-    const pending = pendingHostPermissionRequests.get(requestId);
+    const pending = await getPendingHostPermissionRequest(requestId);
     if (!pending) {
         await closeSenderTab(sender);
         return { requestId, ignored: true };
     }
 
-    pendingHostPermissionRequests.delete(requestId);
+    await deletePendingHostPermissionRequest(requestId);
     const originPattern =
         normalizeCustomHostPermissionPattern(
             (message && message.originPattern) || pending.originPattern,

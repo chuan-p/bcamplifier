@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rate Limit Fixture | Bandcamp</title>
+  </head>
+  <body>
+    <div
+      id="pagedata"
+      data-blob='{"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42},"collection_data":{"last_token":"fixture-token","item_count":5,"batch_size":20,"sequence":[]},"wishlist_data":{"last_token":"fixture-token","item_count":5,"batch_size":20,"sequence":[]}}'
+      hidden
+    ></div>
+
+    <div class="collection-tabs">
+      <ol>
+        <li class="active" data-tab="collection" data-grid-id="collection-grid">
+          collection
+        </li>
+      </ol>
+    </div>
+
+    <div id="grids">
+      <div id="collection-grid" class="grid active">
+        <div class="collection-items">
+          <ol class="collection-grid"></ol>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const storage = new Map([["bcampx:userSettings", { enableTagSearch: true }]]);
+
+        globalThis.__fixtureRequestCount = 0;
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async () => {
+            throw new Error("HTTP 429");
+          },
+          requestJson: async () => {
+            globalThis.__fixtureRequestCount += 1;
+            throw new Error("HTTP 429");
+          },
+          storageGet: async (key, fallback) =>
+            storage.has(key) ? storage.get(key) : fallback,
+          storageSet: async (key, value) => {
+            storage.set(key, value);
+          },
+          storageGetByPrefix: async (prefix) => {
+            const values = {};
+            storage.forEach((value, key) => {
+              if (key.startsWith(prefix)) {
+                values[key] = value;
+              }
+            });
+            return values;
+          },
+          storageRemove: async (key) => {
+            storage.delete(key);
+          },
+        };
+
+        globalThis.__fixtureStorage = storage;
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+    <script>
+      window.setTimeout(() => {
+        const cooldown = globalThis.__fixtureStorage.get(
+          "bcampx:tagIndexCooldown",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-tag-requests",
+          String(globalThis.__fixtureRequestCount || 0),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-request-burst",
+          String((globalThis.__fixtureRequestCount || 0) <= 3),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-cooldown-level",
+          String((cooldown && cooldown.level) || 0),
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-fixture-cooldown-active",
+          String(Boolean(cooldown && cooldown.until > Date.now())),
+        );
+      }, 6000);
+    </script>
+  </body>
+</html>

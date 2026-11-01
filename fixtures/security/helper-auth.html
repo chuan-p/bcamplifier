@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Helper Auth Fixture | Bandcamp</title>
+  </head>
+  <body>
+    <!--
+      A Bandcamp release page with everything the wishlist helper needs
+      (signed-in fan, crumb, collect info). It exists to prove that a crafted
+      #bcampx-helper hash cannot drive an authenticated wishlist POST.
+    -->
+    <div
+      id="pagedata"
+      hidden
+      data-blob='{"identities":{"fan":{"id":42}},"fan_tralbum_data":{"is_wishlisted":false}}'
+    ></div>
+    <script
+      id="js-crumbs-data"
+      data-crumbs='{"collect_item_cb":"fixture-crumb","uncollect_item_cb":"fixture-crumb"}'
+    ></script>
+    <div
+      data-tralbum-collect-info='{"is_collected":false,"collect_item_id":321,"collect_item_type":"a","collect_band_id":654}'
+    ></div>
+    <div
+      data-tralbum='{"current":{"id":321,"type":"a","band_id":654,"title":"Helper Auth Fixture","release_date":"2024-01-02"},"album_title":"Helper Auth Fixture","artist":"Fixture Artist","trackinfo":[{"title":"Track One","track_id":"1"}]}'
+    ></div>
+
+    <h1>Helper Auth Fixture</h1>
+
+    <script>
+      // Count authenticated wishlist POSTs so the test can prove the helper
+      // never reaches Bandcamp when the request cannot be verified.
+      window.__bcampxFixturePostCount = 0;
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url =
+          typeof input === "string" ? input : (input && input.url) || "";
+        const method = String((init && init.method) || "GET").toUpperCase();
+        if (
+          method === "POST" &&
+          /\/collect_item_cb|\/uncollect_item_cb/.test(url)
+        ) {
+          window.__bcampxFixturePostCount += 1;
+        }
+        return nativeFetch(input, init);
+      };
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+    <script>
+      (async () => {
+        const wait = (ms) =>
+          new Promise((resolve) => window.setTimeout(resolve, ms));
+        await wait(2500);
+        const root = document.documentElement;
+        root.setAttribute(
+          "data-bcampx-fixture-post-count",
+          String(window.__bcampxFixturePostCount || 0),
+        );
+        root.setAttribute(
+          "data-bcampx-fixture-helper-auth",
+          root.getAttribute("data-bcampx-helper-auth") || "",
+        );
+      })();
+    </script>
+  </body>
+</html>

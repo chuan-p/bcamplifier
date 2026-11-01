@@ -3,8 +3,13 @@
 set -eu
 
 if [ "${FIREFOX_BIN:-}" ]; then
-    printf '%s\n' "$FIREFOX_BIN"
-    exit 0
+    if [ -x "$FIREFOX_BIN" ]; then
+        printf '%s\n' "$FIREFOX_BIN"
+        exit 0
+    fi
+
+    echo "FIREFOX_BIN is set but is not an executable: $FIREFOX_BIN" >&2
+    exit 1
 fi
 
 for candidate in \

@@ -31,6 +31,8 @@
         hasHostPermission,
         storageGet,
         storageSet,
+        storageGetByPrefix,
+        storageRemove,
         subscribeStorageKey,
     };
     if (document.documentElement) {
@@ -398,6 +400,39 @@
 
     function storageSet(key, value) {
         return callStorageMethod("set", { [key]: value }).then(() => {});
+    }
+
+    function storageGetByPrefix(prefix) {
+        // Filter in the background so the page only receives the matching
+        // records; a direct storage.get(null) would clone the whole local
+        // storage (including the release cache) into the content script.
+        return sendRuntimeMessage({
+            type: "bcampx:storage-get-by-prefix",
+            prefix,
+        })
+            .then((payload) => {
+                if (!payload || payload.ok !== true) {
+                    throw new Error(
+                        (payload && payload.error) || "Storage read failed.",
+                    );
+                }
+                return payload.values || {};
+            })
+            .catch(() =>
+                callStorageMethod("get", null).then((items) => {
+                    const values = {};
+                    Object.keys(items || {}).forEach((key) => {
+                        if (key.startsWith(prefix)) {
+                            values[key] = items[key];
+                        }
+                    });
+                    return values;
+                }),
+            );
+    }
+
+    function storageRemove(key) {
+        return callStorageMethod("remove", key).then(() => {});
     }
 
     function sendRuntimeMessage(message) {

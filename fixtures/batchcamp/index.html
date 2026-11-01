@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Batchcamp Coexistence | Bandcamp</title>
+  </head>
+  <body>
+    <div id="pagedata" hidden></div>
+
+    <div class="collection-tabs">
+      <ol>
+        <li class="active" data-tab="collection" data-grid-id="collection-grid">
+          collection
+        </li>
+      </ol>
+    </div>
+
+    <div id="grids">
+      <div id="collection-grid" class="grid active">
+        <div class="collection-items">
+          <ol class="collection-grid" id="items"></ol>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        document
+          .getElementById("pagedata")
+          .setAttribute(
+            "data-blob",
+            '{"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42}}',
+          );
+
+        const items = document.getElementById("items");
+
+        for (let index = 1; index <= 4; index += 1) {
+          const item = document.createElement("li");
+          const albumUrl = `https://fixture.bandcamp.com/album/release-${index}`;
+          item.className = "collection-item-container";
+          item.setAttribute("data-tralbumid", String(100 + index));
+          item.setAttribute("data-tralbumtype", "a");
+          item.setAttribute("data-itemid", String(100 + index));
+          item.setAttribute("data-bandid", "900");
+          item.setAttribute(
+            "data-playerdata",
+            JSON.stringify({
+              album: {
+                id: 100 + index,
+                title: `Release ${index}`,
+                url: albumUrl,
+                is_owned: true,
+              },
+              id: 10 + index,
+              title: `Featured Track ${index}`,
+              artist_name: "Fixture Artist",
+              url: albumUrl,
+              duration: 120,
+            }),
+          );
+          // Bandcamp's real markup already carries the art container; Batchcamp
+          // only appends its checkbox into it.
+          item.innerHTML = `
+            <div class="collection-item-art-container">
+              <a class="item-link" href="${albumUrl}">
+                <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="" />
+                <span class="collection-item-title">Release ${index}</span>
+                <span class="collection-item-artist">by Fixture Artist</span>
+              </a>
+            </div>
+            <span class="redownload-item">
+              <a href="https://bandcamp.com/download/release-${index}">download</a>
+            </span>`;
+          items.appendChild(item);
+        }
+      })();
+
+      // Mirrors what Batchcamp's content script does to Bandcamp's own grid:
+      // position the art container and append one checkbox per item, plus the
+      // floating Select All button it adds to the page body.
+      globalThis.__injectBatchcamp = () => {
+        for (const item of document.querySelectorAll(
+          "#items > li.collection-item-container",
+        )) {
+          const art = item.querySelector(".collection-item-art-container");
+          if (!art || art.querySelector(".bc-checkbox")) {
+            continue;
+          }
+          art.style.position = "relative";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.className = "bc-checkbox";
+          checkbox.setAttribute(
+            "data-id",
+            item.getAttribute("data-tralbumid") || "",
+          );
+          art.appendChild(checkbox);
+        }
+        if (!document.getElementById("select-all")) {
+          const selectAll = document.createElement("button");
+          selectAll.type = "button";
+          selectAll.id = "select-all";
+          selectAll.className = "bc-btn bc-select-all-btn";
+          selectAll.textContent = "Select All";
+          document.body.appendChild(selectAll);
+        }
+      };
+    </script>
+    <script>
+      // Batchcamp installs first in the default mode, which is the order that
+      // used to leave every checkbox offscreen.
+      const mode =
+        new URLSearchParams(window.location.search).get("mode") || "install";
+      if (mode !== "late" && mode !== "churn") {
+        __injectBatchcamp();
+      }
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+    <script>
+      (async () => {
+        const mode =
+          new URLSearchParams(window.location.search).get("mode") || "install";
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const html = document.documentElement;
+        const set = (key, value) =>
+          html.setAttribute("data-batchcamp-fixture-" + key, String(value));
+
+        const snapshot = (prefix) => {
+          const grid = document.querySelector("#items");
+          const selectAll = document.getElementById("select-all");
+          let onscreen = 0;
+          for (const checkbox of document.querySelectorAll(".bc-checkbox")) {
+            const box = checkbox.getBoundingClientRect();
+            if (
+              box.x >= 0 &&
+              box.y >= 0 &&
+              box.x + box.width <= window.innerWidth &&
+              box.y + box.height <= window.innerHeight
+            ) {
+              onscreen += 1;
+            }
+          }
+
+          set(prefix + "view", html.getAttribute("data-bcampx-label-feed-view"));
+          set(prefix + "position", getComputedStyle(grid).position);
+          set(prefix + "onscreen", onscreen);
+          set(
+            prefix + "select-all",
+            selectAll ? getComputedStyle(selectAll).display !== "none" : "missing",
+          );
+        };
+
+        const toggleView = () => {
+          const toggle = document.querySelector(".bcampx-label-feed-toggle");
+          if (toggle) {
+            toggle.click();
+          }
+        };
+
+        await wait(3200);
+
+        if (mode === "late" || mode === "churn") {
+          set(
+            "sync-before",
+            html.getAttribute("data-bcampx-label-feed-sync-run-count") || "0",
+          );
+          set(
+            "view-before",
+            html.getAttribute("data-bcampx-label-feed-view") || "",
+          );
+          set(
+            "position-before",
+            getComputedStyle(document.querySelector("#items")).position,
+          );
+          __injectBatchcamp();
+          await wait(900);
+        }
+
+        // The list view owns the page: Batchcamp's floating controls must be
+        // hidden so nothing can tick checkboxes that nobody can see.
+        snapshot("feed-");
+        set(
+          "sync-after",
+          html.getAttribute("data-bcampx-label-feed-sync-run-count") || "0",
+        );
+
+        // Showing Bandcamp's grid must hand the page back to Batchcamp.
+        toggleView();
+        await wait(900);
+        snapshot("grid-");
+
+        // And going back to the feed must hide the controls again.
+        toggleView();
+        await wait(900);
+        snapshot("back-");
+      })();
+    </script>
+  </body>
+</html>

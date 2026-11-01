@@ -240,41 +240,57 @@ const checks = [
 })();
 JS
 else
-    python3 - "$CHROME_BIN" "$DIST_DIR/chrome-unpacked" <<'PY'
+    python3 - "$CHROME_BIN" "$DIST_DIR/chrome-unpacked" "$TEST_URL" <<'PY'
 import shutil
 import subprocess
 import sys
 
-chrome_bin, extension_dir = sys.argv[1:3]
+chrome_bin, extension_dir, test_url = sys.argv[1:4]
 profile_dir = "/tmp/bcampx-smoke-profile"
 shutil.rmtree(profile_dir, ignore_errors=True)
 cmd = [
     chrome_bin,
     "--headless=new",
     "--disable-gpu",
+    "--ignore-certificate-errors",
+    "--host-resolver-rules=MAP bandcamp.com 127.0.0.1, EXCLUDE localhost",
+    "--window-size=1400,1600",
+    "--virtual-time-budget=9000",
     "--dump-dom",
     f"--user-data-dir={profile_dir}",
     f"--disable-extensions-except={extension_dir}",
     f"--load-extension={extension_dir}",
-    "about:blank",
+    test_url,
 ]
 
+stdout = ""
+stderr = ""
+return_code = None
 try:
-    result = subprocess.run(cmd, capture_output=True, timeout=12)
+    result = subprocess.run(cmd, capture_output=True, timeout=30)
+    stdout = result.stdout.decode("utf-8", "ignore")
     stderr = result.stderr.decode("utf-8", "ignore")
     return_code = result.returncode
 except subprocess.TimeoutExpired as exc:
+    stdout = (exc.stdout or b"").decode("utf-8", "ignore")
     stderr = (exc.stderr or b"").decode("utf-8", "ignore")
-    return_code = None
 
 manifest_error = "manifest" in stderr.lower() and "error" in stderr.lower()
-process_error = return_code not in (None, 0)
+injected = (
+    'data-bcampx-host="webextension"' in stdout
+    and 'data-bcampx-script-loaded="true"' in stdout
+)
+# Some Chromium builds keep the browser process alive after --dump-dom has
+# written the page. Tolerate that only when the dumped DOM actually proves the
+# extension injected, otherwise a hanging browser would count as a pass.
+process_error = return_code not in (None, 0) and not injected
 
 print("chrome_smoke_mode=fallback")
 print("chrome_manifest_error=" + ("true" if manifest_error else "false"))
 print("chrome_process_error=" + ("true" if process_error else "false"))
+print("chrome_extension_injected=" + ("true" if injected else "false"))
 
-if manifest_error or process_error:
+if manifest_error or process_error or not injected:
     print(stderr)
     sys.exit(1)
 PY

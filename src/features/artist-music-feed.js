@@ -21,59 +21,87 @@
         }
 
         STATE.artistMusicFeedBuilding = true;
-        const feed = document.createElement("section");
-        feed.className = "bcampx-label-feed";
-        feed.setAttribute("aria-label", feedContext.ariaLabel);
-        feed.setAttribute("data-bcampx-feed-kind", feedContext.kind);
-        if (
-            /^fan-/.test(feedContext.kind) &&
-            !isCurrentFanProfileOwner()
-        ) {
-            feed.classList.add("bcampx-label-feed--other-fan");
+        let feed = null;
+
+        try {
+            feed = document.createElement("section");
+            feed.className = "bcampx-label-feed";
+            feed.setAttribute("aria-label", feedContext.ariaLabel);
+            feed.setAttribute("data-bcampx-feed-kind", feedContext.kind);
+            if (
+                /^fan-/.test(feedContext.kind) &&
+                !isCurrentFanProfileOwner()
+            ) {
+                feed.classList.add("bcampx-label-feed--other-fan");
+            }
+
+            // Bandcamp's fan-page infinite loader appends releases to every
+            // nearby <ol>, so this list must not look like a native collection
+            // grid.
+            const list = document.createElement("div");
+            list.className = "bcampx-label-feed__list";
+            list.setAttribute("role", "list");
+            releases.forEach((release) => {
+                list.appendChild(createArtistMusicFeedCard(release));
+            });
+            feed.appendChild(list);
+
+            const storedView = cleanText(
+                await storageGet(ARTIST_MUSIC_VIEW_KEY, "feed"),
+            );
+            STATE.artistMusicFeedView =
+                storedView === "original" ? "original" : "feed";
+            STATE.artistMusicFeedNode = feed;
+            STATE.artistMusicSourceGridNode = sourceGrid;
+            STATE.artistMusicFeaturedNodes = findArtistMusicFeaturedNodes();
+            if (/^fan-/.test(feedContext.kind)) {
+                STATE.artistMusicFanDirtyGrids.delete(sourceGrid);
+            }
+
+            if (!mountReleaseGridFeed(feed, feedContext)) {
+                STATE.artistMusicFeedNode = null;
+                STATE.artistMusicSourceGridNode = null;
+                markDebugState(
+                    "data-bcampx-label-feed-state",
+                    "missing-source",
+                );
+                return false;
+            }
+
+            document.body.classList.add("bcampx-label-feed-page");
+            ensureArtistMusicViewToggle();
+            applyArtistMusicFeedView(STATE.artistMusicFeedView);
+            STATE.artistMusicFeedBuilt = true;
+            setupArtistMusicSourceGridObserver(sourceGrid);
+            setupFanCollectionTabObserver();
+            setupFanTagSearch();
+
+            markDebugState("data-bcampx-label-feed-state", "ready");
+            markDebugState(
+                "data-bcampx-label-feed-count",
+                String(releases.length),
+            );
+            markDebugState("data-bcampx-label-feed-kind", feedContext.kind);
+            markDebugState("data-bcampx-page-kind", feedContext.kind);
+            markDebugState(
+                "data-bcampx-label-feed-visible-count",
+                String(releases.length),
+            );
+            if (/^fan-/.test(feedContext.kind)) {
+                scheduleFanCollectionFeedContextSync();
+            }
+            return true;
+        } catch (error) {
+            if (feed && feed.isConnected) {
+                feed.remove();
+            }
+            STATE.artistMusicFeedNode = null;
+            STATE.artistMusicSourceGridNode = null;
+            markDebugState("data-bcampx-label-feed-state", "error");
+            throw error;
+        } finally {
+            STATE.artistMusicFeedBuilding = false;
         }
-
-        // Bandcamp's fan-page infinite loader appends releases to every nearby
-        // <ol>, so this list must not look like a native collection grid.
-        const list = document.createElement("div");
-        list.className = "bcampx-label-feed__list";
-        list.setAttribute("role", "list");
-        releases.forEach((release) => {
-            list.appendChild(createArtistMusicFeedCard(release));
-        });
-        feed.appendChild(list);
-
-        const storedView = cleanText(
-            await storageGet(ARTIST_MUSIC_VIEW_KEY, "feed"),
-        );
-        STATE.artistMusicFeedView = storedView === "original" ? "original" : "feed";
-        STATE.artistMusicFeedNode = feed;
-        STATE.artistMusicSourceGridNode = sourceGrid;
-        STATE.artistMusicFeaturedNodes = findArtistMusicFeaturedNodes();
-        if (/^fan-/.test(feedContext.kind)) {
-            STATE.artistMusicFanDirtyGrids.delete(sourceGrid);
-        }
-
-        mountReleaseGridFeed(feed, feedContext);
-        document.body.classList.add("bcampx-label-feed-page");
-        ensureArtistMusicViewToggle();
-        applyArtistMusicFeedView(STATE.artistMusicFeedView);
-        STATE.artistMusicFeedBuilt = true;
-        STATE.artistMusicFeedBuilding = false;
-        setupArtistMusicSourceGridObserver(sourceGrid);
-        setupFanCollectionTabObserver();
-
-        markDebugState("data-bcampx-label-feed-state", "ready");
-        markDebugState("data-bcampx-label-feed-count", String(releases.length));
-        markDebugState("data-bcampx-label-feed-kind", feedContext.kind);
-        markDebugState("data-bcampx-page-kind", feedContext.kind);
-        markDebugState(
-            "data-bcampx-label-feed-visible-count",
-            String(releases.length),
-        );
-        if (/^fan-/.test(feedContext.kind)) {
-            scheduleFanCollectionFeedContextSync();
-        }
-        return true;
     }
 
     function isCurrentFanProfileOwner() {
@@ -88,8 +116,13 @@
             return true;
         }
 
-        const profileFanId = Number(fanData && fanData.fan_id);
-        const currentFanId = Number(currentFan && currentFan.fan_id);
+        const profileFanId = Number(fanData && (fanData.fan_id || fanData.id));
+        // Bandcamp exposes the signed-in fan as current_fan on some pages and
+        // as identities.fan / fan_info on others; resolveFanIdFromPageState
+        // already knows those fallbacks.
+        const currentFanId =
+            Number(currentFan && (currentFan.fan_id || currentFan.id)) ||
+            resolveFanIdFromPageState(pageData);
         return Boolean(
             profileFanId > 0 &&
                 currentFanId > 0 &&
@@ -176,23 +209,33 @@
         }
 
         const target = mutation.target;
+        const changedNodes = [
+            ...mutation.addedNodes,
+            ...mutation.removedNodes,
+        ];
+        const isTabGridNode = (node) =>
+            node instanceof Element &&
+            (node.matches(
+                "#grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
+            ) ||
+                Boolean(
+                    node.querySelector(
+                        "#grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
+                    ),
+                ));
         if (
             target instanceof Element &&
-            target.matches("#grids, .collection-tabs, .grid-tabs-anchor")
+            target.matches(".collection-tabs, .grid-tabs-anchor")
         ) {
             return true;
         }
+        if (target instanceof Element && target.matches("#grids")) {
+            // The enhanced feed lives next to the tab grids; moving it must not
+            // look like a tab change or the sync would re-enter itself.
+            return changedNodes.some(isTabGridNode);
+        }
 
-        return [...mutation.addedNodes, ...mutation.removedNodes].some(
-            (node) =>
-                node instanceof Element &&
-                (node.matches(
-                    "#grids, #grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
-                ) ||
-                    node.querySelector(
-                        "#grids, #grids > .grid, [data-grid-id][data-tab], .grid-tabs-anchor",
-                    )),
-        );
+        return changedNodes.some(isTabGridNode);
     }
 
     function scheduleFanCollectionFeedContextSync() {
@@ -220,7 +263,9 @@
             return;
         }
         if (!(feed instanceof Element)) {
-            void buildArtistMusicFeed();
+            // buildArtistMusicFeed records its own error state and rethrows;
+            // this detached retry must not surface as an unhandled rejection.
+            void buildArtistMusicFeed().catch(() => {});
             return;
         }
         if (
@@ -283,6 +328,7 @@
         applyArtistMusicFeedView(STATE.artistMusicFeedView, {
             skipFeedWork: restoredCards || !sourceGridChanged,
         });
+
         if (
             (!sourceGridChanged ||
                 STATE.artistMusicFanDirtyGrids.has(context.sourceGrid)) &&
@@ -328,10 +374,7 @@
     }
 
     function markFanCollectionGridDirtyFromMutation(mutation) {
-        if (
-            !mutation ||
-            !isBandcampFanCollectionPageUrl(window.location.href)
-        ) {
+        if (!mutation || !isCurrentFanCollectionPage()) {
             return;
         }
 
@@ -424,27 +467,51 @@
     function mountReleaseGridFeed(feed, feedContext) {
         const sourceGrid = feedContext && feedContext.sourceGrid;
         if (!(feed instanceof Element) || !(sourceGrid instanceof Element)) {
-            return;
+            return false;
+        }
+
+        // The source grid can be replaced while an async caller is awaiting, so
+        // never assume it is still attached.
+        if (!sourceGrid.parentNode) {
+            return false;
         }
 
         if (feedContext && /^fan-/.test(feedContext.kind)) {
             const activeGrid = sourceGrid.closest(".grid");
-            const nativeContentRoot =
-                activeGrid &&
-                Array.from(activeGrid.children).find(
-                    (node) => node instanceof Element && node.contains(sourceGrid),
-                );
-            if (activeGrid && nativeContentRoot) {
-                activeGrid.insertBefore(feed, nativeContentRoot);
+            if (activeGrid && activeGrid.parentNode) {
+                activeGrid.parentNode.insertBefore(feed, activeGrid);
                 feed.setAttribute(
                     "data-bcampx-mounted-outside-native-content",
                     "true",
                 );
-                return;
+                return true;
             }
         }
 
         sourceGrid.parentNode.insertBefore(feed, sourceGrid);
+        return true;
+    }
+
+    // True when a grid mutation actually changes page content. Foreign
+    // extension controls (Batchcamp's checkboxes) and our own nodes do not.
+    function isPageContentGridMutation(mutation) {
+        if (!mutation) {
+            return false;
+        }
+
+        if (mutation.type === "attributes") {
+            return true;
+        }
+
+        const removed = Array.from(mutation.removedNodes || []);
+        if (removed.some((node) => node instanceof Element)) {
+            return true;
+        }
+
+        return Array.from(mutation.addedNodes || []).some(
+            (node) =>
+                node instanceof Element && !isBcampxInternalMutationNode(node),
+        );
     }
 
     function setupArtistMusicSourceGridObserver(sourceGrid) {
@@ -456,7 +523,12 @@
             STATE.artistMusicSourceGridObserver.disconnect();
         }
 
-        STATE.artistMusicSourceGridObserver = new MutationObserver(() => {
+        STATE.artistMusicSourceGridObserver = new MutationObserver((mutations) => {
+            // Batchcamp inserts one checkbox per item into this grid; treating
+            // those as release changes would re-sync the feed on every batch.
+            if (!mutations.some(isPageContentGridMutation)) {
+                return;
+            }
             STATE.artistMusicFanDirtyGrids.add(sourceGrid);
             scheduleArtistMusicFeedSync();
         });
@@ -531,6 +603,11 @@
         }
         incrementDebugCounter("data-bcampx-label-feed-sync-run-count");
 
+        // This rebuild touches dozens of cards at once; the body observer
+        // must not turn every attribute write into a rescan.
+        suspendMutationObserver();
+        try {
+
         const feedContext = {
             kind:
                 STATE.artistMusicFeedNode.getAttribute(
@@ -545,7 +622,20 @@
             ),
         );
         const existingCardsByUrl = new Map();
+        const existingCardsByGridItem = new Map();
+        const existingCardsByItemId = new Map();
         existingCards.forEach((card) => {
+            const gridItem = card.__bcampxGridItem;
+            if (gridItem instanceof Element) {
+                existingCardsByGridItem.set(gridItem, card);
+            }
+
+            const cardRelease = card.__bcampxArtistMusicRelease;
+            const itemId = cleanText(cardRelease && cardRelease.itemId);
+            if (itemId && !existingCardsByItemId.has(itemId)) {
+                existingCardsByItemId.set(itemId, card);
+            }
+
             const releaseUrl = normalizeReleaseUrl(
                 card.getAttribute("data-bcampx-release-url") || "",
             );
@@ -556,10 +646,53 @@
 
         const nextCards = [];
         const nextUrls = new Set();
+        const nextGridItems = new Set();
         const appendedCards = [];
 
         candidates.forEach((release) => {
             if (!release || !release.releaseUrl) {
+                return;
+            }
+
+            // Your own collection keeps one card per purchased item, even when
+            // several purchases share a release URL, so those cards must be
+            // deduplicated by source element identity rather than by URL.
+            const gridItem = release.gridItem;
+            if (release.ownFanCollection === true && gridItem instanceof Element) {
+                if (nextGridItems.has(gridItem)) {
+                    return;
+                }
+
+                nextGridItems.add(gridItem);
+                // A tag-only card can predate the native result for the same
+                // purchase. Reuse it by purchase id so the tracklist it already
+                // loaded is not thrown away when Bandcamp's response arrives.
+                const syntheticCardForUrl = existingCardsByUrl.get(
+                    normalizeReleaseUrl(release.releaseUrl || ""),
+                );
+                const ownExistingCard =
+                    existingCardsByGridItem.get(gridItem) ||
+                    (release.itemId
+                        ? existingCardsByItemId.get(
+                              cleanText(release.itemId),
+                          )
+                        : null) ||
+                    // A card created from the tag index was never tied to a
+                    // native purchase, so reusing it by URL cannot merge two
+                    // separate purchases of the same release.
+                    (syntheticCardForUrl &&
+                    !syntheticCardForUrl.__bcampxGridItem
+                        ? syntheticCardForUrl
+                        : null);
+                if (ownExistingCard) {
+                    updateArtistMusicFeedCardSource(ownExistingCard, release);
+                    nextCards.push(ownExistingCard);
+                    return;
+                }
+
+                const ownNewCard = createArtistMusicFeedCard(release);
+                nextCards.push(ownNewCard);
+                appendedCards.push(ownNewCard);
                 return;
             }
 
@@ -569,7 +702,14 @@
             }
 
             nextUrls.add(releaseUrl);
-            const existingCard = existingCardsByUrl.get(releaseUrl);
+            // The wishlist search has the same reconciliation problem: a tag
+            // card can be replaced by the native result for the same item when
+            // the two pick different release URLs (album vs track).
+            const existingCard =
+                existingCardsByUrl.get(releaseUrl) ||
+                (release.itemId
+                    ? existingCardsByItemId.get(cleanText(release.itemId))
+                    : null);
             if (existingCard) {
                 updateArtistMusicFeedCardSource(existingCard, release);
                 nextCards.push(existingCard);
@@ -580,6 +720,12 @@
             nextCards.push(newCard);
             appendedCards.push(newCard);
         });
+        const existingMoreControl = list.querySelector(
+            ".bcampx-label-feed__more",
+        );
+        if (existingMoreControl) {
+            existingMoreControl.remove();
+        }
         const currentCards = Array.from(list.children);
         const cardOrderChanged =
             currentCards.length !== nextCards.length ||
@@ -587,6 +733,7 @@
         if (cardOrderChanged) {
             list.replaceChildren(...nextCards);
         }
+        updateFanTagSearchMoreControl(list, feedContext);
 
         markDebugState(
             "data-bcampx-label-feed-count",
@@ -625,6 +772,10 @@
         if (sourceGrid instanceof Element) {
             STATE.artistMusicFanDirtyGrids.delete(sourceGrid);
         }
+
+        } finally {
+            resumeMutationObserver();
+        }
     }
 
     function updateArtistMusicFeedCardSource(card, release) {
@@ -633,6 +784,20 @@
         }
 
         card.__bcampxArtistMusicRelease = release;
+        card.__bcampxGridItem =
+            release.gridItem instanceof Element ? release.gridItem : null;
+        applyTagSearchCardMarkers(card, release);
+        if (release.releaseUrl) {
+            card.setAttribute("data-bcampx-release-url", release.releaseUrl);
+            card.querySelectorAll("[data-bcampx-release-url]").forEach(
+                (node) => {
+                    node.setAttribute(
+                        "data-bcampx-release-url",
+                        release.releaseUrl,
+                    );
+                },
+            );
+        }
         if (release.bandId) {
             card.setAttribute("data-bcampx-band-id", release.bandId);
         } else {
@@ -1282,7 +1447,14 @@
 
     function collectReleaseGridFeedCandidates(feedContext) {
         if (feedContext && /^fan-/.test(feedContext.kind)) {
-            return collectFanCollectionReleaseCandidates(feedContext);
+            const candidates = collectFanCollectionReleaseCandidates(feedContext);
+            // Bandcamp's search index stops at titles and artists, so releases
+            // that only match the query through their tags are appended after
+            // the native results instead of replacing them.
+            collectFanTagSearchExtraReleases(feedContext, candidates).forEach(
+                (release) => candidates.push(release),
+            );
+            return candidates;
         }
 
         return collectArtistMusicReleaseCandidates();
@@ -1373,16 +1545,11 @@
         return candidates;
     }
 
-    function addFanCollectionReleaseCandidate(
-        candidates,
-        seen,
-        item,
-        candidatesByKey,
-        feedKind,
-        ownFanCollection,
-    ) {
+    // Shared by the feed scanner and by tag results: both need the same release
+    // metadata out of a native collection item.
+    function createFanCollectionRelease(item, feedKind, ownFanCollection) {
         if (!(item instanceof Element)) {
-            return;
+            return null;
         }
 
         const playerData = parseJsonAttribute(item, "data-playerdata") || {};
@@ -1405,25 +1572,35 @@
                     normalizeReleaseUrl(playerData && playerData.url),
                 ) ||
                 Boolean(item.querySelector('a[href*="/track/"]')));
-        const releaseItemType = ownTrackItem ? "track" : resolvedItemType;
         const releaseUrl = ownTrackItem
             ? getFanCollectionReleaseUrl(item, playerData, itemType, true)
             : fallbackReleaseUrl;
         if (!releaseUrl) {
-            return;
+            return null;
         }
 
-        const title = getFanCollectionReleaseTitle(item, playerData, itemType, releaseUrl);
+        const title = getFanCollectionReleaseTitle(
+            item,
+            playerData,
+            itemType,
+            releaseUrl,
+        );
         const artist = getFanCollectionReleaseArtist(item, playerData);
-        const itemId = getArtistMusicReleaseItemId(item);
-        const release = {
+        return {
             releaseUrl,
             title,
             artist,
             artUrl: getArtistMusicReleaseArtUrl(item),
-            itemId,
-            itemType: releaseItemType,
+            itemId: getArtistMusicReleaseItemId(item),
+            itemType: ownTrackItem ? "track" : resolvedItemType,
             bandId: getArtistMusicReleaseBandId(item),
+            tralbumId:
+                Number(item.getAttribute("data-tralbumid")) ||
+                Number(item.getAttribute("data-itemid")) ||
+                0,
+            tralbumType: cleanText(
+                item.getAttribute("data-tralbumtype") || "",
+            ).toLowerCase(),
             feedKind,
             ownFanCollection,
             sourceItem: item,
@@ -1439,11 +1616,32 @@
                 feedKind,
             ),
         };
+    }
 
-        if (isOwnFanTrackRelease(release)) {
-            // Own collection tracks stay independent. Deduplicate only by
-            // element identity so adjacent singles from the same album are
-            // not merged into one card.
+    function addFanCollectionReleaseCandidate(
+        candidates,
+        seen,
+        item,
+        candidatesByKey,
+        feedKind,
+        ownFanCollection,
+    ) {
+        const release = createFanCollectionRelease(
+            item,
+            feedKind,
+            ownFanCollection,
+        );
+        if (!release) {
+            return;
+        }
+
+        if (release.ownFanCollection) {
+            // Every item in your own collection is a separate purchase with
+            // its own download and ownership actions. Never fold one item into
+            // another here: a single-track purchase can be reported as an
+            // album tralbum, so neighbours from the same album share a release
+            // URL and merging them would drop their download links.
+            // Deduplicate by element identity only.
             if (seen.has(item)) {
                 return;
             }
@@ -1468,6 +1666,25 @@
             candidatesByKey.set(key, release);
         });
         candidates.push(release);
+    }
+
+    // Tag matches that already exist as native cards reuse that card's data:
+    // the cover, preview player data, download link and release URL are the
+    // same ones Bandcamp rendered, so nothing depends on our compact index
+    // record being complete.
+    function buildFanTagSearchNativeRelease(item, feedKind) {
+        const release = createFanCollectionRelease(
+            item,
+            feedKind,
+            feedKind === "fan-collection" && isCurrentFanProfileOwner(),
+        );
+        if (!release) {
+            return null;
+        }
+
+        release.tagSearch = true;
+        release.tagOrigin = "native";
+        return release;
     }
 
     function getFanCollectionReleaseUrl(
@@ -1892,6 +2109,29 @@
         return keys;
     }
 
+    // A card can start life as a tag-only match and later be reconciled with
+    // the native search result for the same purchase; the marker must follow
+    // the current source instead of sticking around.
+    function applyTagSearchCardMarkers(card, release) {
+        if (!(card instanceof Element)) {
+            return;
+        }
+
+        if (release && release.tagSearch) {
+            card.classList.add("bcampx-label-feed-card--tag-match");
+            card.setAttribute("data-bcampx-tag-source", "tags");
+            card.setAttribute(
+                "data-bcampx-tag-origin",
+                release.tagOrigin === "native" ? "native" : "index",
+            );
+            return;
+        }
+
+        card.classList.remove("bcampx-label-feed-card--tag-match");
+        card.removeAttribute("data-bcampx-tag-source");
+        card.removeAttribute("data-bcampx-tag-origin");
+    }
+
     function createArtistMusicFeedCard(release) {
         const card = document.createElement("article");
         card.className = "feed-item story bcampx-label-feed-card";
@@ -1899,7 +2139,10 @@
             card.classList.add("bcampx-label-feed-card--own-track");
         }
         card.__bcampxArtistMusicRelease = release;
+        card.__bcampxGridItem =
+            release.gridItem instanceof Element ? release.gridItem : null;
         card.setAttribute("data-bcampx-release-url", release.releaseUrl);
+        applyTagSearchCardMarkers(card, release);
         if (release.bandId) {
             card.setAttribute("data-bcampx-band-id", release.bandId);
         }
@@ -2204,6 +2447,20 @@
         const dateLocation = compactJoin(
             [formatReleaseDate(data && data.releaseDate), data && data.location],
             " \u00b7 ",
+        );
+        const signature = `${tags.join("\u001f")}\u001e${dateLocation}`;
+        if (
+            tagsContainer.getAttribute("data-bcampx-tags-signature") ===
+            signature
+        ) {
+            // A feed sync refreshes every card; rebuilding identical spans
+            // churns the DOM and the mutation observer for nothing.
+            tagsContainer.hidden = !tags.length && !dateLocation;
+            return;
+        }
+        tagsContainer.setAttribute(
+            "data-bcampx-tags-signature",
+            signature,
         );
         if (!tags.length && !dateLocation) {
             tagsContainer.hidden = true;

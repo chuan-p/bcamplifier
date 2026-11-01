@@ -3,8 +3,13 @@
 set -eu
 
 if [ "${CHROME_BIN:-}" ]; then
-    printf '%s\n' "$CHROME_BIN"
-    exit 0
+    if [ -x "$CHROME_BIN" ]; then
+        printf '%s\n' "$CHROME_BIN"
+        exit 0
+    fi
+
+    echo "CHROME_BIN is set but is not an executable: $CHROME_BIN" >&2
+    exit 1
 fi
 
 for candidate in \

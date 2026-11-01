@@ -16,6 +16,14 @@ expected_host_permissions = [
     "https://*.bandcamp.com/*",
 ]
 
+expected_permissions = [
+    "storage",
+]
+
+expected_optional_host_permissions = [
+    "https://*/*",
+]
+
 expected_matches = [
     "https://bandcamp.com/*",
     "https://bandcamp.com/feed*",
@@ -36,6 +44,19 @@ for manifest_path in manifests:
     if host_permissions != expected_host_permissions:
         raise SystemExit(
             f"{manifest_path.name}: unexpected host_permissions: {host_permissions!r}"
+        )
+
+    permissions = data.get("permissions", [])
+    if permissions != expected_permissions:
+        raise SystemExit(
+            f"{manifest_path.name}: unexpected permissions: {permissions!r}"
+        )
+
+    optional_host_permissions = data.get("optional_host_permissions", [])
+    if optional_host_permissions != expected_optional_host_permissions:
+        raise SystemExit(
+            f"{manifest_path.name}: unexpected optional_host_permissions: "
+            f"{optional_host_permissions!r}"
         )
 
     content_scripts = data.get("content_scripts", [])

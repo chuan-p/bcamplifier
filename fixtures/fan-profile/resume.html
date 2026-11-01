@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Resume Fixture | Bandcamp</title>
+  </head>
+  <body>
+    <div id="pagedata" hidden></div>
+
+    <div class="collection-tabs">
+      <ol>
+        <li class="active" data-tab="collection" data-grid-id="collection-grid">
+          collection
+        </li>
+      </ol>
+    </div>
+
+    <div id="grids">
+      <div id="collection-grid" class="grid active">
+        <div class="collection-items">
+          <ol class="collection-grid"></ol>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const now = Date.now();
+        const item = (id) => ({
+          id,
+          type: "album",
+          tralbumId: id,
+          tralbumType: "a",
+          bandId: 7,
+          title: `Release ${id}`,
+          artist: "Fixture Artist",
+          url: `https://fixture.bandcamp.com/album/release-${id}`,
+          art: "",
+        });
+        const apiItem = (id) => ({
+          item_id: id,
+          tralbum_id: id,
+          tralbum_type: "a",
+          band_id: 7,
+          item_url: `https://fixture.bandcamp.com/album/release-${id}`,
+          item_title: `Release ${id}`,
+          band_name: "Fixture Artist",
+          item_art_id: 0,
+        });
+
+        // The first visit indexed the newest 20 purchases and stopped with a
+        // resume token; the tag cache already holds their tags.
+        const oldItems = Array.from({ length: 20 }, (_, index) =>
+          item(1001 + index),
+        );
+        const index = {
+          version: 4,
+          items: oldItems,
+          token: "resume-token",
+          itemsComplete: false,
+          itemsUpdatedAt: 0,
+        };
+        const status = {
+          version: 4,
+          itemsCount: 20,
+          resolvedCount: 20,
+          taggedCount: 20,
+          itemsComplete: false,
+          itemsUpdatedAt: 0,
+          failures: {},
+          seedIds: "",
+        };
+        const releaseTags = {};
+        oldItems.forEach((entry) => {
+          releaseTags[`a${entry.tralbumId}`] = {
+            tags: ["oldtag"],
+            ts: now,
+          };
+        });
+
+        const pagedata = {
+          fan_data: { fan_id: 42, is_own_page: true, name: "Fixture Fan" },
+          current_fan: { fan_id: 42 },
+          collection_data: {
+            last_token: "seed-token",
+            item_count: 42,
+            batch_size: 20,
+            sequence: ["s1", "s2"],
+          },
+          wishlist_data: {
+            last_token: "",
+            item_count: 0,
+            batch_size: 20,
+            sequence: [],
+          },
+          item_cache: {
+            collection: {
+              s1: apiItem(1041),
+              s2: apiItem(1042),
+            },
+          },
+        };
+        document
+          .getElementById("pagedata")
+          .setAttribute("data-blob", JSON.stringify(pagedata));
+
+        const storage = new Map([
+          ["bcampx:userSettings", { enableTagSearch: true }],
+          ["bcampx:tagIndex:42:collection", index],
+          ["bcampx:tagIndexStatus:42:collection", status],
+          ["bcampx:releaseTags", releaseTags],
+        ]);
+
+        let resumed = false;
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async () => {
+            throw new Error("no release page fetch expected");
+          },
+          requestJson: async (url, options) => {
+            const body =
+              options && options.data ? JSON.parse(options.data) : {};
+            if (String(url).includes("collection_items")) {
+              if (body.older_than_token === "resume-token") {
+                resumed = true;
+                return {
+                  items: Array.from({ length: 20 }, (_, position) =>
+                    apiItem(1021 + position),
+                  ),
+                  more_available: false,
+                  last_token: "",
+                };
+              }
+              return { error: true };
+            }
+            if (String(url).includes("tralbum_details")) {
+              return {
+                id: Number(body.tralbum_id),
+                tags: [Number(body.tralbum_id) >= 1041 ? "seedtag" : "newtag"],
+                tracks: [],
+              };
+            }
+            return { error: true };
+          },
+          storageGet: async (key, fallback) =>
+            storage.has(key) ? storage.get(key) : fallback,
+          storageSet: async (key, value) => {
+            storage.set(key, value);
+          },
+          storageGetByPrefix: async (prefix) => {
+            const values = {};
+            storage.forEach((value, key) => {
+              if (key.startsWith(prefix)) {
+                values[key] = value;
+              }
+            });
+            return values;
+          },
+          storageRemove: async (key) => {
+            storage.delete(key);
+          },
+        };
+
+        window.setTimeout(() => {
+          const stored =
+            storage.get("bcampx:tagIndex:42:collection") || { items: [] };
+          const items = stored.items || [];
+          const ids = new Set(items.map((entry) => entry.id));
+          const root = document.documentElement;
+          root.setAttribute("data-bcampx-fixture-items", String(items.length));
+          root.setAttribute(
+            "data-bcampx-fixture-has-old",
+            String(ids.has(1001)),
+          );
+          root.setAttribute(
+            "data-bcampx-fixture-has-new",
+            String(ids.has(1021)),
+          );
+          root.setAttribute(
+            "data-bcampx-fixture-has-seed",
+            String(ids.has(1041)),
+          );
+          root.setAttribute("data-bcampx-fixture-resumed", String(resumed));
+          root.setAttribute(
+            "data-bcampx-fixture-complete",
+            String(stored.itemsComplete === true),
+          );
+        }, 12000);
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+  </body>
+</html>

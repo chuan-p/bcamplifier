@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         Bandcamplifier Dev Loader
 // @namespace    https://github.com/chuan-p/bcamplifier
-// @version      0.2.62
+// @version      3.3.1
 // @description  Loads the local Bandcamplifier userscript through Tampermonkey @require for development.
 // @author       chuan
 // @match        https://bandcamp.com/feed*
 // @match        https://bandcamp.com/*/feed*
 // @match        https://bandcamp.com/*
 // @match        https://*.bandcamp.com/*
+// @match        https://*/album/*
+// @match        https://*/track/*
 // @updateURL    http://127.0.0.1:8000/bcamplifier.dev.user.js
 // @downloadURL  http://127.0.0.1:8000/bcamplifier.dev.user.js
 // @connect      127.0.0.1
@@ -16,8 +18,9 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_deleteValue
 // @run-at       document-idle
-// @require      http://127.0.0.1:8000/bcamplifier.user.js?v=0.1.186
+// @require      http://127.0.0.1:8000/bcamplifier.user.js?v=3.2
 // ==/UserScript==
 
 (function () {

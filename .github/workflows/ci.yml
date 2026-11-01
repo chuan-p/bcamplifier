@@ -32,8 +32,32 @@ jobs:
           CHROME_BIN=$(node -e "const { chromium } = require('playwright'); console.log(chromium.executablePath())")
           echo "CHROME_BIN=$CHROME_BIN" >> "$GITHUB_ENV"
 
-      - name: Syntax check userscript
-        run: node --check bcamplifier.user.js
+      - name: Syntax check sources
+        run: |
+          for file in $(find src -name '*.js' | sort); do
+            node --check "$file"
+          done
+          node --check extension.background.js
+          node --check extension.content.js
+          node --check extension.shared.js
+          node --check extension.host-permission.js
+
+      - name: Rebuild userscript from source
+        run: node scripts/build-userscript.mjs
+
+      - name: Verify the committed userscript is up to date
+        run: |
+          node --check bcamplifier.user.js
+          git diff --exit-code -- bcamplifier.user.js
+
+      - name: Check version consistency
+        run: ./scripts/check-versions.sh
+
+      - name: Check for unused source functions
+        run: node scripts/check-unused-symbols.mjs
+
+      - name: Run text formatting unit test
+        run: node scripts/test-text-format.mjs
 
       - name: Validate extension scope
         run: ./scripts/check-extension-scope.sh
@@ -44,5 +68,15 @@ jobs:
       - name: Smoke test extension build
         run: xvfb-run -a ./scripts/smoke-test-extension.sh
 
-      - name: Run feed fixture test
-        run: ./scripts/test-feed-fixture.sh
+      - name: Run fixture tests
+        run: |
+          ./scripts/test-feed-fixture.sh
+          ./scripts/test-label-music-fixture.sh
+          ./scripts/test-label-music-grid-to-list-fixture.sh
+          ./scripts/test-buy-link-fixture.sh
+          ./scripts/test-feed-description-url-fixture.sh
+          ./scripts/test-helper-auth-fixture.sh
+          ./scripts/test-fan-profile-fixture.sh
+          ./scripts/test-own-collection-fixture.sh
+          ./scripts/test-batchcamp-fixture.sh
+          ./scripts/test-init-isolation-fixture.sh

@@ -3,8 +3,12 @@
 if (typeof importScripts === "function") {
     importScripts("extension.shared.js");
 }
-const { isBandcampHostname, normalizeCustomHostPermissionPattern } =
-    globalThis.__BCAMPX_EXT_SHARED__;
+const {
+    isBandcampHostname,
+    normalizeCustomHostPermissionPattern,
+    getExtensionApi,
+    callExtensionApi,
+} = globalThis.__BCAMPX_EXT_SHARED__;
 
 const runtimeApi = getExtensionApi();
 const ALLOWED_FETCH_METHODS = new Set(["GET", "POST"]);
@@ -19,98 +23,81 @@ const HOST_PERMISSION_REQUEST_TTL_MS = 10 * 60 * 1000;
 // lives in storage.session and this map is only a warm cache.
 const pendingHostPermissionRequests = new Map();
 
+// Every mutation of the pending-request map is a full read-modify-write of one
+// storage.session object. Two concurrent requests (two tabs asking for a
+// custom domain at once) used to read the same snapshot and overwrite each
+// other, losing one request and leaving its page waiting for the timeout.
+// The service worker is single threaded, so one queue is enough to make the
+// read-modify-write atomic.
+//
+// Declared here, before the startup prune below can reach it, because a `let`
+// in temporal dead zone would throw during service-worker evaluation.
+let pendingHostPermissionMutationQueue = Promise.resolve();
+
+function runPendingHostPermissionMutation(task) {
+    const run = () => Promise.resolve().then(task);
+    const chained = pendingHostPermissionMutationQueue.then(run, run);
+    pendingHostPermissionMutationQueue = chained.then(
+        () => {},
+        () => {},
+    );
+    return chained;
+}
+
+const MESSAGE_HANDLERS = {
+    "bcampx:fetch": {
+        handle: (message, sender) => handleFetchRequest(message, sender),
+        resultKey: "response",
+        fallbackError: "Network request failed.",
+    },
+    "bcampx:storage-get-by-prefix": {
+        handle: (message, sender) => handleGetStorageByPrefix(message, sender),
+        resultKey: "values",
+        fallbackError: "Storage read failed.",
+    },
+    "bcampx:get-host-permissions": {
+        handle: (_message, sender) => handleGetHostPermissions(sender),
+        resultKey: "origins",
+        fallbackError: "Host permission lookup failed.",
+    },
+    "bcampx:start-host-permission-request": {
+        handle: (message, sender) =>
+            handleStartHostPermissionRequest(message, sender),
+        resultKey: "result",
+        fallbackError: "Could not open the host permission request.",
+    },
+    "bcampx:host-permission-result": {
+        handle: (message, sender) =>
+            handleHostPermissionResult(message, sender),
+        resultKey: "result",
+        fallbackError: "Could not complete the host permission request.",
+    },
+};
+
 if (runtimeApi && runtimeApi.runtime) {
     runtimeApi.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (!message || !message.type) {
+        const spec = message && message.type ? MESSAGE_HANDLERS[message.type] : null;
+        if (!spec) {
             return undefined;
         }
 
-        if (message.type === "bcampx:fetch") {
-            handleFetchRequest(message, sender)
-                .then((response) =>
-                    safeSendResponse(sendResponse, { ok: true, response }),
-                )
-                .catch((error) =>
-                    safeSendResponse(sendResponse, {
-                        ok: false,
-                        error:
-                            error && error.message
-                                ? error.message
-                                : "Network request failed.",
-                    }),
-                );
-            return true;
-        }
-
-        if (message.type === "bcampx:storage-get-by-prefix") {
-            handleGetStorageByPrefix(message, sender)
-                .then((values) =>
-                    safeSendResponse(sendResponse, { ok: true, values }),
-                )
-                .catch((error) =>
-                    safeSendResponse(sendResponse, {
-                        ok: false,
-                        error:
-                            error && error.message
-                                ? error.message
-                                : "Storage read failed.",
-                    }),
-                );
-            return true;
-        }
-
-        if (message.type === "bcampx:get-host-permissions") {
-            handleGetHostPermissions(sender)
-                .then((origins) =>
-                    safeSendResponse(sendResponse, { ok: true, origins }),
-                )
-                .catch((error) =>
-                    safeSendResponse(sendResponse, {
-                        ok: false,
-                        error:
-                            error && error.message
-                                ? error.message
-                                : "Host permission lookup failed.",
-                    }),
-                );
-            return true;
-        }
-
-        if (message.type === "bcampx:start-host-permission-request") {
-            handleStartHostPermissionRequest(message, sender)
-                .then((result) =>
-                    safeSendResponse(sendResponse, { ok: true, result }),
-                )
-                .catch((error) =>
-                    safeSendResponse(sendResponse, {
-                        ok: false,
-                        error:
-                            error && error.message
-                                ? error.message
-                                : "Could not open the host permission request.",
-                    }),
-                );
-            return true;
-        }
-
-        if (message.type === "bcampx:host-permission-result") {
-            handleHostPermissionResult(message, sender)
-                .then((result) =>
-                    safeSendResponse(sendResponse, { ok: true, result }),
-                )
-                .catch((error) =>
-                    safeSendResponse(sendResponse, {
-                        ok: false,
-                        error:
-                            error && error.message
-                                ? error.message
-                                : "Could not complete the host permission request.",
-                    }),
-                );
-            return true;
-        }
-
-        return undefined;
+        spec.handle(message, sender)
+            .then((value) =>
+                safeSendResponse(sendResponse, {
+                    ok: true,
+                    [spec.resultKey]: value,
+                }),
+            )
+            .catch((error) =>
+                safeSendResponse(sendResponse, {
+                    ok: false,
+                    error:
+                        error && error.message
+                            ? error.message
+                            : spec.fallbackError,
+                }),
+            );
+        return true;
     });
 }
 
@@ -157,6 +144,10 @@ async function handleTrackedTabRemoved(tabId) {
         }),
     );
 }
+
+// Every mutation of the pending-request map is a full read-modify-write of one
+// storage.session object; the queue that serialises them is declared at the
+// top of this file, before the startup prune runs.
 
 async function readPendingHostPermissionRequests() {
     const area = getSessionStorageArea();
@@ -211,39 +202,48 @@ async function getPendingHostPermissionRequest(requestId) {
     return pending && typeof pending === "object" ? pending : null;
 }
 
-async function savePendingHostPermissionRequest(requestId, pending) {
-    const records = await readPendingHostPermissionRequests();
-    records[requestId] = pending;
-    await writePendingHostPermissionRequests(records);
+function savePendingHostPermissionRequest(requestId, pending) {
+    return runPendingHostPermissionMutation(async () => {
+        const records = await readPendingHostPermissionRequests();
+        records[requestId] = pending;
+        await writePendingHostPermissionRequests(records);
+    });
 }
 
-async function deletePendingHostPermissionRequest(requestId) {
-    const records = await readPendingHostPermissionRequests();
-    if (!(requestId in records)) {
-        pendingHostPermissionRequests.delete(requestId);
-        return;
-    }
+function deletePendingHostPermissionRequest(requestId) {
+    return runPendingHostPermissionMutation(async () => {
+        const records = await readPendingHostPermissionRequests();
+        if (!(requestId in records)) {
+            pendingHostPermissionRequests.delete(requestId);
+            return;
+        }
 
-    delete records[requestId];
-    await writePendingHostPermissionRequests(records);
+        delete records[requestId];
+        await writePendingHostPermissionRequests(records);
+    });
 }
 
-async function pruneStalePendingHostPermissionRequests() {
-    const records = await readPendingHostPermissionRequests();
-    const now = Date.now();
-    let changed = false;
+function pruneStalePendingHostPermissionRequests() {
+    return runPendingHostPermissionMutation(async () => {
+        const records = await readPendingHostPermissionRequests();
+        const now = Date.now();
+        let changed = false;
 
-    Object.entries(records).forEach(([requestId, pending]) => {
-        const createdAt = Number(pending && pending.createdAt) || 0;
-        if (!createdAt || now - createdAt > HOST_PERMISSION_REQUEST_TTL_MS) {
-            delete records[requestId];
-            changed = true;
+        Object.entries(records).forEach(([requestId, pending]) => {
+            const createdAt = Number(pending && pending.createdAt) || 0;
+            if (
+                !createdAt ||
+                now - createdAt > HOST_PERMISSION_REQUEST_TTL_MS
+            ) {
+                delete records[requestId];
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            await writePendingHostPermissionRequests(records);
         }
     });
-
-    if (changed) {
-        await writePendingHostPermissionRequests(records);
-    }
 }
 
 function getSessionStorageArea() {
@@ -256,42 +256,13 @@ function getSessionStorageArea() {
 }
 
 function callStorageAreaMethod(area, methodName, payload) {
-    if (!area || typeof area[methodName] !== "function") {
-        return Promise.reject(
-            new Error(`storage.${methodName} is unavailable.`),
-        );
-    }
-
-    if (runtimeApi.kind === "browser") {
-        try {
-            return Promise.resolve(
-                payload === undefined
-                    ? area[methodName]()
-                    : area[methodName](payload),
-            );
-        } catch (error) {
-            return Promise.reject(error);
-        }
-    }
-
-    return new Promise((resolve, reject) => {
-        const callback = (result) => {
-            const error = runtimeApi.runtime && runtimeApi.runtime.lastError;
-            if (error) {
-                reject(new Error(error.message || `${methodName} failed.`));
-                return;
-            }
-
-            resolve(result);
-        };
-
-        if (payload === undefined) {
-            area[methodName](callback);
-            return;
-        }
-
-        area[methodName](payload, callback);
-    });
+    return callExtensionApi(
+        runtimeApi,
+        area,
+        methodName,
+        payload === undefined ? [] : [payload],
+        { unavailableMessage: `storage.${methodName} is unavailable.` },
+    );
 }
 
 function safeSendResponse(sendResponse, payload) {
@@ -301,18 +272,6 @@ function safeSendResponse(sendResponse, payload) {
         // The originating tab may have navigated away; there is nothing to
         // respond to, and a second throw here would be an unhandled rejection.
     }
-}
-
-function getExtensionApi() {
-    if (globalThis.browser && globalThis.browser.runtime) {
-        return { kind: "browser", ...globalThis.browser };
-    }
-
-    if (globalThis.chrome && globalThis.chrome.runtime) {
-        return { kind: "chrome", ...globalThis.chrome };
-    }
-
-    return null;
 }
 
 async function handleFetchRequest(message, sender) {
@@ -379,23 +338,31 @@ async function handleGetStorageByPrefix(message, sender) {
     if (!storage || typeof storage.get !== "function") {
         throw new Error("storage.local is unavailable.");
     }
-    const items = await new Promise((resolve, reject) => {
-        if (runtimeApi.kind === "browser") {
-            Promise.resolve()
-                .then(() => storage.get(null))
-                .then(resolve)
-                .catch(reject);
-            return;
-        }
-        storage.get(null, (result) => {
-            const error = runtimeApi.runtime && runtimeApi.runtime.lastError;
-            if (error) {
-                reject(error);
-                return;
+
+    // getKeys() lets us read only the matching values. The old get(null)
+    // path cloned every tag/release record just to throw most of them away;
+    // on a large tag cache that is a multi-megabyte service-worker copy for
+    // every prefix read.
+    if (typeof storage.getKeys === "function") {
+        try {
+            const keys = await readStorageKeys(storage);
+            if (Array.isArray(keys)) {
+                const matching = keys.filter(
+                    (key) =>
+                        typeof key === "string" && key.startsWith(prefix),
+                );
+                if (!matching.length) {
+                    return {};
+                }
+                return (await callStorageAreaMethod(storage, "get", matching)) || {};
             }
-            resolve(result);
-        });
-    });
+        } catch (_error) {
+            // Older platforms can expose getKeys without the expected shape;
+            // fall back to the full read below.
+        }
+    }
+
+    const items = await callStorageAreaMethod(storage, "get", null);
     const values = {};
     Object.keys(items || {}).forEach((key) => {
         if (key.startsWith(prefix)) {
@@ -403,6 +370,13 @@ async function handleGetStorageByPrefix(message, sender) {
         }
     });
     return values;
+}
+
+function readStorageKeys(storage) {
+    // Chrome MV3 and Firefox both return a promise here. If a platform
+    // exposes a callback-only shape, the result is not an array and the
+    // caller falls back to the full read.
+    return Promise.resolve().then(() => storage.getKeys());
 }
 
 async function handleGetHostPermissions(sender) {
@@ -821,95 +795,43 @@ function sanitizeHeaders(headers) {
 }
 
 function callPermissionsMethod(methodName, payload) {
-    const permissions = runtimeApi && runtimeApi.permissions;
-    if (!permissions || typeof permissions[methodName] !== "function") {
-        return Promise.reject(
-            new Error(`permissions.${methodName} is unavailable.`),
-        );
-    }
-
-    if (runtimeApi.kind === "browser") {
-        try {
-            return payload === undefined
-                ? Promise.resolve(permissions[methodName]())
-                : Promise.resolve(permissions[methodName](payload));
-        } catch (error) {
-            return Promise.reject(error);
-        }
-    }
-
-    return new Promise((resolve, reject) => {
-        const callback = (result) => {
-            const error = runtimeApi.runtime && runtimeApi.runtime.lastError;
-            if (error) {
-                reject(new Error(error.message || `${methodName} failed.`));
-                return;
-            }
-
-            resolve(result);
-        };
-
-        if (payload === undefined) {
-            permissions[methodName](callback);
-            return;
-        }
-
-        permissions[methodName](payload, callback);
-    });
+    return callExtensionApi(
+        runtimeApi,
+        runtimeApi && runtimeApi.permissions,
+        methodName,
+        payload === undefined ? [] : [payload],
+        { unavailableMessage: `permissions.${methodName} is unavailable.` },
+    );
 }
 
 function createTab(createProperties) {
-    const tabs = runtimeApi && runtimeApi.tabs;
-    if (!tabs || typeof tabs.create !== "function") {
-        return Promise.reject(new Error("tabs.create is unavailable."));
-    }
-
-    if (runtimeApi.kind === "browser") {
-        try {
-            return Promise.resolve(tabs.create(createProperties));
-        } catch (error) {
-            return Promise.reject(error);
-        }
-    }
-
-    return new Promise((resolve, reject) => {
-        tabs.create(createProperties, (tab) => {
-            const error = runtimeApi.runtime && runtimeApi.runtime.lastError;
-            if (error) {
-                reject(new Error(error.message || "Could not create a tab."));
-                return;
-            }
-
-            resolve(tab);
-        });
-    });
+    return callExtensionApi(
+        runtimeApi,
+        runtimeApi && runtimeApi.tabs,
+        "create",
+        [createProperties],
+        {
+            unavailableMessage: "tabs.create is unavailable.",
+            fallbackMessage: "Could not create a tab.",
+        },
+    );
 }
 
 function sendMessageToTab(tabId, message) {
-    const tabs = runtimeApi && runtimeApi.tabs;
-    if (!tabs || typeof tabs.sendMessage !== "function") {
-        return Promise.reject(new Error("tabs.sendMessage is unavailable."));
-    }
-
     if (!Number.isInteger(tabId) || tabId < 0) {
         return Promise.reject(new Error("Invalid tab id."));
     }
 
-    if (runtimeApi.kind === "browser") {
-        return Promise.resolve(tabs.sendMessage(tabId, message));
-    }
-
-    return new Promise((resolve, reject) => {
-        tabs.sendMessage(tabId, message, (response) => {
-            const error = runtimeApi.runtime && runtimeApi.runtime.lastError;
-            if (error) {
-                reject(new Error(error.message || "Could not message the tab."));
-                return;
-            }
-
-            resolve(response);
-        });
-    });
+    return callExtensionApi(
+        runtimeApi,
+        runtimeApi && runtimeApi.tabs,
+        "sendMessage",
+        [tabId, message],
+        {
+            unavailableMessage: "tabs.sendMessage is unavailable.",
+            fallbackMessage: "Could not message the tab.",
+        },
+    );
 }
 
 function closeSenderTab(sender) {
@@ -918,19 +840,11 @@ function closeSenderTab(sender) {
         return Promise.resolve();
     }
 
-    const tabs = runtimeApi && runtimeApi.tabs;
-    if (!tabs || typeof tabs.remove !== "function") {
-        return Promise.resolve();
-    }
-
-    if (runtimeApi.kind === "browser") {
-        return Promise.resolve(tabs.remove(tabId)).catch(() => {});
-    }
-
-    return new Promise((resolve) => {
-        tabs.remove(tabId, () => {
-            void (runtimeApi.runtime && runtimeApi.runtime.lastError);
-            resolve();
-        });
-    });
+    return callExtensionApi(
+        runtimeApi,
+        runtimeApi && runtimeApi.tabs,
+        "remove",
+        [tabId],
+        { ignoreErrors: true },
+    );
 }

@@ -1,8 +1,11 @@
 "use strict";
 
 (() => {
-    const { isBandcampHostname, normalizeCustomHostPermissionPattern } =
-        globalThis.__BCAMPX_EXT_SHARED__;
+    const {
+        normalizeCustomHostPermissionPattern,
+        getExtensionApi,
+        callExtensionApi,
+    } = globalThis.__BCAMPX_EXT_SHARED__;
     const runtimeApi = getExtensionApi();
     const grantedHostOrigins = new Set();
     const pendingHostPermissionRequests = new Map();
@@ -10,7 +13,7 @@
     const storageKeySubscribers = new Map();
     const HOST_PERMISSION_REQUEST_TIMEOUT_MS = 120000;
 
-    if (!runtimeApi) {
+    if (!runtimeApi || !runtimeApi.storage) {
         return;
     }
 
@@ -20,7 +23,6 @@
 
     setupRuntimeMessageBridge();
     setupStorageChangeBridge();
-    setupGrantedHostPermissionRefresh();
     refreshGrantedHostPermissions();
 
     globalThis.__BCAMPX_HOST__ = {
@@ -55,19 +57,9 @@
     }
 
     function requestJson(url, options = {}) {
-        return sendRuntimeMessage({
-            type: "bcampx:fetch",
-            url,
-            method: options.method || "GET",
-            headers: options.headers,
-            body: options.data,
-            credentials: options.credentials,
-            timeoutMs: options.timeoutMs,
-        }).then((payload) => {
-            const response = getSuccessfulFetchResponse(payload);
-
+        return requestText(url, options).then((text) => {
             try {
-                return JSON.parse(response.responseText || "null");
+                return JSON.parse(text || "null");
             } catch (_error) {
                 throw new Error("Invalid JSON response.");
             }
@@ -309,31 +301,6 @@
         return pending;
     }
 
-    function setupGrantedHostPermissionRefresh() {
-        const permissions = runtimeApi && runtimeApi.permissions;
-        if (
-            !permissions ||
-            !permissions.onAdded ||
-            typeof permissions.onAdded.addListener !== "function"
-        ) {
-            return;
-        }
-
-        permissions.onAdded.addListener((granted) => {
-            const origins =
-                granted && Array.isArray(granted.origins)
-                    ? granted.origins
-                    : [];
-            origins.forEach((originPattern) => {
-                const normalized =
-                    normalizeCustomHostPermissionPattern(originPattern);
-                if (normalized) {
-                    grantedHostOrigins.add(normalized);
-                }
-            });
-        });
-    }
-
     function refreshGrantedHostPermissions() {
         sendRuntimeMessage({ type: "bcampx:get-host-permissions" })
             .then((payload) => {
@@ -436,66 +403,29 @@
     }
 
     function sendRuntimeMessage(message) {
-        if (typeof runtimeApi.runtime.sendMessage !== "function") {
-            return Promise.reject(
-                normalizeExtensionError(
-                    new Error("Extension runtime messaging is unavailable."),
-                ),
-            );
-        }
-
-        if (runtimeApi.kind === "browser") {
-            return Promise.resolve()
-                .then(() => runtimeApi.runtime.sendMessage(message))
-                .catch((error) => {
-                    throw normalizeExtensionError(error);
-                });
-        }
-
-        return new Promise((resolve, reject) => {
-            runtimeApi.runtime.sendMessage(message, (response) => {
-                const error =
-                    runtimeApi.runtime && runtimeApi.runtime.lastError;
-                if (error) {
-                    reject(normalizeExtensionError(error));
-                    return;
-                }
-
-                resolve(response);
-            });
-        });
+        return callExtensionApi(
+            runtimeApi,
+            runtimeApi && runtimeApi.runtime,
+            "sendMessage",
+            [message],
+            {
+                unavailableMessage: "Extension runtime messaging is unavailable.",
+                transformError: normalizeExtensionError,
+            },
+        );
     }
 
     function callStorageMethod(methodName, payload) {
-        const storage = runtimeApi.storage && runtimeApi.storage.local;
-        if (!storage || typeof storage[methodName] !== "function") {
-            return Promise.reject(
-                normalizeExtensionError(
-                    new Error(`storage.local.${methodName} is unavailable.`),
-                ),
-            );
-        }
-
-        if (runtimeApi.kind === "browser") {
-            return Promise.resolve()
-                .then(() => storage[methodName](payload))
-                .catch((error) => {
-                    throw normalizeExtensionError(error);
-                });
-        }
-
-        return new Promise((resolve, reject) => {
-            storage[methodName](payload, (result) => {
-                const error =
-                    runtimeApi.runtime && runtimeApi.runtime.lastError;
-                if (error) {
-                    reject(normalizeExtensionError(error));
-                    return;
-                }
-
-                resolve(result);
-            });
-        });
+        return callExtensionApi(
+            runtimeApi,
+            runtimeApi && runtimeApi.storage && runtimeApi.storage.local,
+            methodName,
+            [payload],
+            {
+                unavailableMessage: `storage.local.${methodName} is unavailable.`,
+                transformError: normalizeExtensionError,
+            },
+        );
     }
 
     function createRequestId() {
@@ -504,47 +434,24 @@
             .slice(2, 10)}`;
     }
 
+    // The mapping lives in src/utils/host-errors.js and is generated into
+    // extension.host-errors.js, so the advice this adapter shows is the same
+    // advice the bundled core shows for the same failure.
+    function describeHostError(message) {
+        const api = globalThis.__BCAMPX_HOST_ERRORS__;
+        return api && typeof api.describeHostError === "function"
+            ? api.describeHostError(message)
+            : "";
+    }
+
     function normalizeExtensionError(error) {
         const message =
             error && error.message ? String(error.message) : String(error || "");
-
-        if (
-            /Extension context invalidated/i.test(message) ||
-            /Receiving end does not exist/i.test(message) ||
-            /Could not establish connection/i.test(message) ||
-            /message port closed/i.test(message)
-        ) {
-            return new Error(
-                "Extension was updated or reloaded. Refresh this Bandcamp tab and try again.",
-            );
-        }
-
-        if (/storage\.local\./i.test(message)) {
-            return new Error(
-                "Extension storage is unavailable. Refresh the tab or restart the browser and try again.",
-            );
+        const hostMessage = describeHostError(message);
+        if (hostMessage) {
+            return new Error(hostMessage);
         }
 
         return error instanceof Error ? error : new Error(message || "Extension error.");
-    }
-
-    function getExtensionApi() {
-        if (
-            globalThis.browser &&
-            globalThis.browser.runtime &&
-            globalThis.browser.storage
-        ) {
-            return { kind: "browser", ...globalThis.browser };
-        }
-
-        if (
-            globalThis.chrome &&
-            globalThis.chrome.runtime &&
-            globalThis.chrome.storage
-        ) {
-            return { kind: "chrome", ...globalThis.chrome };
-        }
-
-        return null;
     }
 })();

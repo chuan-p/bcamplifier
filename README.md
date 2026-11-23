@@ -48,22 +48,28 @@ The trade-off is explicit: Batchcamp's bulk download lives in the grid view. Swi
 ## Project Layout
 
 - [`src/userscript.meta.js`](./src/userscript.meta.js): userscript metadata block and the single source of truth for the version
-- [`src/bcamplifier.core.js`](./src/bcamplifier.core.js): shared core logic and the fragment placeholders
+- [`src/index.js`](./src/index.js): userscript entry point
+- [`src/state.js`](./src/state.js): shared configuration, constants, and runtime state
+- [`src/bcamplifier.core.js`](./src/bcamplifier.core.js): bootstrap, page/card detection, settings, observers, and auto-fetch scheduling
+- [`src/features/card-renderer.js`](./src/features/card-renderer.js): feed card shell rendering, supported-slot layout, and expand controllers
+- [`src/features/card-merge.js`](./src/features/card-merge.js): adjacent track-purchase card merging
+- [`src/features/release-page.js`](./src/features/release-page.js): release page buy autofill, collection search handoff, and unavailable-link guards
 - [`src/features/artist-music-feed.js`](./src/features/artist-music-feed.js): artist/label feed, fan collection feed and tag-aware search
 - [`src/features/player.js`](./src/features/player.js): shared audio, playback routing, player shell and media session
 - [`src/features/track-actions.js`](./src/features/track-actions.js): per-track wishlist/buy helper frame and its bridge
-- [`src/data/release-data.js`](./src/data/release-data.js): release page parsing and cache
+- [`src/data/release-data.js`](./src/data/release-data.js): release page parsing, API tracklist fallback, and cache
 - [`src/data/tag-index.js`](./src/data/tag-index.js): local tag index for collection/wishlist search
 - [`src/styles/`](./src/styles): CSS bundled into the generated userscript
-- [`src/ui/`](./src/ui): UI fragments bundled into the generated userscript
-- [`src/utils/`](./src/utils): shared helper fragments bundled into the generated userscript
-- [`scripts/lib/`](./scripts/lib): shared fixture server and headless Chrome helpers for the tests
+- [`src/ui/`](./src/ui): UI modules bundled into the generated userscript
+- [`src/utils/`](./src/utils): shared async, DOM, storage, text-formatting, and host-error modules
 - [`bcamplifier.user.js`](./bcamplifier.user.js): generated release userscript
 - [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js): local Tampermonkey dev loader
 - [`manifest.chrome.json`](./manifest.chrome.json): Chrome extension manifest
 - [`manifest.firefox.json`](./manifest.firefox.json): Firefox extension manifest
+- [`extension.shared.js`](./extension.shared.js): shared WebExtension helpers and API wrapper
 - [`extension.content.js`](./extension.content.js): extension adapter for the shared core
 - [`extension.background.js`](./extension.background.js): extension background bridge
+- [`extension.host-errors.js`](./extension.host-errors.js): generated copy of the shared host error mapping
 - [`scripts/`](./scripts): build and verification helpers
 
 ## Installation
@@ -140,7 +146,7 @@ npm install
 node scripts/build-userscript.mjs
 ```
 
-The build uses [Terser](https://github.com/terser/terser) to minify the released userscript. Readable source lives in [`src/`](./src).
+The build uses [esbuild](https://esbuild.github.io/) to bundle and minify the ES modules in [`src/`](./src) into the released userscript.
 
 Start a local server from the repository root:
 
@@ -168,48 +174,31 @@ Recommended workflow:
 Run the core checks from the repository root:
 
 ```sh
-node scripts/build-userscript.mjs
-git diff --exit-code -- bcamplifier.user.js
+npm run build
+git diff --exit-code -- bcamplifier.user.js extension.host-errors.js
 for file in $(find src -name '*.js'); do node --check "$file"; done
 node --check bcamplifier.user.js
-node scripts/test-text-format.mjs
+npm test
+npm run test:fixtures
+./scripts/check-versions.sh
 ./scripts/check-extension-scope.sh
 ./scripts/build-extension.sh
 ./scripts/smoke-test-extension.sh
 ./scripts/smoke-test-firefox.sh
-./scripts/test-feed-fixture.sh
-./scripts/test-label-music-fixture.sh
-./scripts/test-label-music-grid-to-list-fixture.sh
-./scripts/test-buy-link-fixture.sh
-./scripts/test-feed-description-url-fixture.sh
-./scripts/test-helper-auth-fixture.sh
-./scripts/test-fan-profile-fixture.sh
-./scripts/test-own-collection-fixture.sh
-./scripts/test-batchcamp-fixture.sh
-./scripts/test-init-isolation-fixture.sh
 ```
 
 The verification helpers are:
 
+- [`scripts/run-unit-tests.mjs`](./scripts/run-unit-tests.mjs): runs all unit tests (async primitives, date/text formatting, release parser, tag-index persistence, host errors, and extension host/permission bridges)
+- [`scripts/run-fixture-tests.mjs`](./scripts/run-fixture-tests.mjs): unified headless Chrome fixture test runner covering feed, artist/label `/music`, grid-to-list switching, buy-link titles, description URL wrapping, helper auth, fan profiles/collection/wishlist/tag search, own-collection purchase preservation, Batchcamp coexistence, init failure isolation, and playback intent
 - [`scripts/check-extension-scope.sh`](./scripts/check-extension-scope.sh): locks extension scope to the intended Bandcamp URLs
 - [`scripts/smoke-test-extension.sh`](./scripts/smoke-test-extension.sh): checks that the Chrome build loads without manifest-level errors
 - [`scripts/smoke-test-firefox.sh`](./scripts/smoke-test-firefox.sh): installs the Firefox package temporarily and verifies the shared core against a local HTTPS fixture
 - [`scripts/smoke-test-userscript.sh`](./scripts/smoke-test-userscript.sh): boots the built userscript against a local HTTPS fixture through Playwright
-- [`scripts/test-feed-fixture.sh`](./scripts/test-feed-fixture.sh): serves a local fixture and verifies that the shared core injects enhancement UI
-- [`scripts/test-label-music-fixture.sh`](./scripts/test-label-music-fixture.sh): verifies artist and label `/music` pages are converted into enhanced feed cards
-- [`scripts/test-label-music-grid-to-list-fixture.sh`](./scripts/test-label-music-grid-to-list-fixture.sh): verifies switching an artist page from grid to list view keeps the enhanced feed intact
-- [`scripts/test-buy-link-fixture.sh`](./scripts/test-buy-link-fixture.sh): verifies that a release titled like "FREE DOWNLOAD ..." does not get its title swallowed by the buy-button update
-- [`scripts/test-feed-description-url-fixture.sh`](./scripts/test-feed-description-url-fixture.sh): verifies that a long url inside a release description wraps instead of widening the feed card
-- [`scripts/test-helper-auth-fixture.sh`](./scripts/test-helper-auth-fixture.sh): verifies that a crafted `#bcampx-helper` release URL cannot drive an authenticated wishlist request
-- [`scripts/test-fan-profile-fixture.sh`](./scripts/test-fan-profile-fixture.sh): verifies fan collection, wishlist, tag-aware search, and tab-switch behavior against a local fixture
-- [`scripts/test-own-collection-fixture.sh`](./scripts/test-own-collection-fixture.sh): verifies that singles from the same album stay separate cards with their own download links on your own collection page, while other fans' collections still merge them
-- [`scripts/test-batchcamp-fixture.sh`](./scripts/test-batchcamp-fixture.sh): verifies that Batchcamp's controls are hidden in the list view, become fully usable (checkboxes on screen, Select All visible) as soon as the grid is shown, work whichever extension installs first, and do not re-sync the feed when Batchcamp appends its checkboxes
-- [`scripts/test-init-isolation-fixture.sh`](./scripts/test-init-isolation-fixture.sh): verifies that a failed feed build does not abort the player, card scanning, or observer setup for the rest of the page load
-- [`scripts/test-text-format.mjs`](./scripts/test-text-format.mjs): verifies that date-only release dates keep their calendar day west of UTC, timestamps keep their instant, and impossible dates fall back to raw text
 
 ## Configuration
 
-Edit the `CONFIG` object near the top of [`src/bcamplifier.core.js`](./src/bcamplifier.core.js) to tune behavior:
+Edit the `CONFIG` object in [`src/state.js`](./src/state.js) to tune behavior:
 
 - `autoFetchOnVisible`
 - `expandAfterAutoFetch`

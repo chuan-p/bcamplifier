@@ -71,9 +71,9 @@
           failures: {},
           seedIds: "",
         };
-        const releaseTags = {};
+        const releaseTagRecords = {};
         oldItems.forEach((entry) => {
-          releaseTags[`a${entry.tralbumId}`] = {
+          releaseTagRecords[`bcampx:releaseTag:a${entry.tralbumId}`] = {
             tags: ["oldtag"],
             ts: now,
           };
@@ -109,7 +109,7 @@
           ["bcampx:userSettings", { enableTagSearch: true }],
           ["bcampx:tagIndex:42:collection", index],
           ["bcampx:tagIndexStatus:42:collection", status],
-          ["bcampx:releaseTags", releaseTags],
+          ...Object.entries(releaseTagRecords),
         ]);
 
         let resumed = false;

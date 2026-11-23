@@ -1,8 +1,11 @@
 "use strict";
 
 (() => {
-    const { isBandcampHostname, normalizeCustomHostPermissionPattern } =
-        globalThis.__BCAMPX_EXT_SHARED__;
+    const {
+        normalizeCustomHostPermissionPattern,
+        getExtensionApi,
+        callExtensionApi,
+    } = globalThis.__BCAMPX_EXT_SHARED__;
     const runtimeApi = getExtensionApi();
     const params = new URLSearchParams(window.location.search);
     const requestId = String(params.get("requestId") || "").trim();
@@ -110,119 +113,45 @@
     }
 
     function callPermissionsMethod(methodName, payload) {
-        const permissions = runtimeApi && runtimeApi.permissions;
-        if (!permissions || typeof permissions[methodName] !== "function") {
-            return Promise.reject(
-                new Error(`permissions.${methodName} is unavailable.`),
-            );
-        }
-
-        if (runtimeApi.kind === "browser") {
-            try {
-                return payload === undefined
-                    ? Promise.resolve(permissions[methodName]())
-                    : Promise.resolve(permissions[methodName](payload));
-            } catch (error) {
-                return Promise.reject(error);
-            }
-        }
-
-        return new Promise((resolve, reject) => {
-            const callback = (result) => {
-                const error = runtimeApi.runtime && runtimeApi.runtime.lastError;
-                if (error) {
-                    reject(new Error(error.message || `${methodName} failed.`));
-                    return;
-                }
-
-                resolve(result);
-            };
-
-            if (payload === undefined) {
-                permissions[methodName](callback);
-                return;
-            }
-
-            permissions[methodName](payload, callback);
-        });
+        return callExtensionApi(
+            runtimeApi,
+            runtimeApi && runtimeApi.permissions,
+            methodName,
+            payload === undefined ? [] : [payload],
+            { unavailableMessage: `permissions.${methodName} is unavailable.` },
+        );
     }
 
     function sendRuntimeMessage(message) {
-        if (!runtimeApi.runtime || typeof runtimeApi.runtime.sendMessage !== "function") {
-            return Promise.reject(
-                new Error("Extension runtime messaging is unavailable."),
-            );
-        }
-
-        if (runtimeApi.kind === "browser") {
-            return Promise.resolve(runtimeApi.runtime.sendMessage(message));
-        }
-
-        return new Promise((resolve, reject) => {
-            runtimeApi.runtime.sendMessage(message, (response) => {
-                const error = runtimeApi.runtime && runtimeApi.runtime.lastError;
-                if (error) {
-                    reject(new Error(error.message || "Could not send the message."));
-                    return;
-                }
-
-                resolve(response);
-            });
-        });
+        return callExtensionApi(
+            runtimeApi,
+            runtimeApi && runtimeApi.runtime,
+            "sendMessage",
+            [message],
+            {
+                unavailableMessage: "Extension runtime messaging is unavailable.",
+                fallbackMessage: "Could not send the message.",
+            },
+        );
     }
 
-    function closeCurrentTab() {
+    async function closeCurrentTab() {
         const tabs = runtimeApi && runtimeApi.tabs;
         if (!tabs || typeof tabs.getCurrent !== "function" || typeof tabs.remove !== "function") {
             window.close();
-            return Promise.resolve();
+            return;
         }
 
-        if (runtimeApi.kind === "browser") {
-            return Promise.resolve(tabs.getCurrent())
-                .then((tab) => {
-                    if (tab && Number.isInteger(tab.id)) {
-                        return tabs.remove(tab.id);
-                    }
-                    window.close();
-                    return undefined;
-                })
-                .catch(() => {
-                    window.close();
+        try {
+            const tab = await callExtensionApi(runtimeApi, tabs, "getCurrent");
+            if (tab && Number.isInteger(tab.id)) {
+                await callExtensionApi(runtimeApi, tabs, "remove", [tab.id], {
+                    ignoreErrors: true,
                 });
-        }
+                return;
+            }
+        } catch (_error) {}
 
-        return new Promise((resolve) => {
-            tabs.getCurrent((tab) => {
-                const getCurrentError =
-                    runtimeApi.runtime && runtimeApi.runtime.lastError;
-                if (
-                    getCurrentError ||
-                    !tab ||
-                    !Number.isInteger(tab.id)
-                ) {
-                    window.close();
-                    resolve();
-                    return;
-                }
-
-                tabs.remove(tab.id, () => {
-                    void (runtimeApi.runtime && runtimeApi.runtime.lastError);
-                    resolve();
-                });
-            });
-        });
-    }
-
-    function getExtensionApi() {
-        if (globalThis.browser && globalThis.browser.runtime) {
-            return { kind: "browser", ...globalThis.browser };
-        }
-
-        if (globalThis.chrome && globalThis.chrome.runtime) {
-            return { kind: "chrome", ...globalThis.chrome };
-        }
-
-        return null;
+        window.close();
     }
 })();

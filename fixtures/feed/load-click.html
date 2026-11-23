@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta property="og:site_name" content="Bandcamp" />
+    <title>Click During Load Fixture</title>
+  </head>
+  <body>
+    <div id="pagedata" data-blob="{}"></div>
+
+    <article class="feed-item">
+      <div class="story-title">
+        <a class="fan-name" href="https://bandcamp.com/loadfan">Load Fan</a>
+        bought
+        <a class="item-link" href="https://fixture.bandcamp.com/album/load-click"
+          >Loaded Release</a
+        >
+      </div>
+      <div class="story-innards">
+        <div class="story-body">
+          <div class="tralbum-wrapper">
+            <div class="tralbum-art-container">
+              <a class="track_play_auxiliary" data-trackid="7">
+                <img
+                  src="https://dummyimage.com/320x320/c7d2fe/111827.png&text=Load"
+                  alt="Loaded release art"
+                />
+              </a>
+            </div>
+            <div
+              class="tralbum-wrapper-col1"
+              data-item-json='{"item_id":601,"item_type":"a","item_url":"https://fixture.bandcamp.com/album/load-click","featured_track":7,"featured_track_title":"Loaded Track"}'
+            >
+              <a
+                class="item-link"
+                href="https://fixture.bandcamp.com/album/load-click"
+                >Loaded Release</a
+              >
+              <div>featured track: Loaded Track</div>
+              <a
+                class="buy-link"
+                href="https://fixture.bandcamp.com/album/load-click"
+                >buy now</a
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <script>
+      (() => {
+        const releaseHtml = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Loaded Release | Fixture Artist</title>
+    <meta property="og:image" content="https://dummyimage.com/640x640/c7d2fe/111827.png&text=Load" />
+  </head>
+  <body>
+    <div data-tralbum='{"current":{"title":"Loaded Release","release_date":"2024-01-02","id":601,"type":"album","band_id":654},"album_title":"Loaded Release","artist":"Fixture Artist","album_release_date":"2024-01-02","trackinfo":[{"title":"Loaded Track","track_id":"7","file":{"mp3-128":"https://example.com/loaded-7.mp3"},"duration":111}]}'></div>
+  </body>
+</html>`;
+
+        const storage = new Map();
+        const wait = (ms) =>
+          new Promise((resolve) => window.setTimeout(resolve, ms));
+
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async () => {
+            // The metadata request the auto-loader started is still running
+            // when the user clicks the card.
+            await wait(1400);
+            return releaseHtml;
+          },
+          requestJson: async () => {
+            throw new Error("requestJson is not used in this fixture");
+          },
+          storageGet: async (key, fallback) =>
+            storage.has(key) ? storage.get(key) : fallback,
+          storageSet: async (key, value) => {
+            storage.set(key, value);
+          },
+        };
+
+        window.setTimeout(async () => {
+          const root = document.documentElement;
+          for (let attempt = 0; attempt < 80; attempt += 1) {
+            if (document.querySelector(".bcampx--loading")) {
+              break;
+            }
+            await wait(50);
+          }
+          root.setAttribute(
+            "data-click-during-load-loading",
+            String(Boolean(document.querySelector(".bcampx--loading"))),
+          );
+
+          document.querySelector(".track_play_auxiliary").click();
+          await wait(3200);
+
+          const host = document.querySelector("#bcampx-player-host");
+          const track =
+            host && host.shadowRoot
+              ? host.shadowRoot.querySelector(".bcampx-player-track")
+              : null;
+          const text = track ? track.textContent.trim() : "";
+          root.setAttribute("data-click-during-load-track", text);
+          root.setAttribute(
+            "data-click-during-load-result",
+            /Loaded Track$/.test(text) ? "applied" : "dropped",
+          );
+          root.setAttribute("data-click-during-load-done", "true");
+        }, 400);
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+  </body>
+</html>

@@ -12,7 +12,7 @@
     ></div>
     <div
       id="pagedata"
-      data-blob='{"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42},"collection_data":{"last_token":"fixture-collection-token","item_count":3,"batch_size":20,"sequence":[]}}'
+      data-blob='{"identities":{"fan":{"id":42}},"fan_data":{"fan_id":42,"is_own_page":true,"name":"Fixture Fan"},"current_fan":{"fan_id":42},"collection_data":{"last_token":"fixture-collection-token","item_count":3,"batch_size":20,"sequence":[]}}'
       hidden
     ></div>
 
@@ -101,7 +101,10 @@
                     "https://fixture.bandcamp.com/album/release-4/track-4b",
                 },
               ],
-              schemaVersion: 18,
+              schemaVersion: 19,
+              // Account-scoped cache entries record which viewer their
+              // purchase state belongs to; this fixture is fan 42.
+              viewerKey: "fan:42",
               fetchedAt: Date.now() - 60 * 60 * 1000,
             },
           ],
@@ -1070,6 +1073,36 @@
         document.documentElement.setAttribute(
           "data-bcampx-tag-index-art",
           indexTagCard?.querySelector(".art img")?.getAttribute("src") || "",
+        );
+        // The owned action only appears once the index card's release data has
+        // been fetched; wait for it instead of sampling "hear more".
+        let indexTagAction = null;
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          indexTagAction = indexTagCard?.querySelector(
+            "[data-bcampx-release-action='buy']",
+          );
+          if (
+            indexTagAction?.getAttribute(
+              "data-bcampx-digital-ownership-url",
+            )
+          ) {
+            break;
+          }
+          await wait(100);
+        }
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-index-action",
+          indexTagAction?.textContent.trim() || "",
+        );
+        document.documentElement.setAttribute(
+          "data-bcampx-tag-index-owned",
+          String(
+            Boolean(
+              indexTagAction?.getAttribute(
+                "data-bcampx-digital-ownership-url",
+              ),
+            ),
+          ),
         );
 
         // A release page that parses without a tracklist still gets one from

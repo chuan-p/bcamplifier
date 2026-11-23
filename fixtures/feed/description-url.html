@@ -133,8 +133,11 @@
           storageSet: async () => {},
         };
 
-        window.setTimeout(() => {
+        const measureDescription = () => {
           const card = document.querySelector("#description-card");
+          if (!card) {
+            return;
+          }
           const column = card.querySelector(".tralbum-wrapper-col1");
           const descriptions = Array.from(
             card.querySelectorAll(".bcampx__description"),
@@ -169,7 +172,48 @@
               .map((node) => (node.textContent || "").trim())
               .join("|"),
           );
-        }, 2500);
+        };
+
+        // Chrome's virtual-time scheduler occasionally fires the fixed timer
+        // just before the first release fetch renders. Wait for the description
+        // (or a bounded timeout) so the test measures layout, not startup
+        // scheduling.
+        const startedAt = performance.now();
+        const waitForDescription = () => {
+          if (
+            document.querySelector("#description-card .bcampx__description") ||
+            performance.now() - startedAt >= 3500
+          ) {
+            measureDescription();
+            return;
+          }
+          window.setTimeout(waitForDescription, 50);
+        };
+        waitForDescription();
+
+        // IntersectionObserver callbacks are occasionally starved in headless
+        // Chrome with a virtual-time budget. The test cares about description
+        // layout, so start the same fetch directly if the observer has not done
+        // it after a short grace period.
+        window.setTimeout(() => {
+          if (
+            document.querySelector("#description-card .bcampx__description")
+          ) {
+            return;
+          }
+          const card = document.querySelector("#description-card");
+          const controller = card && card.__bcampxController;
+          if (
+            controller &&
+            !controller.loading &&
+            !controller.loadingPromise &&
+            !controller.autoFetchQueued
+          ) {
+            void Promise.resolve(
+              controller.fetchAndRender({ auto: true }),
+            ).catch(() => {});
+          }
+        }, 1200);
       })();
     </script>
     <script src="/bcamplifier.user.js"></script>

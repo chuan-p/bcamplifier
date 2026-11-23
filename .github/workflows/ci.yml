@@ -21,11 +21,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          # The browser smoke tests install the one browser they need in the
+          # next step; downloading all three on install only slows CI down.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
 
       - name: Install Playwright Chromium
-        run: |
-          npm install --no-save playwright
-          npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Export Chromium path
         run: |
@@ -40,6 +46,7 @@ jobs:
           node --check extension.background.js
           node --check extension.content.js
           node --check extension.shared.js
+          node --check extension.host-errors.js
           node --check extension.host-permission.js
 
       - name: Rebuild userscript from source
@@ -49,6 +56,7 @@ jobs:
         run: |
           node --check bcamplifier.user.js
           git diff --exit-code -- bcamplifier.user.js
+          git diff --exit-code -- extension.host-errors.js
 
       - name: Check version consistency
         run: ./scripts/check-versions.sh
@@ -56,8 +64,8 @@ jobs:
       - name: Check for unused source functions
         run: node scripts/check-unused-symbols.mjs
 
-      - name: Run text formatting unit test
-        run: node scripts/test-text-format.mjs
+      - name: Run unit tests
+        run: npm test
 
       - name: Validate extension scope
         run: ./scripts/check-extension-scope.sh
@@ -69,14 +77,4 @@ jobs:
         run: xvfb-run -a ./scripts/smoke-test-extension.sh
 
       - name: Run fixture tests
-        run: |
-          ./scripts/test-feed-fixture.sh
-          ./scripts/test-label-music-fixture.sh
-          ./scripts/test-label-music-grid-to-list-fixture.sh
-          ./scripts/test-buy-link-fixture.sh
-          ./scripts/test-feed-description-url-fixture.sh
-          ./scripts/test-helper-auth-fixture.sh
-          ./scripts/test-fan-profile-fixture.sh
-          ./scripts/test-own-collection-fixture.sh
-          ./scripts/test-batchcamp-fixture.sh
-          ./scripts/test-init-isolation-fixture.sh
+        run: npm run test:fixtures

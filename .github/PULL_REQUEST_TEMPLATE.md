@@ -5,11 +5,12 @@
 
 ## Validation
 
-- [ ] `node --check bcamplifier.user.js`
+- [ ] `npm run build && node --check bcamplifier.user.js`
+- [ ] `npm test`
+- [ ] `npm run test:fixtures`
 - [ ] `./scripts/check-extension-scope.sh`
 - [ ] `./scripts/build-extension.sh`
 - [ ] `./scripts/smoke-test-extension.sh`
-- [ ] `./scripts/test-feed-fixture.sh`
 - [ ] Manual Bandcamp verification when behavior changed
 
 ## Notes

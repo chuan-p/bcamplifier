@@ -1,5 +1,41 @@
 # Changelog
 
+## 3.3.3 - 2026-11-04
+
+### Performance
+
+- Own-collection feed appends take an incremental path: only the new items are built and appended, instead of rebuilding the full candidate list, card maps and signature pass.
+- Source-grid mutations record dirty items, so unchanged items reuse their cached release metadata and skip the per-item signature work.
+- The owned-release link index is rebuilt only when an owned link changes, not on every scroll mutation.
+- Tag indexing is bounded per page (80 tag requests and 20 collection-page requests) and resumes from its stored cursor; a tab focus no longer re-reads every tag record more than once every two minutes.
+
+### Changed
+
+- Remove compatibility code for the unreleased legacy formats: the `bcampx:releaseTags` blob and its migration, the pre-split tag-index status fallback, and the release-cache schema 18 to 19 migration. Caches now have one record-only tag format and no schema migration path.
+- Remove unused `findNeighborPlayableRelease` and unused debug state, and simplify the shared feed-sync tail.
+- Tag index persistence is event-driven (page walk completion, run completion and pagehide) instead of a five-second checkpoint timer.
+- Account-scoped cache entries are only refreshed when they actually carry account state; an empty or corrupt entry still revalidates.
+
+## 3.3.2 - 2026-11-03
+
+### Fixed
+
+- Fix the Firefox "Allow this domain" button doing nothing when clicked. The extension no longer copies the `browser` namespace into its own object (Firefox does not expose its APIs as own enumerable properties, so the copy could be empty) and the shared facade now always lists `runtime`, `storage`, `permissions`, and `tabs`. Without `tabs`, opening the host-permission page failed before any tab appeared, so the click had no visible effect.
+- A feed visit no longer refetches every cached release when the page cannot name the signed-in fan (logged out, a cookie-restricted tab, or a page shape without the identity blob). The viewer check now only invalidates an entry that actually carries account fields; an unknown viewer still hides that entry's purchase state, but the card renders from cache immediately and recovers "you own this" with one background refresh instead of blocking on a request per card on every visit.
+- An account-scoped cache entry whose viewer key is missing (a response that could not name its viewer) is now stripped and refreshed instead of being trusted. Previously an anonymous visit could inherit `You own this` or a download link written by a signed-in visit. A missing viewer on either side is treated as unconfirmed, not as a match.
+- A release that was cached before it was hidden is now marked unavailable when the page or its background refresh answers `404`/`410`. The cached fallback resolves without throwing, so the card used to keep its stale metadata and dead release links until the cache expired.
+- Clicking a release link in a collection no longer re-downloads a page that was already checked. Navigation waits only for a check that is already running, or for the one check a never-loaded card (own collection track cards skip the automatic load) still needs; the wait is bounded, and a second click can no longer slip through to the page while the check is pending.
+- On a card marked unavailable, only links into the missing release page are disabled. Artist, download and other links in the card stay usable.
+
+### Performance
+
+- A cached release is refreshed only when its tracklist, supporter count, description format or account fields require it. An entry with no account state also stops refetching just because the page names a different or unknown viewer, and an empty/corrupt cache entry still revalidates. Cached cards render from the stored snapshot while a background refresh runs.
+- Large collection/artist feeds reuse the release metadata they already parsed, update only cards whose source changed, and append new cards instead of replacing the whole list. The source-grid observer now records dirty items: a scroll append recomputes only the new items, and own-collection appends take an incremental path that skips the all-item maps and signature pass. After the first build only appended cards are measured for auto-fetch; a full-document scan skips generated feed cards in the native purchase-merge heuristics. Artwork is lazy-loaded, and `content-visibility` now covers every feed card, not just tag results.
+- The owned-release link index is rebuilt only when an owned link is added, removed or has its `href` changed, instead of on every mutation version (i.e. every scroll batch).
+- Tag indexing is bounded per page instead of per background batch: 80 tag requests and 20 collection-page requests per visit, with the search refresh throttled. A tab focus no longer re-reads every tag record more than once every two minutes.
+- The release cache index is repaired once per cache schema instead of every six hours, and extension prefix reads use `storage.local.getKeys()` to fetch only matching values instead of cloning the whole local storage.
+- Player next/previous uses a cached collection card list (and now works for list-style collections); full-discography checks are memoized per mutation version, and a pointer gesture only starts collection playback on a tap instead of on every scroll-start.
+
 ## 3.3.1 - 2026-11-01
 
 This is the consolidated release of the recent tag-search and tracklist work.
@@ -14,7 +50,7 @@ This is the consolidated release of the recent tag-search and tracklist work.
 - Off-screen tag cards are skipped by the browser's renderer (`content-visibility`), so a long result list does not style, lay out or paint cards outside the viewport.
 - The Tag search setting is marked experimental and shows cache progress, for example `(201/952)` tagged releases.
 - The index is built in the background at a modest, adaptive pace. It continues while the page stays open and on other Bandcamp pages; `429` responses pause it for 2-15 minutes, and the learned pace is remembered.
-- Tags are cached per release, so multiple tabs no longer overwrite each other's cache; older caches migrate automatically.
+- Tags are cached per release, so multiple tabs no longer overwrite each other's cache.
 - An index is only reported complete after its tags are verified; missing or expired entries are refilled.
 - Collections up to 6,000 items are indexed.
 

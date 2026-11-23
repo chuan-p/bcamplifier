@@ -67,7 +67,7 @@
         const makeTags = (base) =>
           Object.fromEntries(
             [1, 2, 3, 4, 5].map((offset) => [
-              `a${base + offset}`,
+              `bcampx:releaseTag:a${base + offset}`,
               { tags: ["fixture"], ts: now },
             ]),
           );
@@ -95,10 +95,7 @@
               itemsUpdatedAt: now,
             },
           ],
-          [
-            "bcampx:releaseTags",
-            { ...makeTags(0), ...makeTags(100) },
-          ],
+          ...Object.entries({ ...makeTags(0), ...makeTags(100) }),
           ["bcampx:tagIndexCooldown", cooldown],
         ]);
 
@@ -171,10 +168,6 @@
         root.setAttribute(
           "data-bcampx-fixture-summary-items",
           String(summary ? summary.items : -1),
-        );
-        root.setAttribute(
-          "data-bcampx-fixture-summary-store",
-          summary ? summary.store : "missing",
         );
       }, 4200);
     </script>

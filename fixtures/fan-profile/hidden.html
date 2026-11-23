@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hidden Release Fixture | Bandcamp</title>
+  </head>
+  <body>
+    <div id="pagedata" hidden></div>
+
+    <div class="collection-tabs">
+      <ol>
+        <li class="active" data-tab="collection" data-grid-id="collection-grid">
+          collection
+        </li>
+      </ol>
+    </div>
+
+    <div id="grids">
+      <div id="collection-grid" class="grid active">
+        <div class="collection-items">
+          <ol class="collection-grid">
+            <li
+              class="collection-item-container"
+              data-itemid="7001"
+              data-tralbumid="7001"
+              data-tralbumtype="a"
+              data-bandid="700"
+              data-playerdata='{"id":7001,"title":"Hidden Release","artist_name":"Fixture Artist","url":"https://fixture.bandcamp.com/album/hidden-release","album":{"id":7001,"title":"Hidden Release","url":"https://fixture.bandcamp.com/album/hidden-release","is_owned":true}}'
+            >
+              <a
+                class="item-link"
+                href="https://fixture.bandcamp.com/album/hidden-release"
+              >
+                <img
+                  src="data:image/gif;base64,R0lGODlhAQABAAAAACw="
+                  alt=""
+                />
+                <span class="collection-item-title">Hidden Release</span>
+                <span class="collection-item-artist">by Fixture Artist</span>
+              </a>
+              <span class="redownload-item">
+                <a href="https://bandcamp.com/download/hidden-release"
+                  >download</a
+                >
+              </span>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const pagedata = {
+          identities: { fan: { id: 42 } },
+          fan_data: { fan_id: 42, is_own_page: true, name: "Fixture Fan" },
+          current_fan: { fan_id: 42 },
+          collection_data: {
+            last_token: "",
+            item_count: 1,
+            batch_size: 20,
+            sequence: ["h1"],
+          },
+          wishlist_data: {
+            last_token: "",
+            item_count: 0,
+            batch_size: 20,
+            sequence: [],
+          },
+          item_cache: {
+            collection: {
+              h1: {
+                item_id: 7001,
+                tralbum_id: 7001,
+                tralbum_type: "a",
+                band_id: 700,
+                item_url:
+                  "https://fixture.bandcamp.com/album/hidden-release",
+                item_title: "Hidden Release",
+                band_name: "Fixture Artist",
+                item_art_id: 0,
+              },
+            },
+          },
+        };
+        document
+          .getElementById("pagedata")
+          .setAttribute("data-blob", JSON.stringify(pagedata));
+
+        const storage = new Map([
+          [
+            "bcampx:userSettings",
+            { showCollectionCounts: false, enableTagSearch: false },
+          ],
+        ]);
+
+        // ?cached=1 models a release the fan opened while it was still
+        // available. The page then answers 404, and the card must still be
+        // marked unavailable instead of trusting the cached snapshot.
+        if (new URLSearchParams(window.location.search).get("cached") === "1") {
+          storage.set(
+            "bcampx:release:https://fixture.bandcamp.com/album/hidden-release",
+            {
+              schemaVersion: 19,
+              fetchedAt: Date.now(),
+              viewerKey: "fan:42",
+              url: "https://fixture.bandcamp.com/album/hidden-release",
+              title: "Hidden Release",
+              artist: "Fixture Artist",
+              description:
+                "Cached description from when the release was available.",
+              releaseDate: "2024-01-02",
+              tags: ["ambient"],
+              tracks: [
+                {
+                  title: "Cached Track",
+                  trackId: "7001",
+                  streamUrl: "https://example.com/cached-7001.mp3",
+                  duration: "100",
+                  trackUrl:
+                    "https://fixture.bandcamp.com/album/hidden-release/track/cached",
+                },
+              ],
+            },
+          );
+          document.documentElement.setAttribute(
+            "data-bcampx-hidden-cached",
+            "true",
+          );
+        }
+
+        globalThis.__hiddenHtmlRequests = 0;
+        globalThis.__hiddenApiRequests = 0;
+
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async () => {
+            globalThis.__hiddenHtmlRequests += 1;
+            // The release has been hidden by the artist: the page is gone.
+            throw new Error("HTTP 404");
+          },
+          requestJson: async (url) => {
+            if (String(url).includes("tralbum_details")) {
+              globalThis.__hiddenApiRequests += 1;
+              return {
+                title: "Hidden Release",
+                tralbum_artist: "Fixture Artist",
+                about: "",
+                tracks: [
+                  {
+                    title: "Hidden Track",
+                    track_id: 7001,
+                    duration: 100,
+                    streaming_url: {
+                      "mp3-128": "https://example.com/hidden-7001.mp3",
+                    },
+                    track_url:
+                      "https://fixture.bandcamp.com/track/hidden-track",
+                  },
+                ],
+              };
+            }
+            return {};
+          },
+          storageGet: async (key, fallback) =>
+            storage.has(key) ? storage.get(key) : fallback,
+          storageSet: async (key, value) => {
+            storage.set(key, value);
+          },
+        };
+
+        const wait = (ms) =>
+          new Promise((resolve) => window.setTimeout(resolve, ms));
+
+        window.setTimeout(async () => {
+          const root = document.documentElement;
+          const card = () =>
+            document.querySelector(
+              '.bcampx-label-feed-card[data-bcampx-release-url="https://fixture.bandcamp.com/album/hidden-release"]',
+            );
+
+          for (let attempt = 0; attempt < 100; attempt += 1) {
+            const node = card();
+            if (
+              node &&
+              node.getAttribute("data-bcampx-release-unavailable") === "true"
+            ) {
+              break;
+            }
+            await wait(100);
+          }
+
+          const node = card();
+          root.setAttribute(
+            "data-bcampx-hidden-unavailable",
+            String(
+              Boolean(node && node.getAttribute(
+                "data-bcampx-release-unavailable",
+              )),
+            ),
+          );
+          root.setAttribute(
+            "data-bcampx-hidden-tracks",
+            node
+              ? Array.from(
+                  node.querySelectorAll(".bcampx__track-link"),
+                )
+                    .map((button) => button.textContent.trim())
+                    .join("|")
+              : "",
+          );
+          root.setAttribute(
+            "data-bcampx-hidden-html-requests",
+            String(globalThis.__hiddenHtmlRequests),
+          );
+          root.setAttribute(
+            "data-bcampx-hidden-api-requests",
+            String(globalThis.__hiddenApiRequests),
+          );
+
+          const releaseLink = node
+            ? node.querySelector(
+                'a.item-link[href*="/album/hidden-release"]',
+              )
+            : null;
+          let blocked = false;
+          if (releaseLink) {
+            const event = new MouseEvent("click", {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+            });
+            releaseLink.dispatchEvent(event);
+            blocked = event.defaultPrevented;
+          }
+          root.setAttribute(
+            "data-bcampx-hidden-release-link-blocked",
+            String(blocked),
+          );
+
+          // The native download link lives outside the enhanced card and must
+          // keep working; only links into the dead release page are blocked.
+          const downloadLink = document.querySelector(
+            ".redownload-item a[href]",
+          );
+          root.setAttribute(
+            "data-bcampx-hidden-download-outside",
+            String(
+              Boolean(
+                downloadLink &&
+                  !downloadLink.closest(
+                    '[data-bcampx-release-unavailable="true"]',
+                  ),
+              ),
+            ),
+          );
+
+          // Only links into the missing release are dead. The artist page is
+          // reachable and must not be greyed out or made inert.
+          const artistLink = node
+            ? node.querySelector("a.fan-name.artist-name")
+            : null;
+          root.setAttribute(
+            "data-bcampx-hidden-artist-link-ok",
+            String(
+              Boolean(
+                artistLink &&
+                  !artistLink.classList.contains(
+                    "bcampx__link--unavailable",
+                  ) &&
+                  artistLink.getAttribute("aria-disabled") !== "true",
+              ),
+            ),
+          );
+          root.setAttribute("data-bcampx-hidden-done", "true");
+        }, 1200);
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+  </body>
+</html>

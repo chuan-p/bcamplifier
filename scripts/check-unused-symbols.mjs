@@ -1,72 +1,115 @@
 #!/usr/bin/env node
-// Fails when a function declared in src/ is never referenced anywhere.
-//
-// The bundle is one dependency-injected IIFE, so dead helpers survive unnoticed
-// (and keep shipping in the minified userscript). Counting identifier
-// occurrences in the raw sources is deliberately conservative: a name inside a
-// comment or string also counts as a reference, so this only reports symbols
-// that are truly unreferenced.
+// AST-based check that fails when a top-level function in src/ is neither
+// called within its own module nor imported by any other module (or test).
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as acorn from "acorn";
 
 const rootDir = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
 );
 const srcDir = path.join(rootDir, "src");
-const declarationPattern =
-    /^ {4}(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/gm;
-const identifierPattern = /[A-Za-z_$][\w$]*/g;
 
 function listJavaScriptFiles(dir) {
-    return readdirSync(dir).flatMap((entry) => {
-        const fullPath = path.join(dir, entry);
-        if (statSync(fullPath).isDirectory()) {
-            return listJavaScriptFiles(fullPath);
+    return readdirSync(dir)
+        .sort()
+        .flatMap((entry) => {
+            const fullPath = path.join(dir, entry);
+            if (statSync(fullPath).isDirectory()) {
+                return listJavaScriptFiles(fullPath);
+            }
+            return entry.endsWith(".js") && entry !== "userscript.meta.js"
+                ? [fullPath]
+                : [];
+        });
+}
+
+function walk(node, parent, key, visit) {
+    if (!node || typeof node !== "object") {
+        return;
+    }
+    visit(node, parent, key);
+    for (const childKey of Object.keys(node)) {
+        if (childKey === "loc" || childKey === "start" || childKey === "end") {
+            continue;
         }
-        return entry.endsWith(".js") ? [fullPath] : [];
-    });
+        const value = node[childKey];
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                walk(item, node, childKey, visit);
+            }
+        } else if (value && typeof value.type === "string") {
+            walk(value, node, childKey, visit);
+        }
+    }
 }
 
 const files = listJavaScriptFiles(srcDir);
-const sources = files.map((file) => ({
-    file,
-    text: readFileSync(file, "utf8"),
-}));
-
 const declarations = [];
-const referenceCounts = new Map();
+const importedByOthers = new Set();
+const localRefCounts = new Map();
 
-for (const source of sources) {
-    for (const match of source.text.matchAll(declarationPattern)) {
-        declarations.push({
-            file: path.relative(rootDir, source.file),
-            name: match[1],
-        });
-        referenceCounts.set(match[1], (referenceCounts.get(match[1]) || 0) + 1);
-    }
-}
+for (const file of files) {
+    const rel = path.relative(rootDir, file);
+    const code = readFileSync(file, "utf8");
+    const ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "module" });
 
-for (const source of sources) {
-    for (const match of source.text.matchAll(identifierPattern)) {
-        const name = match[0];
-        if (!referenceCounts.has(name)) {
+    const moduleFunctions = new Set();
+    for (const stmt of ast.body) {
+        if (stmt.type === "ImportDeclaration") {
+            const resolved = path.relative(
+                rootDir,
+                path.resolve(path.dirname(file), stmt.source.value),
+            );
+            for (const spec of stmt.specifiers) {
+                if (spec.type === "ImportSpecifier") {
+                    importedByOthers.add(`${resolved}::${spec.imported.name}`);
+                }
+            }
             continue;
         }
-        referenceCounts.set(name, referenceCounts.get(name) + 1);
+
+        const inner =
+            stmt.type === "ExportNamedDeclaration" && stmt.declaration
+                ? stmt.declaration
+                : stmt;
+        if (inner.type === "FunctionDeclaration" && inner.id) {
+            const key = `${rel}::${inner.id.name}`;
+            moduleFunctions.add(inner.id.name);
+            declarations.push({ file: rel, name: inner.id.name, key });
+            localRefCounts.set(key, 0);
+        }
     }
+
+    walk(ast, null, null, (node, parent, key) => {
+        if (node.type !== "Identifier" || !moduleFunctions.has(node.name)) {
+            return;
+        }
+        if (parent) {
+            if (parent.type === "FunctionDeclaration" && key === "id") return;
+            if (parent.type === "MemberExpression" && key === "property" && !parent.computed) return;
+            if (parent.type === "Property" && key === "key" && !parent.computed) return;
+            if (parent.type === "ExportSpecifier") return;
+            if (parent.type === "ImportSpecifier") return;
+        }
+        const declKey = `${rel}::${node.name}`;
+        localRefCounts.set(declKey, (localRefCounts.get(declKey) || 0) + 1);
+    });
 }
 
 const unused = declarations.filter(
-    (declaration) => (referenceCounts.get(declaration.name) || 0) <= 1,
+    (decl) =>
+        (localRefCounts.get(decl.key) || 0) === 0 &&
+        !importedByOthers.has(decl.key),
 );
 
 if (unused.length) {
     console.error("Unused functions declared in src/:");
-    unused.forEach((declaration) => {
-        console.error(`  ${declaration.name} (${declaration.file})`);
+    unused.forEach((decl) => {
+        console.error(`  ${decl.name} (${decl.file})`);
     });
     process.exit(1);
 }

@@ -130,12 +130,12 @@
         font: 400 13px/1.35 "Helvetica Neue", Helvetica, Arial, sans-serif;
       }
 
-      /* Let the browser skip style, layout and paint for tag result cards
-         outside the viewport. This is the native equivalent of virtualising
-         the list; it was removed earlier on a wrong hypothesis about missing
-         tracklists (the real cause was the feed living inside Bandcamp's
-         grid, fixed separately). */
-      .bcampx-label-feed-card[data-bcampx-tag-source="tags"] {
+      /* Let the browser skip style, layout and paint for feed cards outside
+         the viewport. This is the native equivalent of virtualising the list;
+         without it a 1k+ card collection pays full layout/paint for every
+         card, including artwork. `auto` remembers the real height after the
+         first paint, so expanded tracklists do not jump. */
+      .bcampx-label-feed-card {
         content-visibility: auto;
         contain-intrinsic-size: auto 220px;
       }
@@ -783,6 +783,18 @@
 
       .bcampx__link:hover {
         text-decoration: underline;
+      }
+
+      /* Links into a release page that no longer exists. */
+      .bcampx__link--unavailable,
+      [data-bcampx-release-unavailable="true"] .bcampx__link {
+        cursor: not-allowed;
+        opacity: 0.55;
+        text-decoration: none;
+      }
+
+      .bcampx__link--unavailable:hover {
+        text-decoration: none;
       }
 
       .bcampx__action {

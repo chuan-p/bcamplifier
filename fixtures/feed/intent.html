@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta property="og:site_name" content="Bandcamp" />
+    <title>Playback Intent Fixture</title>
+  </head>
+  <body>
+    <div id="pagedata" data-blob="{}"></div>
+
+    <ol class="collection-grid">
+      <li
+        id="intent-slow"
+        class="new-release collection-item-container track_play_hilite"
+        data-trackid="11"
+        data-item-json='{"item_id":501,"item_type":"a","item_url":"https://fixture.bandcamp.com/album/intent-slow"}'
+      >
+        <a class="track_play_auxiliary" data-trackid="11">
+          <img
+            class="collection-item-art"
+            src="https://dummyimage.com/320x320/fde68a/111827.png&text=Slow"
+            alt="Slow release art"
+          />
+        </a>
+        <a href="https://fixture.bandcamp.com/album/intent-slow"
+          >Intent Slow</a
+        >
+      </li>
+      <li
+        id="intent-fast"
+        class="new-release collection-item-container track_play_hilite"
+        data-trackid="22"
+        data-item-json='{"item_id":502,"item_type":"a","item_url":"https://fixture.bandcamp.com/album/intent-fast"}'
+      >
+        <a class="track_play_auxiliary" data-trackid="22">
+          <img
+            class="collection-item-art"
+            src="https://dummyimage.com/320x320/fca5a5/111827.png&text=Fast"
+            alt="Fast release art"
+          />
+        </a>
+        <a href="https://fixture.bandcamp.com/album/intent-fast"
+          >Intent Fast</a
+        >
+      </li>
+    </ol>
+
+    <script>
+      (() => {
+        const releaseHtml = (title, id, track) => `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${title} | Fixture Artist</title>
+    <meta property="og:image" content="https://dummyimage.com/640x640/cbd5e1/111827.png&text=${title}" />
+  </head>
+  <body>
+    <div data-tralbum='{"current":{"title":"${title}","release_date":"2024-01-02","id":${id},"type":"album","band_id":654},"album_title":"${title}","artist":"Fixture Artist","album_release_date":"2024-01-02","trackinfo":[{"title":"${track}","track_id":"${id}","file":{"mp3-128":"https://example.com/${id}.mp3"},"duration":100}]}'></div>
+  </body>
+</html>`;
+
+        const storage = new Map();
+        const wait = (ms) =>
+          new Promise((resolve) => window.setTimeout(resolve, ms));
+        const requests = [];
+
+        globalThis.__BCAMPX_HOST__ = {
+          kind: "webextension",
+          requestHtml: async (url) => {
+            if (String(url).includes("/album/intent-slow")) {
+              requests.push("slow");
+              // The slower request is the one the user abandoned.
+              await wait(1800);
+              return releaseHtml("Intent Slow", 11, "Slow Track");
+            }
+            if (String(url).includes("/album/intent-fast")) {
+              requests.push("fast");
+              return releaseHtml("Intent Fast", 22, "Fast Track");
+            }
+            throw new Error(`Unexpected fixture request for ${url}`);
+          },
+          requestJson: async () => {
+            throw new Error("requestJson is not used in this fixture");
+          },
+          storageGet: async (key, fallback) =>
+            storage.has(key) ? storage.get(key) : fallback,
+          storageSet: async (key, value) => {
+            storage.set(key, value);
+          },
+        };
+
+        const record = () => {
+          const host = document.querySelector("#bcampx-player-host");
+          const track =
+            host && host.shadowRoot
+              ? host.shadowRoot.querySelector(".bcampx-player-track")
+              : null;
+          const text = track ? track.textContent.trim() : "";
+          const root = document.documentElement;
+          root.setAttribute("data-playback-intent-track", text);
+          root.setAttribute(
+            "data-playback-intent-result",
+            /Fast Track$/.test(text) ? "latest" : "stale",
+          );
+          root.setAttribute(
+            "data-playback-intent-requests",
+            requests.join(","),
+          );
+        };
+
+        window.setTimeout(async () => {
+          document
+            .querySelector("#intent-slow .track_play_auxiliary")
+            .click();
+          await wait(80);
+          // The user changes their mind while the slow request is running.
+          document
+            .querySelector("#intent-fast .track_play_auxiliary")
+            .click();
+          await wait(3200);
+          record();
+          document.documentElement.setAttribute(
+            "data-playback-intent-done",
+            "true",
+          );
+        }, 600);
+      })();
+    </script>
+    <script src="/bcamplifier.user.js"></script>
+  </body>
+</html>

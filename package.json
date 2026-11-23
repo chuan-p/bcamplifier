@@ -1,12 +1,19 @@
 {
   "name": "bcamplifier",
-  "version": "3.3.1",
+  "version": "3.3.3",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/build-userscript.mjs"
+    "build": "node scripts/build-userscript.mjs",
+    "build:extension": "./scripts/build-extension.sh",
+    "bump": "node scripts/bump-version.mjs",
+    "test": "node scripts/run-unit-tests.mjs",
+    "test:fixtures": "node scripts/run-fixture-tests.mjs"
   },
   "devDependencies": {
-    "terser": "^5.31.0"
+    "acorn": "8.18.0",
+    "esbuild": "^0.28.2",
+    "happy-dom": "20.11.2",
+    "playwright": "1.65.1"
   }
 }

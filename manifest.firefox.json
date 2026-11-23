@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bandcamplifier",
-  "version": "3.3.1",
+  "version": "3.3.3",
   "description": "Improve the Bandcamp feed with release metadata, track playback, wishlist actions, and purchase shortcuts.",
   "homepage_url": "https://github.com/chuan-p/bcamplifier",
   "icons": {
@@ -30,14 +30,11 @@
     {
       "matches": [
         "https://bandcamp.com/*",
-        "https://bandcamp.com/feed*",
-        "https://bandcamp.com/*/feed*",
-        "https://bandcamp.com/album/*",
-        "https://bandcamp.com/track/*",
         "https://*.bandcamp.com/*"
       ],
       "js": [
         "extension.shared.js",
+        "extension.host-errors.js",
         "extension.content.js",
         "bcamplifier.user.js"
       ],

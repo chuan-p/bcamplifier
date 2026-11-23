@@ -11,23 +11,35 @@ Thanks for your interest in improving Bandcamplifer.
 ## Development Setup
 
 1. Clone the repository.
-2. Build the generated userscript:
+2. Install the build and test dependencies:
 
 ```sh
-node scripts/build-userscript.mjs
+npm install
 ```
 
-3. Start a local web server from the repository root:
+Browser-driven smoke tests additionally need a Chromium download:
+
+```sh
+npx playwright install chromium
+```
+
+3. Build the generated userscript:
+
+```sh
+npm run build
+```
+
+4. Start a local web server from the repository root:
 
 ```sh
 python3 -m http.server 8000 --bind 127.0.0.1
 ```
 
-4. Install [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js) in Tampermonkey for local iteration.
-5. If you are testing the extension build, run:
+5. Install [`bcamplifier.dev.user.js`](./bcamplifier.dev.user.js) in Tampermonkey for local iteration.
+6. If you are testing the extension build, run:
 
 ```sh
-./scripts/build-extension.sh
+npm run build:extension
 ```
 
 ## Validation
@@ -35,13 +47,28 @@ python3 -m http.server 8000 --bind 127.0.0.1
 Run the checks that match your change before opening a pull request:
 
 ```sh
-node scripts/build-userscript.mjs
-node --check src/bcamplifier.core.js
+npm test                          # parsing, formatting and extension unit tests
+npm run test:fixtures             # headless Chrome fixture tests
+npm run build
 node --check bcamplifier.user.js
+./scripts/check-versions.sh
 ./scripts/check-extension-scope.sh
-./scripts/build-extension.sh
+npm run build:extension
 ./scripts/smoke-test-extension.sh
-./scripts/test-feed-fixture.sh
+```
+
+The generated files (`bcamplifier.user.js`, `extension.host-errors.js`) are
+committed, so rebuild before committing or CI will report them as stale.
+
+## Releasing
+
+The version lives in `src/userscript.meta.js` and is copied everywhere else by
+one command:
+
+```sh
+npm run bump -- 3.3.4
+npm run build
+npm run build:extension
 ```
 
 If a browser-dependent check cannot run in your environment, mention that clearly in the pull request.

@@ -26,10 +26,6 @@ expected_optional_host_permissions = [
 
 expected_matches = [
     "https://bandcamp.com/*",
-    "https://bandcamp.com/feed*",
-    "https://bandcamp.com/*/feed*",
-    "https://bandcamp.com/album/*",
-    "https://bandcamp.com/track/*",
     "https://*.bandcamp.com/*",
 ]
 
@@ -73,6 +69,24 @@ for manifest_path in manifests:
 
     if content_scripts[0].get("all_frames") is not True:
         raise SystemExit(f"{manifest_path.name}: expected all_frames=true")
+
+    expected_js = [
+        "extension.shared.js",
+        "extension.host-errors.js",
+        "extension.content.js",
+        "bcamplifier.user.js",
+    ]
+    scripts = content_scripts[0].get("js", [])
+    if scripts != expected_js:
+        raise SystemExit(
+            f"{manifest_path.name}: unexpected content script scripts: {scripts!r}"
+        )
+
+    for file_name in scripts:
+        if not (root / file_name).is_file():
+            raise SystemExit(
+                f"{manifest_path.name}: content script {file_name} is not in the repo"
+            )
 
     print(f"{manifest_path.name}: scope_ok")
 PY

@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.3.4 - 2026-11-24
+
+### Changed
+
+- Rename the Chrome and Firefox extension listings to `Bandcamplifier: Feed & UI Enhancer for Bandcamp` to improve store search discoverability.
+- Modularize feed, player, and tag-index internals and harden extension checks.
+
 ## 3.3.3 - 2026-11-04
 
 ### Performance

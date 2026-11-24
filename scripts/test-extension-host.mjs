@@ -2,28 +2,18 @@
 
 // Integration test for the extension content-script adapter.
 //
-// The browser smoke test is the only other place this file runs, and it needs a
-// real Chrome. This harness loads the same three files in a VM with a fake
-// WebExtension namespace, so a change to extension.content.js that breaks the
-// host bridge (or drops the shared error mapping) fails without a browser.
+// Loads the shared/error/content scripts in a VM with a fake WebExtension
+// namespace, verifying host bridge publication, storage round-trip, and
+// shared runtime/quota error guidance.
 
+import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import vm from "node:vm";
+import test from "node:test";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const rootDir = path.resolve(scriptDir, "..");
-
-const failures = [];
-
-function expect(label, actual, expected) {
-    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-        failures.push(
-            `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
-        );
-    }
-}
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function createFakeChrome({ store, responses, failWritesWith = "" }) {
     const chrome = {
@@ -53,8 +43,6 @@ function createFakeChrome({ store, responses, failWritesWith = "" }) {
                 }),
                 set: (items, callback) => {
                     if (failWritesWith) {
-                        // The real API leaves lastError set while the callback
-                        // runs and clears it afterwards.
                         chrome.runtime.lastError = { message: failWritesWith };
                         setTimeout(() => {
                             callback();
@@ -62,7 +50,6 @@ function createFakeChrome({ store, responses, failWritesWith = "" }) {
                         }, 0);
                         return;
                     }
-
                     Object.assign(store, items);
                     setTimeout(callback, 0);
                 },
@@ -142,78 +129,53 @@ async function loadAdapter(chrome) {
     return { host: context.__BCAMPX_HOST__, documentElement };
 }
 
-// Scenario 1: a healthy extension. Runtime errors still have to be translated
-// into the shared guidance, and storage has to round-trip.
-const healthy = await loadAdapter(
-    createFakeChrome({
-        store: {},
-        responses: {
-            "bcampx:get-host-permissions": () => ({ ok: true, origins: [] }),
-            "bcampx:storage-get-by-prefix": () => ({ ok: true, values: {} }),
-            "bcampx:fetch": () => ({
-                ok: false,
-                error: "Receiving end does not exist.",
-            }),
+test("healthy extension publishes host bridge, round-trips storage, and maps runtime errors", async () => {
+    const healthy = await loadAdapter(
+        createFakeChrome({
+            store: {},
+            responses: {
+                "bcampx:get-host-permissions": () => ({ ok: true, origins: [] }),
+                "bcampx:storage-get-by-prefix": () => ({ ok: true, values: {} }),
+                "bcampx:fetch": () => ({
+                    ok: false,
+                    error: "Receiving end does not exist.",
+                }),
+            },
+        }),
+    );
+
+    assert.ok(healthy.host);
+    assert.equal(healthy.host.kind, "webextension");
+    assert.equal(healthy.documentElement.attributes["data-bcampx-host"], "webextension");
+
+    await healthy.host.storageSet("bcampx:probe", { value: 2 });
+    assert.deepEqual(await healthy.host.storageGet("bcampx:probe", null), { value: 2 });
+
+    await assert.rejects(
+        () => healthy.host.requestJson("https://bandcamp.com/api/nothing"),
+        {
+            message:
+                "Extension was updated or reloaded. Refresh this Bandcamp tab and try again.",
         },
-    }),
-);
+    );
+});
 
-expect("the adapter publishes a host bridge", Boolean(healthy.host), true);
-expect("the host identifies itself", healthy.host && healthy.host.kind, "webextension");
-expect(
-    "the page is marked as extension-hosted",
-    healthy.documentElement.attributes["data-bcampx-host"],
-    "webextension",
-);
+test("full storage quota is reported with actionable guidance", async () => {
+    const full = await loadAdapter(
+        createFakeChrome({
+            store: {},
+            responses: {
+                "bcampx:get-host-permissions": () => ({ ok: true, origins: [] }),
+            },
+            failWritesWith: "QUOTA_BYTES quota exceeded",
+        }),
+    );
 
-await healthy.host.storageSet("bcampx:probe", { value: 2 });
-expect(
-    "storage writes reach the extension and read back",
-    await healthy.host.storageGet("bcampx:probe", null),
-    { value: 2 },
-);
-
-let mappedMessage = "";
-try {
-    await healthy.host.requestJson("https://bandcamp.com/api/nothing");
-} catch (error) {
-    mappedMessage = error.message;
-}
-expect(
-    "runtime errors use the shared guidance",
-    mappedMessage,
-    "Extension was updated or reloaded. Refresh this Bandcamp tab and try again.",
-);
-
-// Scenario 2: a full storage quota. The adapter has to surface the failure with
-// the guidance the bundled core shows for the same condition, instead of the
-// raw QUOTA_BYTES message.
-const full = await loadAdapter(
-    createFakeChrome({
-        store: {},
-        responses: {
-            "bcampx:get-host-permissions": () => ({ ok: true, origins: [] }),
+    await assert.rejects(
+        () => full.host.storageSet("bcampx:probe", { value: 1 }),
+        {
+            message:
+                "Extension storage is full. Clear this site's cached data or restart the browser and try again.",
         },
-        failWritesWith: "QUOTA_BYTES quota exceeded",
-    }),
-);
-
-let writeError = "";
-try {
-    await full.host.storageSet("bcampx:probe", { value: 1 });
-} catch (error) {
-    writeError = error.message;
-}
-expect(
-    "a full quota is reported with actionable guidance",
-    writeError,
-    "Extension storage is full. Clear this site's cached data or restart the browser and try again.",
-);
-
-if (failures.length) {
-    console.log("extension_host_test=failed");
-    failures.forEach((failure) => console.log(`failed=${failure}`));
-    process.exit(1);
-}
-
-console.log("extension_host_test=passed");
+    );
+});

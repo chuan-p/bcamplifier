@@ -1,21 +1,18 @@
 import {
     ensureCardController,
+    getStoryCardsFromRoots,
+    isArtistMusicPage,
+    isFeedEnhancerPage,
+} from "../bcamplifier.core.js";
+import {
     findFeaturedTrackForCard,
-    getCardController,
     getCardPrimaryReleaseUrl,
     getCardReleaseRequestContext,
     getCollectionGridFeaturedPreview,
-    getStoryCardsFromRoots,
     getStoryRoot,
     isAlsoBoughtRecommendationCard,
-    isArtistMusicPage,
-    isFanCollectionPage,
-    isFeedEnhancerPage,
     isMalformedFeedCard,
-    normalizeReleaseUrl,
-    persistUserSettings,
-    resolveFanIdFromPageState,
-} from "../bcamplifier.core.js";
+} from "../utils/card-dom.js";
 import {
     createTrackData,
     getReleaseData,
@@ -25,26 +22,35 @@ import {
     parseTralbumData,
     requestHtml,
 } from "../data/release-data.js";
-import { applyTagSearchSetting, getTagIndexProgress } from "../data/tag-index.js";
 import {
     getFanCollectionSearchItem,
     isOwnFanTrackCard,
     isOwnedDigitalPrice,
-    refreshArtistMusicCollectionCounts,
     scheduleFanCollectionFeedContextSync,
 } from "./artist-music-feed.js";
 import { isFullDiscographyCard } from "./card-merge.js";
 import { playOwnFanTrackAfterLoadingStream } from "./card-renderer.js";
+import {
+    closePlayerSettingsMenu,
+    createPlayerSettingsMenu,
+    refreshTagSearchSettingProgress,
+    setupPlayerMenuDismissal,
+    syncPlayerSettingsMenu,
+    togglePlayerSettingsMenu,
+} from "./player-settings.js";
+import {
+    applyPlayerFavoriteState,
+    ensureRemotePlayerWishlistState,
+    getPlayerFavoriteState,
+    registerPlayerWishlistContext,
+    syncFavoriteButtonState,
+    toggleActiveWishlist,
+} from "./player-wishlist.js";
 import { isUnavailableReleaseResult, markReleasePageUnavailable } from "./release-page.js";
 import {
     appendToDocument,
     canRunTrackActionHelper,
-    getExternalHostApi,
-    hasExtensionHostPermission,
-    isCustomDomainReleaseUrl,
-    isWebExtensionHost,
     recordTrackActionDiagnostic,
-    refreshRenderedTrackActionButtons,
     requestTrackActionViaHelper,
     scheduleNextFrame,
     setTrackActionButtonPending,
@@ -61,35 +67,76 @@ import {
 } from "../state.js";
 import { createPlayerIcon } from "../ui/player-icons.js";
 import { getNodeMemo, markDebugState } from "../utils/dom.js";
+import {
+    getExternalHostApi,
+    hasExtensionHostPermission,
+    isWebExtensionHost,
+} from "../utils/host-bridge.js";
+import {
+    getCardController,
+    isFanCollectionPage,
+    resolveFanIdFromPageState,
+} from "../utils/page.js";
 import { storageGet, storageSet } from "../utils/storage.js";
 import { cleanText } from "../utils/text-format.js";
+import { isCustomDomainReleaseUrl, normalizeReleaseUrl } from "../utils/url.js";
+
+const playerState = {
+    sharedAudio: null,
+    pageAudio: null,
+    activeTrackButton: null,
+    activeTrackCard: null,
+    activeTrackFanGridNode: null,
+    waypointNode: null,
+    activeTrack: null,
+    activeTrackIndex: -1,
+    activeTrackList: [],
+    activeReleaseData: null,
+    activeCardArtUrl: "",
+    activePlaybackScope: "",
+    coverPlaybackStateNode: null,
+    collectionCoverStateObserver: null,
+    collectionCoverStateObserverTimer: 0,
+    playbackIntent: 0,
+    collectionGridCardsCache: null,
+    collectionPointerGesture: null,
+    uiSyncFrame: 0,
+    pendingUiSyncCardArtUrl: "",
+    tabId: `bcampx-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    lastPlaybackStartedAt: 0,
+    lastHandledPlaybackPauseRequestAt: 0,
+    collectionPointerReleaseUrl: "",
+    collectionPointerHandledAt: 0,
+};
+
+export { refreshTagSearchSettingProgress, setupPlayerMenuDismissal };
 
 // Shared audio, playback routing, the bottom player shell, media session
 // integration and the waypoint controls. Extracted from the core bundle and
 // injected into the same IIFE.
 
 export function setupSharedAudio() {
-    if (STATE.sharedAudio) {
+    if (playerState.sharedAudio) {
         return;
     }
 
-    STATE.pageAudio =
+    playerState.pageAudio =
         document.querySelector("body > audio") ||
         document.querySelector("audio") ||
         null;
-    STATE.sharedAudio = document.createElement("audio");
-    STATE.sharedAudio.preload = "metadata";
-    STATE.sharedAudio.controls = true;
-    addAudioEventListeners(STATE.sharedAudio, [
+    playerState.sharedAudio = document.createElement("audio");
+    playerState.sharedAudio.preload = "metadata";
+    playerState.sharedAudio.controls = true;
+    addAudioEventListeners(playerState.sharedAudio, [
         "pause",
         "play",
         "ended",
     ], syncActiveTrackButton);
-    STATE.sharedAudio.addEventListener("ended", handleSharedAudioEnded);
-    STATE.sharedAudio.addEventListener("play", () =>
+    playerState.sharedAudio.addEventListener("ended", handleSharedAudioEnded);
+    playerState.sharedAudio.addEventListener("play", () =>
         announcePlaybackStart("feed-preview"),
     );
-    addAudioEventListeners(STATE.sharedAudio, [
+    addAudioEventListeners(playerState.sharedAudio, [
         "play",
         "pause",
         "ended",
@@ -117,7 +164,7 @@ export function handleDocumentAudioPlay(event) {
         return;
     }
 
-    if (audio === STATE.sharedAudio) {
+    if (audio === playerState.sharedAudio) {
         return;
     }
 
@@ -128,13 +175,13 @@ export function handleDocumentAudioPlay(event) {
     // A native play was started. The old code paused the page's own audio
     // here, so a preview link could look like it never started. Let the
     // native player win and stop our shared audio instead.
-    if (STATE.sharedAudio && !STATE.sharedAudio.paused) {
-        STATE.sharedAudio.pause();
+    if (playerState.sharedAudio && !playerState.sharedAudio.paused) {
+        playerState.sharedAudio.pause();
         clearActiveTrackButton();
         scheduleUiSync();
     }
 
-    if (isFeedEnhancerPage() && audio === STATE.pageAudio) {
+    if (isFeedEnhancerPage() && audio === playerState.pageAudio) {
         return;
     }
 
@@ -149,9 +196,9 @@ function handleSharedAudioEnded() {
 
 function announcePlaybackStart(kind) {
     const startedAt = Date.now();
-    STATE.lastPlaybackStartedAt = startedAt;
+    playerState.lastPlaybackStartedAt = startedAt;
     void storageSet(PLAYBACK_PAUSE_REQUEST_KEY, {
-        tabId: STATE.tabId,
+        tabId: playerState.tabId,
         kind: kind || "bandcamp-native",
         pageUrl: window.location.href,
         ts: startedAt,
@@ -201,7 +248,7 @@ function handlePlaybackPauseRequest(request) {
         return;
     }
 
-    if (!request.tabId || request.tabId === STATE.tabId) {
+    if (!request.tabId || request.tabId === playerState.tabId) {
         return;
     }
 
@@ -210,7 +257,7 @@ function handlePlaybackPauseRequest(request) {
         return;
     }
 
-    if (requestTs <= STATE.lastHandledPlaybackPauseRequestAt) {
+    if (requestTs <= playerState.lastHandledPlaybackPauseRequestAt) {
         return;
     }
 
@@ -218,10 +265,10 @@ function handlePlaybackPauseRequest(request) {
         return;
     }
 
-    STATE.lastHandledPlaybackPauseRequestAt = requestTs;
+    playerState.lastHandledPlaybackPauseRequestAt = requestTs;
     if (
-        STATE.lastPlaybackStartedAt &&
-        requestTs < STATE.lastPlaybackStartedAt
+        playerState.lastPlaybackStartedAt &&
+        requestTs < playerState.lastPlaybackStartedAt
     ) {
         return;
     }
@@ -247,8 +294,8 @@ function pauseLocalPlayback() {
 function getLocalActiveAudios() {
     const audios = [];
 
-    if (STATE.sharedAudio && !STATE.sharedAudio.paused) {
-        audios.push(STATE.sharedAudio);
+    if (playerState.sharedAudio && !playerState.sharedAudio.paused) {
+        audios.push(playerState.sharedAudio);
     }
 
     document.querySelectorAll("audio").forEach((audio) => {
@@ -297,7 +344,7 @@ export function setupNativePlaybackInterception() {
 }
 
 function samePointerGesture(event) {
-    const gesture = STATE.collectionPointerGesture;
+    const gesture = playerState.collectionPointerGesture;
     if (!gesture) {
         return null;
     }
@@ -346,7 +393,7 @@ function handleCollectionGridPointerDown(event) {
         event.stopImmediatePropagation();
     }
 
-    STATE.collectionPointerGesture = {
+    playerState.collectionPointerGesture = {
         pointerId: event.pointerId,
         card,
         trigger,
@@ -389,15 +436,15 @@ function handleCollectionGridPointerUp(event) {
         event.stopImmediatePropagation();
     }
 
-    STATE.collectionPointerGesture = null;
+    playerState.collectionPointerGesture = null;
     if (gesture.cancelled || Date.now() - gesture.at > 1200) {
         return;
     }
 
-    STATE.collectionPointerReleaseUrl = normalizeReleaseUrl(
+    playerState.collectionPointerReleaseUrl = normalizeReleaseUrl(
         gesture.releaseUrl,
     );
-    STATE.collectionPointerHandledAt = Date.now();
+    playerState.collectionPointerHandledAt = Date.now();
     markDebugState(
         "data-bcampx-collection-playback-state",
         "pointer-triggered",
@@ -411,53 +458,8 @@ function handleCollectionGridPointerUp(event) {
 
 function handleCollectionGridPointerCancel(event) {
     if (samePointerGesture(event)) {
-        STATE.collectionPointerGesture = null;
+        playerState.collectionPointerGesture = null;
     }
-}
-
-export function setupPlayerMenuDismissal() {
-    document.addEventListener("click", handleDocumentPlayerUiClick, true);
-    document.addEventListener("keydown", handleDocumentPlayerUiKeydown, true);
-}
-
-function handleDocumentPlayerUiClick(event) {
-    if (!STATE.playerSettingsOpen) {
-        return;
-    }
-
-    if (!STATE.playerHost || !document.contains(STATE.playerHost)) {
-        closePlayerSettingsMenu();
-        return;
-    }
-
-    const path =
-        typeof event.composedPath === "function" ? event.composedPath() : [];
-    if (isPlayerSettingsInteraction(path)) {
-        return;
-    }
-
-    closePlayerSettingsMenu();
-}
-
-function isPlayerSettingsInteraction(path) {
-    const ui = STATE.playerUi;
-    if (!ui) {
-        return false;
-    }
-
-    return Boolean(
-        (ui.settingsWrap && path.includes(ui.settingsWrap)) ||
-            (ui.settingsButton && path.includes(ui.settingsButton)) ||
-            (ui.settingsMenu && path.includes(ui.settingsMenu)),
-    );
-}
-
-function handleDocumentPlayerUiKeydown(event) {
-    if (event.key !== "Escape" || !STATE.playerSettingsOpen) {
-        return;
-    }
-
-    closePlayerSettingsMenu();
 }
 
 function handleNativePlaybackTriggerClick(event) {
@@ -493,8 +495,8 @@ function handleNativePlaybackTriggerClick(event) {
     if (
         collectionCard &&
         normalizeReleaseUrl(releaseUrl) ===
-            STATE.collectionPointerReleaseUrl &&
-        Date.now() - STATE.collectionPointerHandledAt < 1000
+            playerState.collectionPointerReleaseUrl &&
+        Date.now() - playerState.collectionPointerHandledAt < 1000
     ) {
         event.preventDefault();
         event.stopPropagation();
@@ -553,15 +555,15 @@ function findCollectionGridCard(node) {
 // the shared audio, so a slow release request can never override a choice
 // the user made after it.
 export function beginPlaybackIntent() {
-    STATE.playbackIntent = (Number(STATE.playbackIntent) || 0) + 1;
-    return STATE.playbackIntent;
+    playerState.playbackIntent = (Number(playerState.playbackIntent) || 0) + 1;
+    return playerState.playbackIntent;
 }
 
 export function isPlaybackIntentCurrent(intent) {
     if (intent === undefined || intent === null) {
         return true;
     }
-    return intent === STATE.playbackIntent;
+    return intent === playerState.playbackIntent;
 }
 
 // Toggling pause/play is only meaningful while the player still owns the
@@ -570,9 +572,9 @@ export function isPlaybackIntentCurrent(intent) {
 // re-toggling the one that just failed.
 function hasPlayableActiveContext() {
     return Boolean(
-        STATE.activeTrack &&
-            STATE.activeTrack.streamUrl &&
-            STATE.activeReleaseData,
+        playerState.activeTrack &&
+            playerState.activeTrack.streamUrl &&
+            playerState.activeReleaseData,
     );
 }
 
@@ -669,7 +671,7 @@ async function playCollectionGridTrigger(card, trigger, releaseUrl) {
     const intent = beginPlaybackIntent();
     if (
         isActiveReleaseForCard(releaseUrl) &&
-        STATE.activePlaybackScope === "collection-grid" &&
+        playerState.activePlaybackScope === "collection-grid" &&
         hasPlayableActiveContext()
     ) {
         toggleActiveReleasePlayback(card);
@@ -712,7 +714,7 @@ async function playCollectionGridTrigger(card, trigger, releaseUrl) {
         if (audio && !audio.paused) {
             audio.pause();
         }
-        STATE.activePlaybackScope = "collection-grid";
+        playerState.activePlaybackScope = "collection-grid";
         setActiveTrackCard(card);
         syncCoverPlaybackState();
         observeCollectionCoverState();
@@ -840,14 +842,14 @@ function forgetCachedReleaseStreams(card, releaseUrl, streamUrl) {
     }
 
     if (
-        carrier(STATE.activeReleaseData) &&
+        carrier(playerState.activeReleaseData) &&
         isActiveReleaseForCard(releaseUrl)
     ) {
         // Keep the shell showing the release, but stop handing the failed
         // list to the recovery path.
-        STATE.activeReleaseData = null;
-        STATE.activeTrackList = [];
-        STATE.activeTrackIndex = -1;
+        playerState.activeReleaseData = null;
+        playerState.activeTrackList = [];
+        playerState.activeTrackIndex = -1;
     }
 }
 
@@ -950,7 +952,7 @@ function isActiveReleaseForCard(releaseUrl) {
 
 function toggleActiveReleasePlayback(card) {
     const audio = ensureSharedAudio();
-    if (!audio || !STATE.activeTrack || !STATE.activeTrack.streamUrl) {
+    if (!audio || !playerState.activeTrack || !playerState.activeTrack.streamUrl) {
         return;
     }
 
@@ -962,7 +964,7 @@ function toggleActiveReleasePlayback(card) {
     setActiveTrackCard(card);
 
     if (cardArtUrl) {
-        STATE.activeCardArtUrl = cardArtUrl;
+        playerState.activeCardArtUrl = cardArtUrl;
     }
 
     if (!audio.paused) {
@@ -1099,14 +1101,14 @@ function getAvailableReleaseDataForCard(card, releaseUrl) {
         STATE.activeReleaseUrl || "",
     );
     if (
-        STATE.activeReleaseData &&
+        playerState.activeReleaseData &&
         normalizedTarget &&
         normalizedActive &&
         normalizedTarget === normalizedActive &&
-        Array.isArray(STATE.activeReleaseData.tracks) &&
-        STATE.activeReleaseData.tracks.length
+        Array.isArray(playerState.activeReleaseData.tracks) &&
+        playerState.activeReleaseData.tracks.length
     ) {
-        return STATE.activeReleaseData;
+        return playerState.activeReleaseData;
     }
 
     return null;
@@ -1229,26 +1231,26 @@ export function playTrackForCard(
 }
 
 function ensureSharedAudio() {
-    if (STATE.sharedAudio) {
-        return STATE.sharedAudio;
+    if (playerState.sharedAudio) {
+        return playerState.sharedAudio;
     }
 
     setupSharedAudio();
-    return STATE.sharedAudio;
+    return playerState.sharedAudio;
 }
 
 function setActiveTrackButton(button) {
     clearActiveTrackButton();
-    STATE.activeTrackButton = button;
-    STATE.activeTrackButton.classList.add("bcampx__track-link--active");
+    playerState.activeTrackButton = button;
+    playerState.activeTrackButton.classList.add("bcampx__track-link--active");
 }
 
 function clearActiveTrackButton() {
-    if (STATE.activeTrackButton) {
-        STATE.activeTrackButton.classList.remove(
+    if (playerState.activeTrackButton) {
+        playerState.activeTrackButton.classList.remove(
             "bcampx__track-link--active",
         );
-        STATE.activeTrackButton = null;
+        playerState.activeTrackButton = null;
     }
 }
 
@@ -1300,13 +1302,13 @@ function syncWaypointNowPlaying(track, data, cardArtUrl) {
 
 export function setupWaypointNavigation() {
     const waypoint = document.querySelector("#track_play_waypoint");
-    if (!waypoint || STATE.waypointNode === waypoint) {
+    if (!waypoint || playerState.waypointNode === waypoint) {
         return;
     }
 
     ensureWaypointPlayPauseButton(waypoint);
     waypoint.addEventListener("click", handleWaypointClick, true);
-    STATE.waypointNode = waypoint;
+    playerState.waypointNode = waypoint;
 }
 
 function handleWaypointClick(event) {
@@ -1325,22 +1327,22 @@ function handleWaypointClick(event) {
 
     event.preventDefault();
     event.stopPropagation();
-    scrollCardIntoView(activeCard, STATE.activeTrack);
+    scrollCardIntoView(activeCard, playerState.activeTrack);
 }
 
 function setActiveTrackCard(card) {
     if (!card || !document.contains(card)) {
-        STATE.activeTrackCard = null;
+        playerState.activeTrackCard = null;
         scheduleUiSync();
         return;
     }
 
-    STATE.activeTrackCard = card;
+    playerState.activeTrackCard = card;
     scheduleUiSync();
 }
 
 function getActiveCardArtUrl(card) {
-    return getCardArtUrl(card) || STATE.activeCardArtUrl || "";
+    return getCardArtUrl(card) || playerState.activeCardArtUrl || "";
 }
 
 function syncActiveTrackUi(cardArtUrl) {
@@ -1353,7 +1355,7 @@ function observeCollectionCoverState() {
     const card = getConnectedActiveTrackCard();
     const stateNode = findCoverPlaybackStateNodeForCard(card);
     if (
-        STATE.activePlaybackScope !== "collection-grid" ||
+        playerState.activePlaybackScope !== "collection-grid" ||
         !stateNode ||
         typeof MutationObserver !== "function"
     ) {
@@ -1364,7 +1366,7 @@ function observeCollectionCoverState() {
         const audio = ensureSharedAudio();
         const expectedClass = audio && audio.paused ? "paused" : "playing";
         if (
-            STATE.coverPlaybackStateNode === stateNode &&
+            playerState.coverPlaybackStateNode === stateNode &&
             !stateNode.classList.contains(expectedClass)
         ) {
             syncCoverPlaybackState();
@@ -1374,25 +1376,25 @@ function observeCollectionCoverState() {
         attributes: true,
         attributeFilter: ["class"],
     });
-    STATE.collectionCoverStateObserver = observer;
-    STATE.collectionCoverStateObserverTimer = window.setTimeout(
+    playerState.collectionCoverStateObserver = observer;
+    playerState.collectionCoverStateObserverTimer = window.setTimeout(
         stopObservingCollectionCoverState,
         2200,
     );
 }
 
 function stopObservingCollectionCoverState() {
-    if (STATE.collectionCoverStateObserver) {
-        STATE.collectionCoverStateObserver.disconnect();
-        STATE.collectionCoverStateObserver = null;
+    if (playerState.collectionCoverStateObserver) {
+        playerState.collectionCoverStateObserver.disconnect();
+        playerState.collectionCoverStateObserver = null;
     }
-    window.clearTimeout(STATE.collectionCoverStateObserverTimer);
-    STATE.collectionCoverStateObserverTimer = 0;
+    window.clearTimeout(playerState.collectionCoverStateObserverTimer);
+    playerState.collectionCoverStateObserverTimer = 0;
 }
 
 function getConnectedActiveTrackCard() {
-    if (STATE.activeTrackCard && document.contains(STATE.activeTrackCard)) {
-        return STATE.activeTrackCard;
+    if (playerState.activeTrackCard && document.contains(playerState.activeTrackCard)) {
+        return playerState.activeTrackCard;
     }
 
     // A feed sync (including the tag-index progress refreshes) may replace
@@ -1400,7 +1402,7 @@ function getConnectedActiveTrackCard() {
     // keeps its favourite state and cover instead of going blank.
     const replacement = findActiveTrackCardByRelease();
     if (replacement) {
-        STATE.activeTrackCard = replacement;
+        playerState.activeTrackCard = replacement;
         return replacement;
     }
 
@@ -1427,25 +1429,25 @@ function syncCoverPlaybackState() {
     }
 
     if (
-        STATE.coverPlaybackStateNode &&
-        STATE.coverPlaybackStateNode !== stateNode
+        playerState.coverPlaybackStateNode &&
+        playerState.coverPlaybackStateNode !== stateNode
     ) {
-        STATE.coverPlaybackStateNode.classList.remove("playing", "paused");
+        playerState.coverPlaybackStateNode.classList.remove("playing", "paused");
     }
 
-    STATE.coverPlaybackStateNode = stateNode;
+    playerState.coverPlaybackStateNode = stateNode;
     const activeClass = audio.paused ? "paused" : "playing";
     toggleClassIfChanged(stateNode, "paused", activeClass === "paused");
     toggleClassIfChanged(stateNode, "playing", activeClass === "playing");
 }
 
 function clearCoverPlaybackStateNode() {
-    if (!STATE.coverPlaybackStateNode) {
+    if (!playerState.coverPlaybackStateNode) {
         return;
     }
 
-    STATE.coverPlaybackStateNode.classList.remove("playing", "paused");
-    STATE.coverPlaybackStateNode = null;
+    playerState.coverPlaybackStateNode.classList.remove("playing", "paused");
+    playerState.coverPlaybackStateNode = null;
 }
 
 function findCoverPlaybackStateNodeForCard(card) {
@@ -1474,11 +1476,11 @@ function setActiveTrackContext(
     cardArtUrl,
     options = {},
 ) {
-    STATE.activeTrack = track || null;
-    STATE.activeReleaseData = data || null;
+    playerState.activeTrack = track || null;
+    playerState.activeReleaseData = data || null;
     STATE.activeReleaseUrl = releaseUrl || "";
-    STATE.activeTrackCard = card || null;
-    STATE.activeTrackFanGridNode =
+    playerState.activeTrackCard = card || null;
+    playerState.activeTrackFanGridNode =
         (card && typeof card.closest === "function"
             ? card.closest("#grids > .grid")
             : null) ||
@@ -1489,8 +1491,8 @@ function setActiveTrackContext(
               )
             : null) ||
         null;
-    STATE.activeCardArtUrl = cardArtUrl || STATE.activeCardArtUrl || "";
-    STATE.activePlaybackScope = cleanText(options.playbackScope);
+    playerState.activeCardArtUrl = cardArtUrl || playerState.activeCardArtUrl || "";
+    playerState.activePlaybackScope = cleanText(options.playbackScope);
 
     const tracks =
         Array.isArray(options.trackList)
@@ -1498,8 +1500,8 @@ function setActiveTrackContext(
             : data && Array.isArray(data.tracks)
               ? data.tracks.filter((item) => item && item.title)
               : [];
-    STATE.activeTrackList = tracks;
-    STATE.activeTrackIndex = findTrackIndex(tracks, track);
+    playerState.activeTrackList = tracks;
+    playerState.activeTrackIndex = findTrackIndex(tracks, track);
 
     syncMediaSessionMetadata();
     scheduleUiSync(cardArtUrl);
@@ -1507,25 +1509,25 @@ function setActiveTrackContext(
 
 function scheduleUiSync(cardArtUrl) {
     if (typeof cardArtUrl === "string" && cardArtUrl) {
-        STATE.pendingUiSyncCardArtUrl = cardArtUrl;
+        playerState.pendingUiSyncCardArtUrl = cardArtUrl;
     }
 
-    if (STATE.uiSyncFrame) {
+    if (playerState.uiSyncFrame) {
         return;
     }
 
-    STATE.uiSyncFrame = scheduleNextFrame(() => {
-        STATE.uiSyncFrame = 0;
-        const queuedArtUrl = STATE.pendingUiSyncCardArtUrl || "";
-        STATE.pendingUiSyncCardArtUrl = "";
+    playerState.uiSyncFrame = scheduleNextFrame(() => {
+        playerState.uiSyncFrame = 0;
+        const queuedArtUrl = playerState.pendingUiSyncCardArtUrl || "";
+        playerState.pendingUiSyncCardArtUrl = "";
         flushUiSync(queuedArtUrl);
     });
 }
 
 function flushUiSync(cardArtUrl) {
     syncWaypointNowPlaying(
-        STATE.activeTrack,
-        STATE.activeReleaseData,
+        playerState.activeTrack,
+        playerState.activeReleaseData,
         cardArtUrl,
     );
     syncTrackButtonsForActiveTrack();
@@ -1575,8 +1577,8 @@ function syncMediaSessionMetadata() {
     }
 
     if (
-        !STATE.activeTrack ||
-        !STATE.activeReleaseData ||
+        !playerState.activeTrack ||
+        !playerState.activeReleaseData ||
         typeof MediaMetadata !== "function"
     ) {
         navigator.mediaSession.metadata = null;
@@ -1584,10 +1586,10 @@ function syncMediaSessionMetadata() {
         return;
     }
 
-    const track = STATE.activeTrack;
-    const data = STATE.activeReleaseData || {};
+    const track = playerState.activeTrack;
+    const data = playerState.activeReleaseData || {};
     const artworkUrl =
-        getActiveCardArtUrl(STATE.activeTrackCard) || data.artUrl || "";
+        getActiveCardArtUrl(playerState.activeTrackCard) || data.artUrl || "";
     const artwork = artworkUrl
         ? [96, 128, 192, 256, 384, 512].map((size) => ({
               src: artworkUrl,
@@ -1614,8 +1616,8 @@ function syncMediaSessionState() {
         return;
     }
 
-    const audio = STATE.sharedAudio;
-    if (!audio || !STATE.activeTrack || !STATE.activeReleaseData) {
+    const audio = playerState.sharedAudio;
+    if (!audio || !playerState.activeTrack || !playerState.activeReleaseData) {
         try {
             navigator.mediaSession.playbackState = "none";
         } catch (_error) {}
@@ -1701,12 +1703,12 @@ function findWaypointScrollTarget(card, track) {
     }
 
     if (
-        STATE.activeTrackButton instanceof Element &&
-        card.contains(STATE.activeTrackButton)
+        playerState.activeTrackButton instanceof Element &&
+        card.contains(playerState.activeTrackButton)
     ) {
         return (
-            STATE.activeTrackButton.closest(".bcampx__track-item") ||
-            STATE.activeTrackButton
+            playerState.activeTrackButton.closest(".bcampx__track-item") ||
+            playerState.activeTrackButton
         );
     }
 
@@ -1870,68 +1872,14 @@ export function ensurePlayerShell() {
     });
     settingsButton.setAttribute("aria-expanded", "false");
 
-    const settingsMenu = document.createElement("div");
-    settingsMenu.className = "bcampx-player-settings-menu";
-    settingsMenu.hidden = true;
-    settingsMenu.setAttribute("role", "menu");
-
-    const trackRowActionsSetting = createPlayerSettingsToggleRow({
-        label: "Buy/Wish button for singles",
-        description: "Show per-track buy and wishlist actions. Turn off to save a little loading work.",
-        checked: CONFIG.enableTrackRowActions,
-        onChange: handleTrackRowActionsSettingChange,
-    });
-
-    const autoFillPriceSetting = createPlayerSettingsToggleRow({
-        label: "Auto-fill minimum price",
-        description: "Automatically fill the minimum price into the buy dialog. Turn off to enter a custom price.",
-        checked: CONFIG.autoFillMinimumPrice,
-        onChange: handleAutoFillMinimumPriceSettingChange,
-    });
-
-    const continuousModeSetting = createPlayerSettingsToggleRow({
-        label: "Continuous mode",
-        description: "When one release finishes, keep going to the next playable release in the feed.",
-        checked: CONFIG.continuousMode,
-        onChange: handleContinuousModeSettingChange,
-    });
-
-    const collectionCountsSetting = createPlayerSettingsToggleRow({
-        label: "Collection counts",
-        description: "Show how many collections a release appears in. Uses extra Bandcamp requests.",
-        checked: CONFIG.showCollectionCounts,
-        onChange: handleCollectionCountsSettingChange,
-    });
-
-    const tagSearchSetting = createPlayerSettingsToggleRow({
-        label: "Tag search (experimental)",
-        description: buildTagSearchSettingDescription(),
-        checked: CONFIG.enableTagSearch,
-        onChange: handleTagSearchSettingChange,
-    });
-
-    const settingsFooter = document.createElement("div");
-    settingsFooter.className = "bcampx-player-settings-footer";
-    settingsFooter.append("Made by ");
-
-    const settingsFooterLink = document.createElement("a");
-    settingsFooterLink.className = "bcampx-player-settings-footer-link";
-    settingsFooterLink.href = "https://www.instagram.com/chuan_p/";
-    settingsFooterLink.target = "_blank";
-    settingsFooterLink.rel = "noopener noreferrer";
-    settingsFooterLink.textContent = "@chuan_p";
-
-    settingsFooter.append(settingsFooterLink);
-    settingsFooter.append(" with Codex. 2026");
-
-    settingsMenu.append(
-        trackRowActionsSetting.row,
-        autoFillPriceSetting.row,
-        continuousModeSetting.row,
-        collectionCountsSetting.row,
-        tagSearchSetting.row,
-        settingsFooter,
-    );
+    const {
+        settingsMenu,
+        trackRowActionsSetting,
+        autoFillPriceSetting,
+        continuousModeSetting,
+        collectionCountsSetting,
+        tagSearchSetting,
+    } = createPlayerSettingsMenu(syncPlayerShell);
     settingsWrap.append(settingsButton, settingsMenu);
 
     controls.append(
@@ -2008,7 +1956,7 @@ export function ensurePlayerShell() {
 function syncPlayerShell() {
     const ui = ensurePlayerShell();
     const audio = ensureSharedAudio();
-    const hasTrack = Boolean(STATE.activeTrack && STATE.activeReleaseData);
+    const hasTrack = Boolean(playerState.activeTrack && playerState.activeReleaseData);
 
     setBooleanPropertyIfChanged(ui.shell, "hidden", !hasTrack);
     if (!hasTrack && STATE.playerSettingsOpen) {
@@ -2023,8 +1971,8 @@ function syncPlayerShell() {
         return;
     }
 
-    const track = STATE.activeTrack;
-    const data = STATE.activeReleaseData || {};
+    const track = playerState.activeTrack;
+    const data = playerState.activeReleaseData || {};
     const releaseUrl = STATE.activeReleaseUrl || "#";
     const navigationState = getPlayerNavigationState();
     ensureRemotePlayerWishlistState(releaseUrl);
@@ -2105,14 +2053,14 @@ function handlePlayerTrackLinkKeydown(event) {
 function getPlayerNavigationState() {
     const hasPreviousTrack =
         findAdjacentPlayableTrackIndex(
-            STATE.activeTrackList,
-            STATE.activeTrackIndex,
+            playerState.activeTrackList,
+            playerState.activeTrackIndex,
             -1,
         ) >= 0;
     const hasNextTrack =
         findAdjacentPlayableTrackIndex(
-            STATE.activeTrackList,
-            STATE.activeTrackIndex,
+            playerState.activeTrackList,
+            playerState.activeTrackIndex,
             1,
         ) >= 0;
     if (
@@ -2130,425 +2078,6 @@ function getPlayerNavigationState() {
         canGoPrev: hasPreviousTrack || neighborState.hasPrevious,
         canGoNext: hasNextTrack || neighborState.hasNext,
     };
-}
-
-function getPlayerFavoriteState(releaseUrl) {
-    if (
-        STATE.activeReleaseData &&
-        isOwnedDigitalPrice(STATE.activeReleaseData.digitalPrice)
-    ) {
-        return {
-            hidden: false,
-            disabled: true,
-            hasState: true,
-            active: true,
-            pending: false,
-            owned: true,
-        };
-    }
-
-    const normalizedReleaseUrl = normalizeReleaseUrl(releaseUrl);
-    const cachedState = normalizedReleaseUrl
-        ? STATE.playerWishlistStateByUrl.get(normalizedReleaseUrl)
-        : null;
-    const hasCachedState =
-        cachedState &&
-        typeof cachedState === "object" &&
-        cachedState.status === "known";
-
-    // A known remote state outranks the local fallback: a feed sync may
-    // unmount the card while its track keeps playing, and the button must
-    // keep showing (and toggling) the real wishlist state.
-    if (!hasCachedState && !shouldUseRemotePlayerWishlist()) {
-        const wishlistControl = findActiveWishlistControl();
-        return {
-            hidden: false,
-            disabled: !wishlistControl,
-            hasState: true,
-            active: isWishlistActive(wishlistControl),
-            pending: false,
-            owned: false,
-        };
-    }
-
-    const hasPendingAction =
-        !!normalizedReleaseUrl &&
-        STATE.playerWishlistActionRequests.has(normalizedReleaseUrl);
-    // The extension cannot run the wishlist helper on custom domains, so
-    // leave the button disabled rather than letting a click time out.
-    const helperUnavailable = !canRunTrackActionHelper(normalizedReleaseUrl);
-    return {
-        hidden: !normalizedReleaseUrl,
-        disabled:
-            !normalizedReleaseUrl ||
-            helperUnavailable ||
-            hasPendingAction ||
-            !hasCachedState ||
-            cachedState.canToggle === false,
-        hasState: true,
-        active: hasCachedState ? Boolean(cachedState.active) : false,
-        pending: hasPendingAction,
-        owned: false,
-    };
-}
-
-function ensureRemotePlayerWishlistState(releaseUrl) {
-    if (!shouldUseRemotePlayerWishlist()) {
-        return null;
-    }
-
-    const normalizedReleaseUrl = normalizeReleaseUrl(releaseUrl || "");
-    if (!normalizedReleaseUrl) {
-        return null;
-    }
-
-    const cachedState =
-        STATE.playerWishlistStateByUrl.get(normalizedReleaseUrl);
-    if (cachedState && typeof cachedState === "object") {
-        if (cachedState.status === "known") {
-            return null;
-        }
-
-        if (
-            cachedState.status === "error" &&
-            Date.now() - Number(cachedState.checkedAt || 0) <
-                PLAYER_WISHLIST_STATE_RETRY_MS
-        ) {
-            schedulePlayerWishlistStateRetry(normalizedReleaseUrl);
-            return null;
-        }
-
-        STATE.playerWishlistStateByUrl.delete(normalizedReleaseUrl);
-    }
-
-    const existingRequest =
-        STATE.playerWishlistStateRequests.get(normalizedReleaseUrl);
-    if (existingRequest) {
-        return existingRequest;
-    }
-
-    const request = fetchPlayerWishlistState(normalizedReleaseUrl)
-        .then((result) => {
-            const state = {
-                status: "known",
-                active: Boolean(result && result.active),
-                canToggle: Boolean(result && result.canToggle),
-                checkedAt: Date.now(),
-            };
-            STATE.playerWishlistStateByUrl.set(normalizedReleaseUrl, state);
-            clearPlayerWishlistStateRetry(normalizedReleaseUrl);
-            return state;
-        })
-        .catch((error) => {
-            STATE.playerWishlistStateByUrl.set(normalizedReleaseUrl, {
-                status: "error",
-                active: false,
-                canToggle: false,
-                checkedAt: Date.now(),
-            });
-            recordTrackActionDiagnostic("wishlist-state-failed", {
-                releaseUrl: normalizedReleaseUrl,
-                error:
-                    error && error.message
-                        ? error.message
-                        : "Wishlist state request failed.",
-            });
-            schedulePlayerWishlistStateRetry(normalizedReleaseUrl);
-            return null;
-        })
-        .finally(() => {
-            STATE.playerWishlistStateRequests.delete(normalizedReleaseUrl);
-            if (
-                normalizeReleaseUrl(STATE.activeReleaseUrl || "") ===
-                normalizedReleaseUrl
-            ) {
-                syncFavoriteButtonState();
-            }
-        });
-
-    STATE.playerWishlistStateRequests.set(normalizedReleaseUrl, request);
-    return request;
-}
-
-function schedulePlayerWishlistStateRetry(releaseUrl) {
-    const normalizedReleaseUrl = normalizeReleaseUrl(releaseUrl || "");
-    if (
-        !normalizedReleaseUrl ||
-        STATE.playerWishlistStateRetryTimers.has(normalizedReleaseUrl)
-    ) {
-        return;
-    }
-
-    const timerId = window.setTimeout(() => {
-        STATE.playerWishlistStateRetryTimers.delete(normalizedReleaseUrl);
-        if (
-            normalizeReleaseUrl(STATE.activeReleaseUrl || "") !==
-            normalizedReleaseUrl
-        ) {
-            return;
-        }
-
-        const cachedState =
-            STATE.playerWishlistStateByUrl.get(normalizedReleaseUrl);
-        if (
-            cachedState &&
-            typeof cachedState === "object" &&
-            cachedState.status === "error"
-        ) {
-            STATE.playerWishlistStateByUrl.delete(normalizedReleaseUrl);
-        }
-
-        ensureRemotePlayerWishlistState(normalizedReleaseUrl);
-        syncFavoriteButtonState();
-    }, PLAYER_WISHLIST_STATE_RETRY_MS);
-
-    STATE.playerWishlistStateRetryTimers.set(normalizedReleaseUrl, timerId);
-}
-
-export function clearPlayerWishlistStateRetry(releaseUrl) {
-    const normalizedReleaseUrl = normalizeReleaseUrl(releaseUrl || "");
-    const timerId = normalizedReleaseUrl
-        ? STATE.playerWishlistStateRetryTimers.get(normalizedReleaseUrl)
-        : 0;
-    if (!timerId) {
-        return;
-    }
-
-    window.clearTimeout(timerId);
-    STATE.playerWishlistStateRetryTimers.delete(normalizedReleaseUrl);
-}
-
-async function fetchPlayerWishlistState(releaseUrl) {
-    try {
-        const html = await requestHtml(releaseUrl);
-        return parsePlayerWishlistStateFromHtml(html);
-    } catch (_error) {
-        return requestTrackActionViaHelper(
-            "wishlist-state",
-            releaseUrl,
-            null,
-        );
-    }
-}
-
-function parsePlayerWishlistStateFromHtml(html) {
-    const doc = htmlToDocument(html);
-    const tralbumData = parseTralbumData(doc) || {};
-    const collectInfo =
-        parseJsonAttribute(
-            doc.querySelector("[data-tralbum-collect-info]"),
-            "data-tralbum-collect-info",
-        ) || {};
-    const pagedataBlob =
-        parseJsonAttribute(
-            doc.querySelector("#pagedata"),
-            "data-blob",
-        ) || {};
-    const fanTralbumData = pagedataBlob.fan_tralbum_data || {};
-    const isWishlisted =
-        !!fanTralbumData.is_wishlisted || !!collectInfo.is_collected;
-    const fanId = resolveFanIdFromPageState(pagedataBlob, collectInfo);
-    const itemId =
-        (tralbumData.current && tralbumData.current.id) ||
-        collectInfo.collect_item_id ||
-        "";
-    const bandId =
-        (tralbumData.current && tralbumData.current.band_id) ||
-        collectInfo.collect_band_id ||
-        "";
-
-    return {
-        ok: true,
-        active: isWishlisted,
-        canToggle: Boolean(fanId && itemId && bandId),
-    };
-}
-
-export function setFavoriteButtonState(button, active) {
-    if (!button) {
-        return;
-    }
-
-    toggleClassIfChanged(button, "active", active);
-    setAttributeIfChanged(button, "aria-pressed", active ? "true" : "false");
-    setAttributeIfChanged(
-        button,
-        "aria-label",
-        active ? "Remove from wishlist" : "Add to wishlist",
-    );
-}
-
-function togglePlayerSettingsMenu(event) {
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
-
-    STATE.playerSettingsOpen = !STATE.playerSettingsOpen;
-    syncPlayerSettingsMenu();
-}
-
-function closePlayerSettingsMenu() {
-    if (!STATE.playerSettingsOpen) {
-        return;
-    }
-
-    STATE.playerSettingsOpen = false;
-    syncPlayerSettingsMenu();
-}
-
-function syncPlayerSettingsMenu() {
-    const ui = STATE.playerUi;
-    if (!ui || !ui.settingsButton || !ui.settingsMenu) {
-        return;
-    }
-
-    const open = !!STATE.playerSettingsOpen;
-    setAttributeIfChanged(
-        ui.settingsButton,
-        "aria-expanded",
-        open ? "true" : "false",
-    );
-    setAttributeIfChanged(
-        ui.settingsButton,
-        "aria-label",
-        open ? "Close settings" : "Open settings",
-    );
-    setBooleanPropertyIfChanged(ui.settingsMenu, "hidden", !open);
-    if (ui.trackRowActionsSettingInput) {
-        setBooleanPropertyIfChanged(
-            ui.trackRowActionsSettingInput,
-            "checked",
-            !!CONFIG.enableTrackRowActions,
-        );
-    }
-    if (ui.autoFillPriceSettingInput) {
-        setBooleanPropertyIfChanged(
-            ui.autoFillPriceSettingInput,
-            "checked",
-            !!CONFIG.autoFillMinimumPrice,
-        );
-    }
-    if (ui.continuousModeSettingInput) {
-        setBooleanPropertyIfChanged(
-            ui.continuousModeSettingInput,
-            "checked",
-            !!CONFIG.continuousMode,
-        );
-    }
-    if (ui.collectionCountsSettingInput) {
-        setBooleanPropertyIfChanged(
-            ui.collectionCountsSettingInput,
-            "checked",
-            !!CONFIG.showCollectionCounts,
-        );
-    }
-    refreshTagSearchSettingProgress();
-    if (ui.tagSearchSettingInput) {
-        setBooleanPropertyIfChanged(
-            ui.tagSearchSettingInput,
-            "checked",
-            !!CONFIG.enableTagSearch,
-        );
-    }
-}
-
-function createPlayerSettingsToggleRow({
-    label,
-    description,
-    checked,
-    onChange,
-}) {
-    const row = document.createElement("label");
-    row.className = "bcampx-player-settings-row";
-
-    const copy = document.createElement("span");
-    copy.className = "bcampx-player-settings-copy";
-
-    const title = document.createElement("span");
-    title.className = "bcampx-player-settings-label";
-    title.textContent = label;
-
-    const desc = document.createElement("span");
-    desc.className = "bcampx-player-settings-description";
-    desc.textContent = description;
-
-    copy.append(title, desc);
-
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.className = "bcampx-player-settings-checkbox";
-    input.checked = !!checked;
-    input.addEventListener("change", onChange);
-
-    row.append(copy, input);
-    return { row, input, description: desc };
-}
-
-function handleTrackRowActionsSettingChange(event) {
-    const checked = !!(event && event.target && event.target.checked);
-    CONFIG.enableTrackRowActions = checked;
-    refreshRenderedTrackActionButtons();
-    syncPlayerSettingsMenu();
-    void persistUserSettings();
-}
-
-function handleAutoFillMinimumPriceSettingChange(event) {
-    const checked = !!(event && event.target && event.target.checked);
-    CONFIG.autoFillMinimumPrice = checked;
-    syncPlayerSettingsMenu();
-    void persistUserSettings();
-}
-
-function handleContinuousModeSettingChange(event) {
-    const checked = !!(event && event.target && event.target.checked);
-    CONFIG.continuousMode = checked;
-    syncPlayerSettingsMenu();
-    syncPlayerShell();
-    void persistUserSettings();
-}
-
-function handleCollectionCountsSettingChange(event) {
-    const checked = !!(event && event.target && event.target.checked);
-    CONFIG.showCollectionCounts = checked;
-    refreshArtistMusicCollectionCounts();
-    syncPlayerSettingsMenu();
-    void persistUserSettings();
-}
-
-function buildTagSearchSettingDescription() {
-    const base =
-        "Also search your collection and wishlist by cached tags.";
-    const progress =
-        typeof getTagIndexProgress === "function"
-            ? getTagIndexProgress()
-            : null;
-    const items = Number(progress && progress.items) || 0;
-    if (!items) {
-        return base;
-    }
-    const tagged = Number(progress && progress.tagged) || 0;
-    return `${base} (${tagged}/${items})`;
-}
-
-export function refreshTagSearchSettingProgress() {
-    const ui = STATE.playerUi;
-    const node = ui && ui.tagSearchSettingDescription;
-    if (!node) {
-        return;
-    }
-    const next = buildTagSearchSettingDescription();
-    if (node.textContent !== next) {
-        node.textContent = next;
-    }
-}
-
-function handleTagSearchSettingChange(event) {
-    const checked = !!(event && event.target && event.target.checked);
-    CONFIG.enableTagSearch = checked;
-    syncPlayerSettingsMenu();
-    void persistUserSettings();
-    applyTagSearchSetting();
 }
 
 function playPreviousTrack() {
@@ -2574,31 +2103,31 @@ async function playAdjacentTrackOrNeighbor(offset) {
 
 function playAdjacentTrack(offset) {
     if (
-        !Array.isArray(STATE.activeTrackList) ||
-        STATE.activeTrackIndex < 0
+        !Array.isArray(playerState.activeTrackList) ||
+        playerState.activeTrackIndex < 0
     ) {
         return false;
     }
 
     const nextIndex = findAdjacentPlayableTrackIndex(
-        STATE.activeTrackList,
-        STATE.activeTrackIndex,
+        playerState.activeTrackList,
+        playerState.activeTrackIndex,
         offset,
     );
     if (nextIndex < 0) {
         return false;
     }
 
-    const nextTrack = STATE.activeTrackList[nextIndex];
+    const nextTrack = playerState.activeTrackList[nextIndex];
     if (!nextTrack || !nextTrack.streamUrl) {
         return false;
     }
 
-    const card = STATE.activeTrackCard;
+    const card = playerState.activeTrackCard;
     const cardArtUrl = getActiveCardArtUrl(card);
     beginPlaybackIntent();
-    STATE.activeTrackIndex = nextIndex;
-    STATE.activeTrack = nextTrack;
+    playerState.activeTrackIndex = nextIndex;
+    playerState.activeTrack = nextTrack;
 
     const audio = ensureSharedAudio();
     if (!audio) {
@@ -2712,7 +2241,7 @@ async function playNeighborPlayableRelease(offset) {
 }
 
 function getNeighborPlayableReleases(offset) {
-    const currentCard = getStoryRoot(STATE.activeTrackCard) || STATE.activeTrackCard;
+    const currentCard = getStoryRoot(playerState.activeTrackCard) || playerState.activeTrackCard;
     if (!(currentCard instanceof Element) || !offset) {
         return [];
     }
@@ -2764,7 +2293,7 @@ function getNeighborPlayableReleases(offset) {
 }
 
 function getNeighborPlaybackAvailability() {
-    const currentCard = getStoryRoot(STATE.activeTrackCard) || STATE.activeTrackCard;
+    const currentCard = getStoryRoot(playerState.activeTrackCard) || playerState.activeTrackCard;
     if (!(currentCard instanceof Element)) {
         return { hasPrevious: false, hasNext: false };
     }
@@ -2833,7 +2362,7 @@ function getCollectionGridPlaybackCards(card) {
         return [];
     }
 
-    const cached = STATE.collectionGridCardsCache;
+    const cached = playerState.collectionGridCardsCache;
     const childCount = grid.childElementCount;
     if (
         cached &&
@@ -2847,7 +2376,7 @@ function getCollectionGridPlaybackCards(card) {
     const cards = Array.from(
         grid.querySelectorAll(".collection-item-container"),
     ).filter((item) => item instanceof Element);
-    STATE.collectionGridCardsCache = {
+    playerState.collectionGridCardsCache = {
         grid,
         version: STATE.memoVersion,
         childCount,
@@ -2979,12 +2508,12 @@ export function syncActivePlaybackReleaseData(releaseUrl, data) {
         return;
     }
 
-    const previousTrack = STATE.activeTrack;
-    STATE.activeReleaseData = data;
+    const previousTrack = playerState.activeTrack;
+    playerState.activeReleaseData = data;
 
     // Collection-grid playback deliberately plays only the featured
     // preview track; keep that scope instead of expanding to the album.
-    if (STATE.activePlaybackScope === "collection-grid") {
+    if (playerState.activePlaybackScope === "collection-grid") {
         syncMediaSessionMetadata();
         return;
     }
@@ -3000,8 +2529,8 @@ export function syncActivePlaybackReleaseData(releaseUrl, data) {
     // non-native stream URLs. Replacing a playable queue with that
     // snapshot would disable Next for the whole album until the refresh
     // lands, so keep the working list and only refresh the release data.
-    const previousList = Array.isArray(STATE.activeTrackList)
-        ? STATE.activeTrackList
+    const previousList = Array.isArray(playerState.activeTrackList)
+        ? playerState.activeTrackList
         : [];
     const incomingPlayable = tracks.some(
         (track) => track && track.streamUrl,
@@ -3014,22 +2543,22 @@ export function syncActivePlaybackReleaseData(releaseUrl, data) {
         return;
     }
 
-    STATE.activeTrackList = tracks;
+    playerState.activeTrackList = tracks;
     // Locate the playing track by stream or id only. Matching by title
     // alone can pick a different track that happens to share the name,
     // which would move the queue position while the audio keeps playing
     // the original stream.
     const index = findActiveTrackIndex(tracks, previousTrack);
-    STATE.activeTrackIndex = index;
+    playerState.activeTrackIndex = index;
     if (index >= 0) {
         const nextTrack = tracks[index];
         if (nextTrack.streamUrl && nextTrack !== previousTrack) {
-            STATE.activeTrack = nextTrack;
+            playerState.activeTrack = nextTrack;
             syncMediaSessionMetadata();
         }
     }
     scheduleUiSync(
-        getActiveCardArtUrl(STATE.activeTrackCard) || "",
+        getActiveCardArtUrl(playerState.activeTrackCard) || "",
     );
 }
 
@@ -3094,16 +2623,16 @@ function findLastPlayableTrack(data) {
 
 function syncTrackButtonsForActiveTrack() {
     clearActiveTrackButton();
-    const streamUrl = STATE.activeTrack && STATE.activeTrack.streamUrl;
+    const streamUrl = playerState.activeTrack && playerState.activeTrack.streamUrl;
     if (!streamUrl) {
         return;
     }
 
     const selector = ".bcampx__track-link, .bcampx__merge-track-button";
     const roots = [
-        STATE.activeTrackCard,
-        STATE.activeTrackCard &&
-            STATE.activeTrackCard.querySelector(".bcampx"),
+        playerState.activeTrackCard,
+        playerState.activeTrackCard &&
+            playerState.activeTrackCard.querySelector(".bcampx"),
         document,
     ].filter(Boolean);
 
@@ -3139,12 +2668,12 @@ async function scrollToActiveTrackCard() {
         return;
     }
 
-    STATE.activeTrackCard = activeCard;
-    scrollCardIntoView(activeCard, STATE.activeTrack);
+    playerState.activeTrackCard = activeCard;
+    scrollCardIntoView(activeCard, playerState.activeTrack);
 }
 
 async function activateActiveTrackFanGrid() {
-    const grid = STATE.activeTrackFanGridNode;
+    const grid = playerState.activeTrackFanGridNode;
     if (
         !(grid instanceof Element) ||
         !grid.isConnected ||
@@ -3181,7 +2710,7 @@ function findActiveTrackCardByRelease() {
         return null;
     }
 
-    const grid = STATE.activeTrackFanGridNode;
+    const grid = playerState.activeTrackFanGridNode;
     const root =
         grid instanceof Element && grid.isConnected ? grid : document;
     return (
@@ -3228,218 +2757,18 @@ function getPlayerShellStyles() {
 }
 
 function pauseBandcampPageAudio() {
-    if (!STATE.pageAudio) {
-        STATE.pageAudio =
+    if (!playerState.pageAudio) {
+        playerState.pageAudio =
             document.querySelector("body > audio") ||
             document.querySelector("audio") ||
             null;
     }
     if (
-        STATE.pageAudio &&
-        STATE.pageAudio !== STATE.sharedAudio &&
-        typeof STATE.pageAudio.pause === "function"
+        playerState.pageAudio &&
+        playerState.pageAudio !== playerState.sharedAudio &&
+        typeof playerState.pageAudio.pause === "function"
     ) {
-        STATE.pageAudio.pause();
-    }
-}
-
-function findActiveWishlistControl() {
-    const activeCard = getConnectedActiveTrackCard();
-    if (!activeCard) {
-        return null;
-    }
-
-    const collectRoot =
-        activeCard.querySelector(".collect-item") ||
-        activeCard.querySelector(
-            ".tralbum-wrapper-collect-controls",
-        ) ||
-        activeCard;
-
-    if (!collectRoot) {
-        return null;
-    }
-
-    return (
-        findVisibleNode(collectRoot, ".wishlisted-msg") ||
-        findVisibleNode(collectRoot, ".wishlist-msg") ||
-        Array.from(collectRoot.querySelectorAll("a, button")).find(
-            (node) =>
-                isNodeVisible(node) &&
-                /^\s*in wishlist\s*$/i.test(
-                    (node.textContent || "").trim(),
-                ),
-        ) ||
-        Array.from(collectRoot.querySelectorAll("a, button")).find(
-            (node) =>
-                isNodeVisible(node) &&
-                /^\s*wishlist\s*$/i.test((node.textContent || "").trim()),
-        ) ||
-        Array.from(collectRoot.querySelectorAll("a, button")).find(
-            (node) =>
-                isNodeVisible(node) &&
-                /wishlist/i.test((node.textContent || "").trim()),
-        )
-    );
-}
-
-function isWishlistActive(control) {
-    if (!control) {
-        return false;
-    }
-
-    const text = (control.textContent || "").trim();
-    const ariaPressed = control.getAttribute("aria-pressed");
-    return (
-        /in wishlist/i.test(text) ||
-        ariaPressed === "true" ||
-        control.classList.contains("added") ||
-        (control.classList.contains("wishlisted-msg") &&
-            isNodeVisible(control))
-    );
-}
-
-function findVisibleNode(root, selector) {
-    return (
-        Array.from(root.querySelectorAll(selector)).find((node) =>
-            isNodeVisible(node),
-        ) || null
-    );
-}
-
-function isNodeVisible(node) {
-    if (!node) {
-        return false;
-    }
-
-    const style = window.getComputedStyle(node);
-    if (
-        style.display === "none" ||
-        style.visibility === "hidden" ||
-        Number(style.opacity || "1") === 0
-    ) {
-        return false;
-    }
-
-    return Boolean(node.offsetParent || node.getClientRects().length);
-}
-
-export function syncFavoriteButtonState() {
-    const ui = STATE.playerUi;
-    if (!ui || !ui.favoriteButton) {
-        return;
-    }
-
-    if (shouldUseRemotePlayerWishlist()) {
-        ensureRemotePlayerWishlistState(STATE.activeReleaseUrl || "");
-    }
-
-    applyPlayerFavoriteState(
-        ui.favoriteButton,
-        getPlayerFavoriteState(STATE.activeReleaseUrl || ""),
-    );
-}
-
-function applyPlayerFavoriteState(button, state) {
-    if (!button || !state) {
-        return;
-    }
-
-    toggleClassIfChanged(
-        button,
-        "bcampx-player-favorite--owned",
-        Boolean(state.owned),
-    );
-    setBooleanPropertyIfChanged(button, "hidden", state.hidden);
-    setBooleanPropertyIfChanged(button, "disabled", state.disabled);
-    toggleClassIfChanged(
-        button,
-        "bcampx-player-button--pending",
-        Boolean(state.pending),
-    );
-    if (state.hasState) {
-        setFavoriteButtonState(button, state.active);
-    }
-}
-
-function toggleActiveWishlist() {
-    const ui = STATE.playerUi;
-    if (shouldUseRemotePlayerWishlist()) {
-        void toggleActiveRemoteWishlist();
-        return;
-    }
-
-    const wishlistControl = findActiveWishlistControl();
-    if (!wishlistControl) {
-        return;
-    }
-
-    if (ui && ui.favoriteButton) {
-        const nextActive =
-            ui.favoriteButton.getAttribute("aria-pressed") !== "true";
-        setFavoriteButtonState(ui.favoriteButton, nextActive);
-    }
-
-    wishlistControl.click();
-    window.setTimeout(syncFavoriteButtonState, 60);
-    window.setTimeout(syncFavoriteButtonState, 260);
-    window.setTimeout(syncFavoriteButtonState, 700);
-}
-
-function shouldUseRemotePlayerWishlist() {
-    if (isArtistMusicPage()) {
-        return true;
-    }
-
-    const activeCard = getConnectedActiveTrackCard();
-    if (
-        activeCard &&
-        activeCard.closest &&
-        activeCard.closest(".bcampx-label-feed-card")
-    ) {
-        return true;
-    }
-
-    // A feed sync can unmount the card while its track keeps playing (for
-    // example after switching to another fan tab). The release still
-    // belongs to a fan feed, and the helper is the only way to toggle it,
-    // so keep using the remote state for the release URL we are playing.
-    const releaseUrl = normalizeReleaseUrl(STATE.activeReleaseUrl || "");
-    const fanGrid = STATE.activeTrackFanGridNode;
-    return Boolean(
-        releaseUrl &&
-            fanGrid instanceof Element &&
-            fanGrid.isConnected,
-    );
-}
-
-async function toggleActiveRemoteWishlist() {
-    const ui = STATE.playerUi;
-    const releaseUrl = normalizeReleaseUrl(STATE.activeReleaseUrl || "");
-    if (!ui || !ui.favoriteButton || !releaseUrl) {
-        return;
-    }
-
-    const favoriteState = getPlayerFavoriteState(releaseUrl);
-    if (favoriteState.disabled) {
-        ensureRemotePlayerWishlistState(releaseUrl);
-        return;
-    }
-
-    const desiredActive =
-        ui.favoriteButton.getAttribute("aria-pressed") !== "true";
-    STATE.playerWishlistActionRequests.add(releaseUrl);
-    setTrackActionButtonPending(ui.favoriteButton, true);
-    try {
-        await requestTrackActionViaHelper(
-            "wishlist",
-            releaseUrl,
-            ui.favoriteButton,
-            { desiredActive },
-        );
-    } catch (_error) {
-        STATE.playerWishlistActionRequests.delete(releaseUrl);
-        setTrackActionButtonPending(ui.favoriteButton, false);
+        playerState.pageAudio.pause();
     }
 }
 
@@ -3505,3 +2834,9 @@ function updateWaypointPlayPauseButton(existingButton) {
     );
     toggleClassIfChanged(button, "bcampx__waypoint-toggle--paused", isPaused);
 }
+
+registerPlayerWishlistContext({
+    getActiveCard: getConnectedActiveTrackCard,
+    getActiveReleaseData: () => playerState.activeReleaseData,
+    getActiveFanGrid: () => playerState.activeTrackFanGridNode,
+});

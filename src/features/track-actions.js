@@ -1,9 +1,16 @@
-import { loadUserSettings, normalizeReleaseUrl, resolveFanIdFromPageState } from "../bcamplifier.core.js";
-import { isBandcampReleaseUrl } from "../data/release-data.js";
-import { clearPlayerWishlistStateRetry, setFavoriteButtonState, syncFavoriteButtonState } from "./player.js";
+import { clearPlayerWishlistStateRetry, setFavoriteButtonState, syncFavoriteButtonState } from "./player-wishlist.js";
 import { CONFIG, STATE, TRACK_ACTION_AUTH_TIMEOUT_MS } from "../state.js";
 import { createClassedElement, markDebugState } from "../utils/dom.js";
+import { isWebExtensionHost } from "../utils/host-bridge.js";
+import { loadUserSettings, resolveFanIdFromPageState } from "../utils/page.js";
 import { cleanText } from "../utils/text-format.js";
+import { isBandcampReleaseUrl, isCustomDomainReleaseUrl, normalizeReleaseUrl } from "../utils/url.js";
+
+const trackActionState = {
+    trackActionBridgeInitialized: false,
+    pendingTrackActionRequests: new Map(),
+    lastTrackActionDiagnostic: null,
+};
 
 // Per-track wishlist/buy actions: the hidden helper frame, its authorized
 // postMessage bridge, the buy dialog helper and the request plumbing.
@@ -521,30 +528,6 @@ async function runTrackActionHelper({
     send({ ok: false, error: "Basket helper is disabled." });
 }
 
-export function getExternalHostApi() {
-    const host = globalThis.__BCAMPX_HOST__;
-    if (!host || typeof host !== "object") {
-        return null;
-    }
-
-    return host;
-}
-
-export function canUseExternalHostMethod(methodName) {
-    const host = getExternalHostApi();
-    return !!(host && typeof host[methodName] === "function");
-}
-
-export function isWebExtensionHost() {
-    const host = getExternalHostApi();
-    return !!(host && host.kind === "webextension");
-}
-
-export function isCustomDomainReleaseUrl(rawUrl) {
-    const releaseUrl = normalizeReleaseUrl(rawUrl || "");
-    return !!(releaseUrl && !isBandcampReleaseUrl(releaseUrl));
-}
-
 // Custom-domain pages only received the extension core through a content
 // script registered at runtime, and this build no longer registers one.
 // The hidden helper frame therefore cannot answer there, so wishlist
@@ -558,36 +541,12 @@ export function canRunTrackActionHelper(rawUrl) {
     );
 }
 
-export function hasExtensionHostPermission(rawUrl) {
-    const releaseUrl = normalizeReleaseUrl(rawUrl || "");
-    if (!releaseUrl || !isWebExtensionHost()) {
-        return false;
-    }
-
-    const host = getExternalHostApi();
-    return !!(
-        host &&
-        typeof host.hasHostPermission === "function" &&
-        host.hasHostPermission(releaseUrl)
-    );
-}
-
-export function getHostRequestOptions(baseOptions = {}) {
-    return {
-        method: baseOptions.method || "GET",
-        data: baseOptions.data,
-        headers: baseOptions.headers,
-        credentials: baseOptions.credentials,
-        timeoutMs: CONFIG.fetchTimeoutMs,
-    };
-}
-
 function setupTrackActionMessageBridge() {
-    if (STATE.trackActionBridgeInitialized) {
+    if (trackActionState.trackActionBridgeInitialized) {
         return;
     }
 
-    STATE.trackActionBridgeInitialized = true;
+    trackActionState.trackActionBridgeInitialized = true;
     window.addEventListener("message", handleTrackActionMessage);
 }
 
@@ -606,7 +565,7 @@ function handleTrackActionMessage(event) {
         return;
     }
 
-    const pending = STATE.pendingTrackActionRequests.get(data.requestId);
+    const pending = trackActionState.pendingTrackActionRequests.get(data.requestId);
     if (!pending) {
         return;
     }
@@ -644,7 +603,7 @@ function handleTrackActionChallenge(event, data) {
         return;
     }
 
-    const pending = STATE.pendingTrackActionRequests.get(requestId);
+    const pending = trackActionState.pendingTrackActionRequests.get(requestId);
     if (!pending || !pending.origin || event.origin !== pending.origin) {
         return;
     }
@@ -760,12 +719,12 @@ function requestTrackActionHelperAuthorization(target, origin, requestId) {
 }
 
 function finalizePendingTrackActionRequest(requestId) {
-    const pending = STATE.pendingTrackActionRequests.get(requestId);
+    const pending = trackActionState.pendingTrackActionRequests.get(requestId);
     if (!pending) {
         return null;
     }
 
-    STATE.pendingTrackActionRequests.delete(requestId);
+    trackActionState.pendingTrackActionRequests.delete(requestId);
     window.clearTimeout(pending.timeoutId);
     if (pending.iframe && pending.iframe.parentNode) {
         pending.iframe.remove();
@@ -774,7 +733,7 @@ function finalizePendingTrackActionRequest(requestId) {
 }
 
 export function recordTrackActionDiagnostic(code, details = {}) {
-    STATE.lastTrackActionDiagnostic = {
+    trackActionState.lastTrackActionDiagnostic = {
         code,
         details,
         at: Date.now(),
@@ -1080,7 +1039,7 @@ function buildTrackActionHelperUrl(
 
 function scheduleTrackActionTimeout(pending, timeoutMs = 12000) {
     return window.setTimeout(() => {
-        const activePending = STATE.pendingTrackActionRequests.get(
+        const activePending = trackActionState.pendingTrackActionRequests.get(
             pending.requestId,
         );
         if (!activePending) {
@@ -1140,7 +1099,7 @@ function attachTrackActionIframeErrorHandler(
     iframe.addEventListener(
         "error",
         () => {
-            const activePending = STATE.pendingTrackActionRequests.get(
+            const activePending = trackActionState.pendingTrackActionRequests.get(
                 pending.requestId,
             );
             if (!activePending) {
@@ -1181,7 +1140,7 @@ function openTrackActionHelperWindow(helperUrl) {
 }
 
 function registerPendingTrackActionRequest(pending) {
-    STATE.pendingTrackActionRequests.set(pending.requestId, pending);
+    trackActionState.pendingTrackActionRequests.set(pending.requestId, pending);
 }
 
 export function setTrackActionButtonPending(button, pending) {

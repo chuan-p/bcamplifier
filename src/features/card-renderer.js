@@ -1,4 +1,3 @@
-import { getCardController, normalizeReleaseUrl } from "../bcamplifier.core.js";
 import {
     createEmptyReleaseData,
     fetchApiReleaseTracklist,
@@ -32,14 +31,15 @@ import {
     shouldOfferReleasePageRefresh,
 } from "./release-page.js";
 import {
-    canUseExternalHostMethod,
     createTrackActionButtons,
-    getExternalHostApi,
     openTrackBuyWindow,
     recordTrackActionDiagnostic,
     resolveTrackActionUrl,
     scheduleNextFrame,
 } from "./track-actions.js";
+import { canUseExternalHostMethod, getExternalHostApi } from "../utils/host-bridge.js";
+import { getCardController } from "../utils/page.js";
+import { normalizeReleaseUrl } from "../utils/url.js";
 import {
     BUY_ACTION_TEXT_RE,
     CARD_SELECTOR,
@@ -74,6 +74,11 @@ import {
     hasVisibleEnhancements,
     normalizedText,
 } from "../utils/text-format.js";
+
+const rendererState = {
+    renderedReleaseDataByUrl: new Map(),
+    tracklistRetryTimer: 0,
+};
 
 export function renderArtistMusicCardInitialData(
     card,
@@ -388,7 +393,7 @@ function rememberRenderedReleaseData(releaseUrl, data) {
         return;
     }
 
-    const cache = STATE.renderedReleaseDataByUrl;
+    const cache = rendererState.renderedReleaseDataByUrl;
     if (!cache) {
         return;
     }
@@ -417,16 +422,16 @@ function releaseControllerNeedsTracks(controller) {
 // leaving tag results without rows until a reload. Refill those cards once
 // the backoff ends, using only the (usually cached) API response.
 function scheduleTracklistRetryAfterCooldown() {
-    if (STATE.tracklistRetryTimer) {
+    if (rendererState.tracklistRetryTimer) {
         return;
     }
     const until = Number(STATE.tagIndexCooldownUntil) || 0;
     if (until <= Date.now()) {
         return;
     }
-    STATE.tracklistRetryTimer = window.setTimeout(
+    rendererState.tracklistRetryTimer = window.setTimeout(
         () => {
-            STATE.tracklistRetryTimer = 0;
+            rendererState.tracklistRetryTimer = 0;
             void fillMissingTracklistsFromApi();
         },
         Math.min(6 * 60 * 60 * 1000, until - Date.now() + 2000),
@@ -484,6 +489,181 @@ async function fillMissingTracklistsFromApi() {
     scheduleTracklistRetryAfterCooldown();
 }
 
+function commitLoadedReleaseData(
+    controller,
+    releaseUrl,
+    shell,
+    meta,
+    text,
+    toggle,
+    data,
+    {
+        summaryText = "",
+        summaryResult = null,
+        expand = null,
+        clearUnavailable = true,
+        harvestTags = false,
+    } = {},
+) {
+    controller.loaded = true;
+    controller.failed = false;
+    controller.data = data;
+    if (clearUnavailable) {
+        clearReleasePageUnavailable(controller.card);
+    }
+    syncActivePlaybackReleaseData(releaseUrl, data);
+    if (harvestTags) {
+        try {
+            harvestTagsFromReleaseData(
+                controller.card && controller.card.__bcampxArtistMusicRelease,
+                data.tags,
+            );
+        } catch (_error) {
+            // Tag harvesting is a side benefit; never fail the render.
+        }
+    }
+    rememberRenderedReleaseData(releaseUrl, data);
+    renderReleaseData(shell, meta, text, toggle, data, releaseUrl);
+    if (typeof expand === "boolean") {
+        controller.expanded = expand;
+        shell.classList.toggle("bcampx--expanded", expand);
+        updateToggle(toggle, expand);
+    }
+    text.textContent =
+        summaryText || buildLoadedSummaryText(data, summaryResult || {});
+}
+
+async function tryRenderIndexTagTracklist(
+    controller,
+    releaseForTracklist,
+    releaseUrl,
+    shell,
+    meta,
+    text,
+    toggle,
+    options,
+) {
+    if (!releaseForTracklist || releaseForTracklist.tagOrigin !== "index") {
+        return false;
+    }
+
+    const apiTracklist = await fetchApiReleaseTracklist(releaseForTracklist);
+    if (
+        !apiTracklist ||
+        !Array.isArray(apiTracklist.tracks) ||
+        !apiTracklist.tracks.length
+    ) {
+        return false;
+    }
+
+    const tagKey = getTagTralbumKey(
+        releaseForTracklist.tralbumType,
+        releaseForTracklist.tralbumId,
+    );
+    let data = normalizeReleaseData({
+        url: releaseUrl,
+        title: releaseForTracklist.title,
+        artist: releaseForTracklist.artist,
+        artUrl: releaseForTracklist.artUrl,
+        tracks: apiTracklist.tracks,
+        description: apiTracklist.description || "",
+        tags: getCachedReleaseTags(tagKey) || [],
+        hasBodyDescriptionSource: Boolean(apiTracklist.description),
+    });
+    data = preferPreviousTracks(
+        preferRenderableReleaseData(data, controller.data),
+        controller.data,
+    );
+    const shouldExpand =
+        (!options.auto || CONFIG.expandAfterAutoFetch) &&
+        hasExpandableContent(data);
+    commitLoadedReleaseData(controller, releaseUrl, shell, meta, text, toggle, data, {
+        summaryResult: { fromCache: true },
+        expand: shouldExpand,
+    });
+    markDebugState("data-bcampx-tracklist-source", "mobile-api");
+    return true;
+}
+
+async function handleFetchReleaseError(
+    controller,
+    releaseForTracklist,
+    releaseUrl,
+    shell,
+    meta,
+    text,
+    toggle,
+    error,
+) {
+    if (isTagIndexRateLimitError(error)) {
+        STATE.releaseFetchCooldownUntil =
+            Date.now() + (Number(CONFIG.releaseFetchCooldownMs) || 120000);
+        markDebugState(
+            "data-bcampx-release-cooldown",
+            String(STATE.releaseFetchCooldownUntil),
+        );
+    }
+    markDebugState(
+        "data-bcampx-last-release-error",
+        cleanText(
+            normalizeDisplayErrorMessage(error) || "Release fetch failed.",
+        ).slice(0, 140),
+    );
+
+    if (isReleasePageUnavailableError(error)) {
+        markReleasePageUnavailable(controller.card, releaseUrl);
+    }
+
+    const apiTracklist = await fetchApiReleaseTracklist(releaseForTracklist);
+    if (apiTracklist && apiTracklist.tracks.length) {
+        const data = normalizeReleaseData({
+            ...createEmptyReleaseData(),
+            ...apiTracklist,
+        });
+        commitLoadedReleaseData(
+            controller,
+            releaseUrl,
+            shell,
+            meta,
+            text,
+            toggle,
+            data,
+            {
+                summaryResult: { fromCache: false, stale: false },
+                clearUnavailable: false,
+            },
+        );
+        return;
+    }
+
+    if (controller.data && hasVisibleEnhancements(controller.data)) {
+        controller.loaded = true;
+        controller.failed = false;
+        text.textContent = "Extra context kept from the page";
+        const expanded = hasExpandableContent(controller.data);
+        shell.classList.toggle("bcampx--expanded", expanded);
+        updateToggle(toggle, expanded);
+        return;
+    }
+
+    if (shouldAbandonReleaseEnhancement(error)) {
+        controller.loaded = true;
+        controller.failed = false;
+        controller.data = createEmptyReleaseData();
+        renderEmpty(meta, text, releaseUrl, {
+            message: "Extra metadata is unavailable for this release.",
+            summary: "No extra context available",
+        });
+    } else {
+        controller.loaded = false;
+        controller.failed = true;
+        controller.data = null;
+        renderError(controller, meta, text, releaseUrl, error);
+    }
+    shell.classList.remove("bcampx--expanded");
+    toggle.hidden = true;
+}
+
 export async function fetchAndRender(
     controller,
     releaseUrl,
@@ -496,16 +676,11 @@ export async function fetchAndRender(
     const releaseMeta =
         controller.card && controller.card.__bcampxArtistMusicRelease;
     if (releaseMeta && releaseMeta.pageUnavailable) {
-        // The native collection item has no release-page link: the page is
-        // gone, so do not spend a request on it.
         controller.releaseChecked = true;
         controller.loading = false;
         controller.loaded = true;
         controller.failed = false;
-        markReleasePageUnavailable(
-            controller.card,
-            releaseUrl,
-        );
+        markReleasePageUnavailable(controller.card, releaseUrl);
         if (text) {
             text.textContent =
                 "This release is no longer available on Bandcamp.";
@@ -515,15 +690,11 @@ export async function fetchAndRender(
     controller.loading = true;
     applyReleaseShellLoadingState(controller);
     let keepLoadingForRefresh = false;
-    const releaseForTracklist = releaseMeta;
 
     try {
-        // A feed sync can replace the card that already showed a tracklist.
-        // Paint the known data immediately so the replacement starts with the
-        // rows instead of an empty slot while the request is in flight.
         const knownData =
-            STATE.renderedReleaseDataByUrl &&
-            STATE.renderedReleaseDataByUrl.get(
+            rendererState.renderedReleaseDataByUrl &&
+            rendererState.renderedReleaseDataByUrl.get(
                 normalizeReleaseUrl(releaseUrl || ""),
             );
         const hasKnownTracks =
@@ -532,94 +703,27 @@ export async function fetchAndRender(
             controller.data.tracks.length > 0;
         if (knownData && !hasKnownTracks) {
             controller.data = knownData;
-            renderReleaseData(
+            renderReleaseData(shell, meta, text, toggle, knownData, releaseUrl);
+        }
+
+        if (
+            await tryRenderIndexTagTracklist(
+                controller,
+                releaseMeta,
+                releaseUrl,
                 shell,
                 meta,
                 text,
                 toggle,
-                knownData,
-                releaseUrl,
-            );
-        }
-
-        // Tag results are built from the local index, and the tag request
-        // already carried their tracklist. Render those cards from that answer
-        // instead of downloading the full release page for every result: a
-        // broad query can produce dozens of them.
-        if (
-            releaseForTracklist &&
-            releaseForTracklist.tagOrigin === "index"
+                options,
+            )
         ) {
-            const apiTracklist = await fetchApiReleaseTracklist(
-                releaseForTracklist,
-            );
-            if (
-                apiTracklist &&
-                Array.isArray(apiTracklist.tracks) &&
-                apiTracklist.tracks.length
-            ) {
-                const tagKey = getTagTralbumKey(
-                    releaseForTracklist.tralbumType,
-                    releaseForTracklist.tralbumId,
-                );
-                const cachedTags =
-                    getCachedReleaseTags(tagKey) || [];
-                let data = normalizeReleaseData({
-                    url: releaseUrl,
-                    title: releaseForTracklist.title,
-                    artist: releaseForTracklist.artist,
-                    artUrl: releaseForTracklist.artUrl,
-                    tracks: apiTracklist.tracks,
-                    description: apiTracklist.description || "",
-                    tags: cachedTags,
-                    hasBodyDescriptionSource: Boolean(
-                        apiTracklist.description,
-                    ),
-                });
-                data = preferPreviousTracks(
-                    preferRenderableReleaseData(data, controller.data),
-                    controller.data,
-                );
-                controller.loaded = true;
-                controller.failed = false;
-                controller.data = data;
-                clearReleasePageUnavailable(controller.card);
-                syncActivePlaybackReleaseData(releaseUrl, data);
-                rememberRenderedReleaseData(releaseUrl, data);
-                renderReleaseData(
-                    shell,
-                    meta,
-                    text,
-                    toggle,
-                    data,
-                    releaseUrl,
-                );
-                const shouldExpand =
-                    (!options.auto || CONFIG.expandAfterAutoFetch) &&
-                    hasExpandableContent(data);
-                controller.expanded = shouldExpand;
-                shell.classList.toggle(
-                    "bcampx--expanded",
-                    shouldExpand,
-                );
-                updateToggle(toggle, shouldExpand);
-                text.textContent = buildLoadedSummaryText(data, {
-                    fromCache: true,
-                });
-                markDebugState(
-                    "data-bcampx-tracklist-source",
-                    "mobile-api",
-                );
-                return;
-            }
+            return;
         }
 
         const result = await getReleaseData(
             controller.releaseRequestContext || releaseUrl,
         );
-        // A fresh cache hit never asked the page, so the first click still
-        // checks it. A real request, a failed one, or a background refresh
-        // already answers "is the page there?".
         controller.releaseChecked = Boolean(
             result &&
                 (result.fromCache !== true ||
@@ -635,38 +739,38 @@ export async function fetchAndRender(
             controller.data,
         );
         if (!normalizedData.tracks.length) {
-            const apiTracklist =
-                await fetchApiReleaseTracklist(releaseForTracklist);
+            const apiTracklist = await fetchApiReleaseTracklist(releaseMeta);
             if (apiTracklist && apiTracklist.tracks.length) {
                 normalizedData = {
                     ...normalizedData,
                     tracks: apiTracklist.tracks,
                     description:
-                        normalizedData.description ||
-                        apiTracklist.description,
+                        normalizedData.description || apiTracklist.description,
                 };
-                markDebugState(
-                    "data-bcampx-tracklist-source",
-                    "mobile-api",
-                );
+                markDebugState("data-bcampx-tracklist-source", "mobile-api");
             }
         }
-        controller.loaded = true;
-        controller.failed = false;
-        controller.data = normalizedData;
-        clearReleasePageUnavailable(controller.card);
-        syncActivePlaybackReleaseData(releaseUrl, normalizedData);
-        try {
-            harvestTagsFromReleaseData(
-                controller.card &&
-                    controller.card.__bcampxArtistMusicRelease,
-                normalizedData.tags,
-            );
-        } catch (_error) {
-            // Tag harvesting is a side benefit; never let it turn a
-            // successful release render into an error panel.
-        }
-        rememberRenderedReleaseData(releaseUrl, normalizedData);
+
+        const shouldExpand =
+            (!options.auto || CONFIG.expandAfterAutoFetch) &&
+            hasExpandableContent(normalizedData);
+        commitLoadedReleaseData(
+            controller,
+            releaseUrl,
+            shell,
+            meta,
+            text,
+            toggle,
+            normalizedData,
+            {
+                summaryText: result.refreshingTracks
+                    ? LOADING_EXTRA_CONTEXT_TEXT
+                    : "",
+                summaryResult: result,
+                expand: shouldExpand,
+                harvestTags: true,
+            },
+        );
         if (
             releaseControllerNeedsTracks(controller) &&
             Number(STATE.tagIndexCooldownUntil) > Date.now()
@@ -674,25 +778,6 @@ export async function fetchAndRender(
             scheduleTracklistRetryAfterCooldown();
         }
         keepLoadingForRefresh = Boolean(result.refreshPromise);
-
-        renderReleaseData(
-            shell,
-            meta,
-            text,
-            toggle,
-            normalizedData,
-            releaseUrl,
-        );
-
-        const shouldExpand =
-            (!options.auto || CONFIG.expandAfterAutoFetch) &&
-            hasExpandableContent(normalizedData);
-        controller.expanded = shouldExpand;
-        shell.classList.toggle("bcampx--expanded", shouldExpand);
-        updateToggle(toggle, shouldExpand);
-        text.textContent = result.refreshingTracks
-            ? LOADING_EXTRA_CONTEXT_TEXT
-            : buildLoadedSummaryText(normalizedData, result);
         if (result.refreshPromise) {
             attachReleaseRefreshPromise(
                 controller,
@@ -708,96 +793,16 @@ export async function fetchAndRender(
             markReleasePageUnavailable(controller.card, releaseUrl);
         }
     } catch (error) {
-        if (isTagIndexRateLimitError(error)) {
-            // Pause card page fetches for a short while, but leave the tag
-            // index alone: its own requests are paced and it may still make
-            // progress. Conflating the two let a single page fetch block an
-            // empty index for minutes.
-            STATE.releaseFetchCooldownUntil =
-                Date.now() +
-                (Number(CONFIG.releaseFetchCooldownMs) || 120000);
-            markDebugState(
-                "data-bcampx-release-cooldown",
-                String(STATE.releaseFetchCooldownUntil),
-            );
-        }
-        markDebugState(
-            "data-bcampx-last-release-error",
-            cleanText(
-                normalizeDisplayErrorMessage(error) ||
-                    "Release fetch failed.",
-            ).slice(0, 140),
+        await handleFetchReleaseError(
+            controller,
+            releaseMeta,
+            releaseUrl,
+            shell,
+            meta,
+            text,
+            toggle,
+            error,
         );
-
-        // The page is gone: keep whatever the collection page gave us
-        // (preview, download) but stop offering links into a dead page.
-        if (isReleasePageUnavailableError(error)) {
-            markReleasePageUnavailable(controller.card, releaseUrl);
-        }
-
-        const apiTracklist =
-            await fetchApiReleaseTracklist(releaseForTracklist);
-        if (apiTracklist && apiTracklist.tracks.length) {
-            controller.loaded = true;
-            controller.failed = false;
-            controller.data = normalizeReleaseData({
-                ...createEmptyReleaseData(),
-                ...apiTracklist,
-            });
-            syncActivePlaybackReleaseData(
-                releaseUrl,
-                controller.data,
-            );
-            rememberRenderedReleaseData(releaseUrl, controller.data);
-            renderReleaseData(
-                shell,
-                meta,
-                text,
-                toggle,
-                controller.data,
-                releaseUrl,
-            );
-            text.textContent = buildLoadedSummaryText(controller.data, {
-                fromCache: false,
-                stale: false,
-            });
-            return;
-        }
-
-        // The card may already show a native preview (own-collection cards
-        // ship their tracklist with the page). A failed refresh must not
-        // replace that with an error panel.
-        if (controller.data && hasVisibleEnhancements(controller.data)) {
-            controller.loaded = true;
-            controller.failed = false;
-            text.textContent = "Extra context kept from the page";
-            shell.classList.toggle(
-                "bcampx--expanded",
-                hasExpandableContent(controller.data),
-            );
-            updateToggle(
-                toggle,
-                shell.classList.contains("bcampx--expanded"),
-            );
-            return;
-        }
-
-        if (shouldAbandonReleaseEnhancement(error)) {
-            controller.loaded = true;
-            controller.failed = false;
-            controller.data = createEmptyReleaseData();
-            renderEmpty(meta, text, releaseUrl, {
-                message: "Extra metadata is unavailable for this release.",
-                summary: "No extra context available",
-            });
-        } else {
-            controller.loaded = false;
-            controller.failed = true;
-            controller.data = null;
-            renderError(controller, meta, text, releaseUrl, error);
-        }
-        shell.classList.remove("bcampx--expanded");
-        toggle.hidden = true;
     } finally {
         controller.loading = false;
         if (!keepLoadingForRefresh) {

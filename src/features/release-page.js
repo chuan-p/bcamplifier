@@ -1,14 +1,8 @@
 import {
-    getCardController,
     getCardPrimaryReleaseUrl,
     getCardReleaseRequestContext,
-    isBandcampFanProfileUrl,
-    isFanCollectionPage,
-    loadUserSettings,
-    normalizeReleaseUrl,
-} from "../bcamplifier.core.js";
+} from "../utils/card-dom.js";
 import { getReleaseData, parseTralbumData, resolveReleaseTitle } from "../data/release-data.js";
-import { canUseExternalHostMethod, isCustomDomainReleaseUrl, isWebExtensionHost } from "./track-actions.js";
 import {
     CONFIG,
     OWNED_RELEASE_COLLECTION_SEARCH_KEY,
@@ -16,9 +10,21 @@ import {
     STATE,
 } from "../state.js";
 import { isPlainPrimaryClick, markDebugState, setTextInputValue } from "../utils/dom.js";
+import {
+    canUseExternalHostMethod,
+    isMissingCustomDomainHostPermissionError,
+    isWebExtensionHost,
+} from "../utils/host-bridge.js";
 import { describeHostError } from "../utils/host-errors.js";
+import { getCardController, isFanCollectionPage, loadUserSettings } from "../utils/page.js";
 import { storageGet, storageSet } from "../utils/storage.js";
 import { cleanText, cleanTitle, normalizedText } from "../utils/text-format.js";
+import { isBandcampFanProfileUrl, isCustomDomainReleaseUrl, normalizeReleaseUrl } from "../utils/url.js";
+
+const releasePageState = {
+    unavailableReleaseGuardBound: false,
+    ownedReleaseLinkVerificationBound: false,
+};
 
 export function setupReleasePageBuyAutofill() {
     void loadUserSettings();
@@ -400,11 +406,11 @@ export function markReleasePageUnavailable(card, releaseUrl) {
 const CLICK_RELEASE_CHECK_WAIT_MS = 2500;
 
 export function setupOwnedReleaseLinkVerification() {
-    if (STATE.ownedReleaseLinkVerificationBound) {
+    if (releasePageState.ownedReleaseLinkVerificationBound) {
         return;
     }
 
-    STATE.ownedReleaseLinkVerificationBound = true;
+    releasePageState.ownedReleaseLinkVerificationBound = true;
     document.addEventListener(
         "click",
         (event) => {
@@ -623,11 +629,11 @@ export function clearReleasePageUnavailable(card) {
 // Block the click at the document level so links added later (the error
 // panel's "Open release") are covered as well.
 export function setupUnavailableReleaseLinkGuard() {
-    if (STATE.unavailableReleaseGuardBound) {
+    if (releasePageState.unavailableReleaseGuardBound) {
         return;
     }
 
-    STATE.unavailableReleaseGuardBound = true;
+    releasePageState.unavailableReleaseGuardBound = true;
     window.addEventListener(
         "click",
         (event) => {
@@ -672,19 +678,6 @@ export function setupUnavailableReleaseLinkGuard() {
         },
         true,
     );
-}
-
-function extractMissingCustomDomainHostPermissionPattern(error) {
-    const message =
-        error && error.message ? String(error.message) : "";
-    const match = message.match(
-        /Host permission required for (https:\/\/[^\s]+\/\*)/i,
-    );
-    return match ? match[1] : "";
-}
-
-export function isMissingCustomDomainHostPermissionError(error) {
-    return Boolean(extractMissingCustomDomainHostPermissionPattern(error));
 }
 
 export function shouldOfferCustomDomainPermissionButton(error, releaseUrl) {

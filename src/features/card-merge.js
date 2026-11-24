@@ -2,18 +2,17 @@ import {
     extractFeaturedTrackTitle,
     extractFeedHeadlineActor,
     getCardAlbumReleaseUrl,
-    getCardController,
     getCardPrimaryReleaseUrl,
     getParsedItemJson,
     getStoryTitleNode,
-    isLikelyProfileLink,
     isMalformedFeedCard,
     looksLikeFeedCard,
-    normalizeReleaseUrl,
-} from "../bcamplifier.core.js";
+} from "../utils/card-dom.js";
 import { getItemJsonReleaseUrl } from "./artist-music-feed.js";
 import { findContentColumn, renderReleaseData } from "./card-renderer.js";
 import { getCardArtUrl, playMergedTrackTitle } from "./player.js";
+import { getCardController } from "../utils/page.js";
+import { isLikelyProfileLink, normalizeReleaseUrl } from "../utils/url.js";
 import {
     CARD_SELECTOR,
     EXCLUDED_SECTION_SELECTOR,

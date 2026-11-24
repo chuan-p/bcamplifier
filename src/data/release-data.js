@@ -1,8 +1,3 @@
-import { isBandcampFanProfileUrl, normalizeReleaseUrl } from "../bcamplifier.core.js";
-import { activateTagIndexCooldown, isTagIndexRateLimitError, waitTagIndexTurn } from "./tag-index.js";
-import { firstPositiveNumber, normalizeReleaseItemType } from "../features/artist-music-feed.js";
-import { isMissingCustomDomainHostPermissionError } from "../features/release-page.js";
-import { canUseExternalHostMethod, getExternalHostApi, getHostRequestOptions } from "../features/track-actions.js";
 import {
     CACHE_SCHEMA_VERSION,
     CONFIG,
@@ -12,7 +7,21 @@ import {
 } from "../state.js";
 import { createConcurrencyLimiter } from "../utils/async.js";
 import { incrementDebugCounter, markDebugState } from "../utils/dom.js";
+import { TAG_INDEX_PACING_HOOKS } from "../utils/hooks.js";
+import {
+    canUseExternalHostMethod,
+    getExternalHostApi,
+    getHostRequestOptions,
+    isMissingCustomDomainHostPermissionError,
+} from "../utils/host-bridge.js";
 import { storageGet, storageSet, trackReleaseCacheEntry } from "../utils/storage.js";
+import {
+    firstPositiveNumber,
+    isBandcampFanProfileUrl,
+    isBandcampReleaseUrl,
+    normalizeReleaseItemType,
+    normalizeReleaseUrl,
+} from "../utils/url.js";
 import {
     attrContent,
     cleanText,
@@ -33,6 +42,13 @@ import {
     truncate,
     uniqueStrings,
 } from "../utils/text-format.js";
+
+const releaseDataState = {
+    pendingReleaseRequests: new Map(),
+    releaseViewerKey: undefined,
+    pageFreshTrackReleaseKeys: new Set(),
+    pendingSupporterCountRequests: new Map(),
+};
 
 export async function getReleaseData(releaseInput) {
     const requestContext = normalizeReleaseRequestContext(releaseInput);
@@ -115,7 +131,7 @@ export async function getReleaseData(releaseInput) {
         }
     }
 
-    const pending = STATE.pendingReleaseRequests.get(cacheKey);
+    const pending = releaseDataState.pendingReleaseRequests.get(cacheKey);
     if (pending) {
         if (
             shouldServeCachedReleaseWhileRefreshing(
@@ -154,7 +170,7 @@ export async function getReleaseData(releaseInput) {
                 await storageSet(cacheKey, cacheValue);
                 void trackReleaseCacheEntry(cacheKey).catch(() => {});
                 if (hasPlayableTracks(cacheValue)) {
-                    STATE.pageFreshTrackReleaseKeys.add(cacheKey);
+                    releaseDataState.pageFreshTrackReleaseKeys.add(cacheKey);
                 }
             } else {
                 markDebugState(
@@ -176,10 +192,10 @@ export async function getReleaseData(releaseInput) {
         }
     });
 
-    STATE.pendingReleaseRequests.set(cacheKey, request);
+    releaseDataState.pendingReleaseRequests.set(cacheKey, request);
     const clearPendingRequest = () => {
-        if (STATE.pendingReleaseRequests.get(cacheKey) === request) {
-            STATE.pendingReleaseRequests.delete(cacheKey);
+        if (releaseDataState.pendingReleaseRequests.get(cacheKey) === request) {
+            releaseDataState.pendingReleaseRequests.delete(cacheKey);
         }
     };
     request.then(clearPendingRequest, clearPendingRequest);
@@ -327,20 +343,6 @@ async function tryResolveCustomDomainReleaseRequestContext(requestContext) {
     };
 }
 
-export function isBandcampReleaseUrl(rawUrl) {
-    try {
-        const url = new URL(rawUrl, window.location.href);
-        return Boolean(
-            url.protocol === "https:" &&
-                (url.hostname === "bandcamp.com" ||
-                    url.hostname.endsWith(".bandcamp.com")) &&
-                /(^|\/)(album|track)\//.test(url.pathname),
-        );
-    } catch (_error) {
-        return false;
-    }
-}
-
 function extractReleaseCanonicalUrl(html, fallbackUrl = "") {
     const doc = htmlToDocument(html);
     const candidates = [
@@ -420,8 +422,8 @@ export function isCacheableReleaseValue(value) {
 }
 
 function getReleaseViewerKey() {
-    if (STATE.releaseViewerKey !== undefined) {
-        return STATE.releaseViewerKey;
+    if (releaseDataState.releaseViewerKey !== undefined) {
+        return releaseDataState.releaseViewerKey;
     }
 
     let viewerKey = "";
@@ -440,7 +442,7 @@ function getReleaseViewerKey() {
         document.readyState &&
         document.readyState !== "loading";
     if (viewerKey || parsed) {
-        STATE.releaseViewerKey = viewerKey;
+        releaseDataState.releaseViewerKey = viewerKey;
     }
     return viewerKey;
 }
@@ -562,7 +564,7 @@ function needsTrackSnapshotRefresh(
     if (
         requestContext &&
         requestContext.requirePageFreshTracks === true &&
-        !STATE.pageFreshTrackReleaseKeys.has(cacheKey)
+        !releaseDataState.pageFreshTrackReleaseKeys.has(cacheKey)
     ) {
         return true;
     }
@@ -879,7 +881,7 @@ export async function getExactReleaseSupporterCount(releaseData, options = {}) {
         };
     }
 
-    const pending = STATE.pendingSupporterCountRequests.get(cacheKey);
+    const pending = releaseDataState.pendingSupporterCountRequests.get(cacheKey);
     if (pending) {
         return pending;
     }
@@ -904,12 +906,12 @@ export async function getExactReleaseSupporterCount(releaseData, options = {}) {
         { priority: options.forceRefresh === true },
     );
 
-    STATE.pendingSupporterCountRequests.set(cacheKey, request);
+    releaseDataState.pendingSupporterCountRequests.set(cacheKey, request);
     try {
         return await request;
     } finally {
-        if (STATE.pendingSupporterCountRequests.get(cacheKey) === request) {
-            STATE.pendingSupporterCountRequests.delete(cacheKey);
+        if (releaseDataState.pendingSupporterCountRequests.get(cacheKey) === request) {
+            releaseDataState.pendingSupporterCountRequests.delete(cacheKey);
         }
     }
 }
@@ -1896,7 +1898,7 @@ export function fetchApiReleaseTracklist(release) {
 
     // The card-level tracklist call shares the index turnstile, so a search
     // while indexing is running cannot double the request rate.
-    const promise = waitTagIndexTurn()
+    const promise = TAG_INDEX_PACING_HOOKS.waitTurn()
         .then(() =>
             requestJson(url, {
                 credentials: "include",
@@ -1939,8 +1941,8 @@ export function fetchApiReleaseTracklist(release) {
             };
         })
         .catch((error) => {
-            if (isTagIndexRateLimitError(error)) {
-                void activateTagIndexCooldown("tracklist");
+            if (TAG_INDEX_PACING_HOOKS.isRateLimitError(error)) {
+                void TAG_INDEX_PACING_HOOKS.activateCooldown("tracklist");
             }
             return null;
         });

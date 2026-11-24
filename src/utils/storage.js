@@ -1,4 +1,4 @@
-import { canUseExternalHostMethod, getExternalHostApi } from "../features/track-actions.js";
+import { canUseExternalHostMethod, getExternalHostApi } from "./host-bridge.js";
 import {
     CACHE_SCHEMA_VERSION,
     CONFIG,
@@ -11,6 +11,10 @@ import {
 } from "../state.js";
 import { createSerialQueue } from "./async.js";
 import { cleanText } from "./text-format.js";
+
+const storageState = {
+    releaseCacheRepairAttempted: false,
+};
 
 // Storage failures are reported, not swallowed. The callers keep their
 // existing fallback behaviour (a read falls back, a write that cannot be
@@ -268,10 +272,10 @@ async function repairReleaseCacheIndex(index) {
     // an interrupted earlier repair, not every few hours: each enumeration
     // reads all release and supporter values, and in the extension a prefix
     // read copies the whole local storage first.
-    if (STATE.releaseCacheRepairAttempted) {
+    if (storageState.releaseCacheRepairAttempted) {
         return;
     }
-    STATE.releaseCacheRepairAttempted = true;
+    storageState.releaseCacheRepairAttempted = true;
     const marker = await storageGet(RELEASE_CACHE_REPAIR_KEY, null);
     const repairedVersion =
         Number(marker && marker.schemaVersion) || 0;

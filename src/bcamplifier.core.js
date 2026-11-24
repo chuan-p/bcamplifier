@@ -2,18 +2,13 @@ import { createTrackData, normalizeReleaseData, parseJsonAttribute } from "./dat
 import { scheduleFanTagBackgroundFill, setupFanTagSearch } from "./data/tag-index.js";
 import {
     buildArtistMusicFeed,
-    buildFanCollectionCardPreview,
-    extractParsedItemId,
+    buildFanTagSearchNativeRelease,
     findArtistMusicSourceGrid,
-    getFanCollectionCachedItem,
-    getFanCollectionCardKind,
-    getItemJsonReleaseUrl,
     handleArtistMusicNativeLoadMoreClick,
     hasFanCollectionContextMutation,
+    isCurrentFanProfileOwner,
     isOwnFanTrackCard,
     markFanCollectionGridDirtyFromMutation,
-    normalizeReleaseItemType,
-    preferBandcampReleaseUrl,
     rearmArtistMusicFeedCardObservers,
     scheduleArtistMusicFeedSync,
     scheduleArtistMusicFeedVisibleFetch,
@@ -21,7 +16,7 @@ import {
     setupFanCollectionSearchPrefetch,
     setupFanCollectionTabObserver,
 } from "./features/artist-music-feed.js";
-import { findActivityHeadline, isFullDiscographyCard, mergeAdjacentTrackPurchaseCards } from "./features/card-merge.js";
+import { isFullDiscographyCard, mergeAdjacentTrackPurchaseCards } from "./features/card-merge.js";
 import {
     applyReleaseShellLoadingState,
     fetchAndRender,
@@ -34,6 +29,7 @@ import {
     ensurePlayerShell,
     getCardArtUrl,
     handleDocumentAudioPlay,
+    refreshTagSearchSettingProgress,
     setupNativePlaybackInterception,
     setupPlayerMenuDismissal,
     setupSharedAudio,
@@ -54,7 +50,6 @@ import {
     ENHANCED_ATTR,
     ENHANCEMENT_CSS,
     EXCLUDED_SECTION_SELECTOR,
-    FAN_ACTIVITY_TEXT_PATTERN,
     FEED_CARD_ROOT_SELECTOR,
     HIDDEN_SUPPORTED_ATTR,
     INTERNAL_MUTATION_SELECTOR,
@@ -66,19 +61,51 @@ import {
     SCRIPT_VERSION,
     SKIP_REASON_ATTR,
     STATE,
-    USER_SETTINGS_KEY,
 } from "./state.js";
 import {
     clearNodeMemoDeep,
-    findCachedElementByText,
     getMatchingRootOrDescendants,
-    getNodeMemo,
     incrementDebugCounter,
     invalidateNodeMemoCache,
     markDebugState,
 } from "./utils/dom.js";
-import { storageGet, storageSet } from "./utils/storage.js";
+import {
+    getCardPrimaryReleaseUrl,
+    getCardReleaseRequestContext,
+    getStoryRoot,
+    isAlsoBoughtRecommendationCard,
+    isMalformedFeedCard,
+    looksLikeFeedCard,
+} from "./utils/card-dom.js";
+import { registerTagIndexUiHooks } from "./utils/hooks.js";
+import {
+    getCardController,
+    isCurrentFanCollectionPage,
+    isFanCollectionPage,
+    isFanWishlistPage,
+    loadUserSettings,
+    setCardController,
+} from "./utils/page.js";
 import { cleanText, normalizedText } from "./utils/text-format.js";
+import {
+    isBandcampFanCollectionPageUrl,
+    isBandcampFanProfileUrl,
+    normalizeReleaseUrl,
+} from "./utils/url.js";
+
+const coreState = {
+    releaseFetchResumeTimer: 0,
+    globalBridgeInitialized: false,
+    scanTimer: 0,
+    pendingScanRoots: new Set(),
+    pendingFullScan: false,
+    mutationObserver: null,
+    autoFetchDrainScheduled: false,
+    activeAutoFetchCount: 0,
+    autoFetchSequence: 0,
+    peakAutoFetchCount: 0,
+    playbackPauseMonitorTimer: 0,
+};
 
 export function init() {
     if (
@@ -99,6 +126,12 @@ export function init() {
     markDebugState("data-bcampx-script-loaded", "true");
     markDebugState("data-bcampx-version", SCRIPT_VERSION);
     markDebugState("data-bcampx-build", BUILD_ID);
+    registerTagIndexUiHooks({
+        scheduleFeedSync: scheduleArtistMusicFeedSync,
+        refreshProgress: refreshTagSearchSettingProgress,
+        isProfileOwner: isCurrentFanProfileOwner,
+        buildNativeRelease: buildFanTagSearchNativeRelease,
+    });
     markDebugState(
         "data-bcampx-page-kind",
         getEnhancerPageKind(),
@@ -181,11 +214,11 @@ async function initializeFeedEnhancer() {
 }
 
 function setupGlobalPlaybackBridge() {
-    if (STATE.globalBridgeInitialized) {
+    if (coreState.globalBridgeInitialized) {
         return;
     }
 
-    STATE.globalBridgeInitialized = true;
+    coreState.globalBridgeInitialized = true;
     document.addEventListener("play", handleDocumentAudioPlay, true);
     document.addEventListener(
         "click",
@@ -197,71 +230,11 @@ function setupGlobalPlaybackBridge() {
     // in the top frame: otherwise every EmbeddedPlayer iframe performs a
     // storage read every second for no benefit.
     if (!STATE.playbackPauseUnsubscribe && window.top === window) {
-        STATE.playbackPauseMonitorTimer = window.setInterval(
+        coreState.playbackPauseMonitorTimer = window.setInterval(
             checkForPlaybackPauseRequest,
             PLAYBACK_PAUSE_POLL_MS,
         );
     }
-}
-
-export async function loadUserSettings() {
-    const stored = await storageGet(USER_SETTINGS_KEY, null);
-    applyUserSettings(stored);
-}
-
-function applyUserSettings(value) {
-    const settings =
-        value && typeof value === "object" ? value : {};
-    CONFIG.enableTrackRowActions = coerceBooleanSetting(
-        settings.enableTrackRowActions,
-        true,
-    );
-    CONFIG.continuousMode = coerceBooleanSetting(
-        settings.continuousMode,
-        false,
-    );
-    CONFIG.autoFillMinimumPrice = coerceBooleanSetting(
-        settings.autoFillMinimumPrice,
-        false,
-    );
-    CONFIG.showCollectionCounts = coerceBooleanSetting(
-        settings.showCollectionCounts,
-        false,
-    );
-    CONFIG.enableTagSearch = coerceBooleanSetting(
-        settings.enableTagSearch,
-        false,
-    );
-}
-
-function coerceBooleanSetting(value, fallback) {
-    if (typeof value === "boolean") {
-        return value;
-    }
-
-    if (value === "true") {
-        return true;
-    }
-
-    if (value === "false") {
-        return false;
-    }
-
-    return fallback;
-}
-
-function getSerializableUserSettings() {
-    return {
-        enableTrackRowActions: !!CONFIG.enableTrackRowActions,
-        continuousMode: !!CONFIG.continuousMode,
-        autoFillMinimumPrice: !!CONFIG.autoFillMinimumPrice,
-        showCollectionCounts: !!CONFIG.showCollectionCounts,
-        enableTagSearch: !!CONFIG.enableTagSearch,
-    };
-}
-
-export async function persistUserSettings() {
-    await storageSet(USER_SETTINGS_KEY, getSerializableUserSettings());
 }
 
 export function ensureCardController(card, releaseUrl) {
@@ -276,466 +249,6 @@ export function ensureCardController(card, releaseUrl) {
 
     enhanceCard(card, releaseUrl, getCardReleaseRequestContext(card, releaseUrl));
     return getCardController(card);
-}
-
-export function getCardController(card) {
-    return card && card.__bcampxController ? card.__bcampxController : null;
-}
-
-function setCardController(card, controller) {
-    if (card) {
-        card.__bcampxController = controller || null;
-    }
-}
-
-export function getCardAlbumReleaseUrl(card) {
-    if (!(card instanceof Element)) {
-        return "";
-    }
-
-    const memo = getNodeMemo(card);
-    if (memo && Object.prototype.hasOwnProperty.call(memo, "cardAlbumReleaseUrl")) {
-        return memo.cardAlbumReleaseUrl || "";
-    }
-
-    const albumLinks = Array.from(
-        card.querySelectorAll('a[href*="/album/"]'),
-    )
-        .map((link) => normalizeReleaseUrl(link.href))
-        .filter(Boolean);
-    const albumLink = preferBandcampReleaseUrl(albumLinks) || albumLinks[0] || "";
-
-    if (memo) {
-        memo.cardAlbumReleaseUrl = albumLink;
-    }
-
-    return albumLink;
-}
-
-function getCardRawReleaseUrl(card) {
-    if (!(card instanceof Element)) {
-        return "";
-    }
-
-    const memo = getNodeMemo(card);
-    if (memo && Object.prototype.hasOwnProperty.call(memo, "cardRawReleaseUrl")) {
-        return memo.cardRawReleaseUrl || "";
-    }
-
-    const releaseLinks = Array.from(card.querySelectorAll(RELEASE_LINK_SELECTOR))
-        .map((link) => normalizeReleaseUrl(link.href))
-        .filter(Boolean);
-    const itemJsonReleaseUrl = getItemJsonReleaseUrl(card);
-    const rawReleaseUrl =
-        preferBandcampReleaseUrl([
-            ...releaseLinks,
-            itemJsonReleaseUrl,
-        ].filter(Boolean)) ||
-        releaseLinks[0] ||
-        itemJsonReleaseUrl ||
-        "";
-
-    if (memo) {
-        memo.cardRawReleaseUrl = rawReleaseUrl;
-    }
-
-    return rawReleaseUrl;
-}
-
-export function getCardReleaseRequestContext(card, releaseUrl = "") {
-    const normalizedReleaseUrl = normalizeReleaseUrl(
-        releaseUrl || getCardPrimaryReleaseUrl(card),
-    );
-    const parsed = getParsedItemJson(card);
-    return {
-        releaseUrl: normalizedReleaseUrl,
-        itemId: extractParsedItemId(parsed),
-        itemType: normalizeReleaseItemType(
-            parsed &&
-                (parsed.item_type ||
-                    parsed.tralbum_type ||
-                    parsed.type ||
-                    parsed.collect_item_type),
-            normalizedReleaseUrl,
-        ),
-        requirePageFreshTracks:
-            isBandcampFanCollectionPageUrl(window.location.href) &&
-            Boolean(
-                card &&
-                    card.classList &&
-                    card.classList.contains("bcampx-label-feed-card"),
-            ),
-        allowCachedTrackSnapshot:
-            isBandcampFanCollectionPageUrl(window.location.href) &&
-            Boolean(
-                card &&
-                    card.classList &&
-                    card.classList.contains("bcampx-label-feed-card"),
-            ),
-    };
-}
-
-export function getCardPrimaryReleaseUrl(card) {
-    if (!(card instanceof Element)) {
-        return "";
-    }
-
-    const memo = getNodeMemo(card);
-    if (memo && Object.prototype.hasOwnProperty.call(memo, "cardPrimaryReleaseUrl")) {
-        return memo.cardPrimaryReleaseUrl || "";
-    }
-
-    const albumLink = getCardAlbumReleaseUrl(card);
-    if (albumLink) {
-        if (memo) {
-            memo.cardPrimaryReleaseUrl = albumLink;
-        }
-        return albumLink;
-    }
-
-    let primaryReleaseUrl = getCardRawReleaseUrl(card);
-    if (!primaryReleaseUrl) {
-        // Collection items whose native link is gone still have their URL
-        // in pagedata's item_cache.
-        const cachedItem = getFanCollectionCachedItem(
-            card,
-            getFanCollectionCardKind(card),
-        );
-        primaryReleaseUrl = cleanText(cachedItem && cachedItem.item_url);
-    }
-
-    if (memo) {
-        memo.cardPrimaryReleaseUrl = primaryReleaseUrl;
-    }
-
-    return primaryReleaseUrl;
-}
-
-export function getStoryRoot(node) {
-    if (!(node instanceof Element)) {
-        return null;
-    }
-
-    const story = node.matches(FEED_CARD_ROOT_SELECTOR)
-        ? node
-        : node.closest(FEED_CARD_ROOT_SELECTOR);
-    return story instanceof Element ? story : null;
-}
-
-export function getStoryTitleNode(card) {
-    const story = getStoryRoot(card);
-    if (!story) {
-        return null;
-    }
-
-    const title = story.querySelector(".story-title");
-    return title instanceof Element ? title : null;
-}
-
-export function extractFeedHeadlineActor(headlineText) {
-    const match = cleanText(headlineText).match(
-        /^(.+?)\s+(?:bought|purchased|wishlisted|supported|recommended|listening|played|posted|released)\b/i,
-    );
-    return match && match[1] ? cleanText(match[1]) : "";
-}
-
-export function getParsedItemJson(node) {
-    if (!(node instanceof Element)) {
-        return null;
-    }
-
-    const holder = node.matches("[data-item-json]")
-        ? node
-        : node.querySelector("[data-item-json]");
-    if (!(holder instanceof Element)) {
-        return null;
-    }
-
-    const memo = getNodeMemo(holder);
-    if (memo && Object.prototype.hasOwnProperty.call(memo, "parsedItemJson")) {
-        return memo.parsedItemJson;
-    }
-
-    const parsed = parseJsonAttribute(holder, "data-item-json") || null;
-    if (memo) {
-        memo.parsedItemJson = parsed;
-    }
-
-    return parsed;
-}
-
-export function getCollectionGridFeaturedPreview(card) {
-    const memo = getNodeMemo(card);
-    if (
-        memo &&
-        Object.prototype.hasOwnProperty.call(
-            memo,
-            "collectionGridFeaturedPreview",
-        )
-    ) {
-        return memo.collectionGridFeaturedPreview;
-    }
-
-    const parsed = getParsedItemJson(card);
-    const trackId = cleanText(parsed && parsed.featured_track);
-    if (!trackId) {
-        // Current collection pages carry the preview data in pagedata
-        // (item_cache / tracklists) instead of per-item JSON attributes.
-        const fanPreview = buildFanCollectionCardPreview(card);
-        if (fanPreview && memo) {
-            memo.collectionGridFeaturedPreview = fanPreview;
-        }
-        return fanPreview;
-    }
-
-    const preview = getFeedPreviewTrackMap().get(trackId);
-    const streamUrl = cleanText(
-        preview &&
-            preview.streaming_url &&
-            preview.streaming_url["mp3-128"],
-    );
-    if (!preview || !streamUrl) {
-        return null;
-    }
-
-    const track = createTrackData(
-        preview.title || parsed.featured_track_title,
-        preview.track_id || trackId,
-        streamUrl,
-        preview.duration || parsed.featured_track_duration,
-        preview.track_url || parsed.featured_track_url || "",
-    );
-    if (!track) {
-        return null;
-    }
-
-    const art =
-        parsed && parsed.item_art && typeof parsed.item_art === "object"
-            ? parsed.item_art
-            : {};
-    const result = {
-        track,
-        data: normalizeReleaseData({
-            url: getItemJsonReleaseUrl(card),
-            title: parsed.album_title || parsed.item_title || "",
-            artist: parsed.band_name || preview.band_name || "",
-            artUrl:
-                parsed.item_art_url ||
-                art.url ||
-                getCardArtUrl(card),
-            tracks: [track],
-        }),
-    };
-    if (memo) {
-        memo.collectionGridFeaturedPreview = result;
-    }
-    return result;
-}
-
-export function getFeedPreviewTracks() {
-    if (Array.isArray(STATE.feedPreviewTracks)) {
-        return STATE.feedPreviewTracks;
-    }
-
-    const blob =
-        parseJsonAttribute(
-            document.querySelector("#pagedata"),
-            "data-blob",
-        ) || {};
-    STATE.feedPreviewTracks = Array.isArray(blob.track_list)
-        ? blob.track_list
-        : [];
-    return STATE.feedPreviewTracks;
-}
-
-export function getFeedPreviewTrackMap() {
-    if (STATE.feedPreviewTrackMap instanceof Map) {
-        return STATE.feedPreviewTrackMap;
-    }
-
-    STATE.feedPreviewTrackMap = new Map();
-    getFeedPreviewTracks().forEach((track) => {
-        const trackId = cleanText(track && track.track_id);
-        if (trackId) {
-            STATE.feedPreviewTrackMap.set(trackId, track);
-        }
-    });
-    return STATE.feedPreviewTrackMap;
-}
-
-export function isMalformedFeedCard(card) {
-    const story = getStoryRoot(card);
-    if (!story || !hasExplicitFeedStoryStructure(story)) {
-        return false;
-    }
-
-    const directReleaseUrl = getMatchingRootOrDescendants(
-        story,
-        RELEASE_LINK_SELECTOR,
-    )
-        .map((link) => normalizeReleaseUrl(link.href))
-        .find(Boolean);
-    if (directReleaseUrl) {
-        return false;
-    }
-
-    return Boolean(getItemJsonReleaseUrl(story));
-}
-
-export function isAlsoBoughtRecommendationCard(card) {
-    const headline = findActivityHeadline(card) || getStoryTitleNode(card);
-    if (!headline) {
-        return false;
-    }
-
-    if (!/\balso bought\b/i.test(normalizedText(headline))) {
-        return false;
-    }
-
-    return hasAlsoBoughtRecommendationMarkers(card);
-}
-
-function hasAlsoBoughtRecommendationMarkers(card) {
-    if (!(card instanceof Element)) {
-        return false;
-    }
-
-    if (
-        card.querySelector(
-            "a.follow-fan, .follow-fan, a.view-collection, .view-collection",
-        )
-    ) {
-        return true;
-    }
-
-    const actionTexts = Array.from(card.querySelectorAll("a, button"))
-        .map((node) => normalizedText(node).toLowerCase())
-        .filter(Boolean);
-    return (
-        actionTexts.some((text) => /\bfollow\b/.test(text)) &&
-        actionTexts.some((text) => /\bview collection\b/.test(text))
-    );
-}
-
-export function findFeaturedTrackForCard(card, trigger, data) {
-    if (!data || !Array.isArray(data.tracks) || !data.tracks.length) {
-        return null;
-    }
-
-    const triggerWithTrackId =
-        trigger && trigger.closest
-            ? trigger.closest("[data-trackid]")
-            : null;
-    const triggerTrackId = cleanText(
-        triggerWithTrackId &&
-            triggerWithTrackId.getAttribute("data-trackid"),
-    );
-    if (triggerTrackId) {
-        const exactTrack = data.tracks.find(
-            (track) =>
-                cleanText(track && track.trackId) === triggerTrackId &&
-                track.streamUrl,
-        );
-        if (exactTrack) {
-            return exactTrack;
-        }
-    }
-
-    const parsed = getParsedItemJson(card);
-    const parsedFeaturedTrackId = cleanText(
-        parsed && parsed.featured_track,
-    );
-    if (parsedFeaturedTrackId) {
-        const exactTrack = data.tracks.find(
-            (track) =>
-                cleanText(track && track.trackId) ===
-                    parsedFeaturedTrackId && track.streamUrl,
-        );
-        if (exactTrack) {
-            return exactTrack;
-        }
-    }
-
-    const parsedFeaturedTitle = cleanText(
-        parsed && parsed.featured_track_title,
-    );
-    if (parsedFeaturedTitle) {
-        const normalizedParsedTitle = parsedFeaturedTitle.toLowerCase();
-        const titleMatch = data.tracks.find(
-            (track) =>
-                cleanText(track && track.title).toLowerCase() ===
-                    normalizedParsedTitle && track.streamUrl,
-        );
-        if (titleMatch) {
-            return titleMatch;
-        }
-    }
-
-    const featuredTitle = extractFeaturedTrackTitle(card);
-    if (featuredTitle) {
-        const normalizedFeaturedTitle =
-            cleanText(featuredTitle).toLowerCase();
-        const titleMatch = data.tracks.find(
-            (track) =>
-                cleanText(track && track.title).toLowerCase() ===
-                    normalizedFeaturedTitle && track.streamUrl,
-        );
-        if (titleMatch) {
-            return titleMatch;
-        }
-
-        const fuzzyTitleMatch = data.tracks.find(
-            (track) =>
-                cleanText(track && track.title)
-                    .toLowerCase()
-                    .includes(normalizedFeaturedTitle) && track.streamUrl,
-        );
-        if (fuzzyTitleMatch) {
-            return fuzzyTitleMatch;
-        }
-    }
-
-    return data.tracks.find((track) => track && track.streamUrl) || null;
-}
-
-export function extractFeaturedTrackTitle(card) {
-    const featuredLine = findCachedElementByText(
-        card,
-        "featuredTrackLine",
-        "div, p, li, section, span",
-        /^featured track\s*:/i,
-    );
-    if (!featuredLine) {
-        return "";
-    }
-
-    const inlineLink = featuredLine.querySelector('a[href*="/track/"]');
-    if (inlineLink) {
-        return normalizedText(inlineLink);
-    }
-
-    const inlineText = cleanText(
-        (featuredLine.textContent || "").replace(
-            /^featured track\s*:/i,
-            "",
-        ),
-    );
-    if (inlineText) {
-        return inlineText;
-    }
-
-    let sibling = featuredLine.nextElementSibling;
-    while (sibling) {
-        const text = normalizedText(sibling);
-        if (text && !/^by\s+/i.test(text)) {
-            return text;
-        }
-        sibling = sibling.nextElementSibling;
-    }
-
-    const containerText = normalizedText(featuredLine.parentElement);
-    const match = containerText.match(/featured track:\s*(.+)$/i);
-    return match && match[1] ? cleanText(match[1]) : "";
 }
 
 function isFeedPage() {
@@ -771,153 +284,6 @@ function getEnhancerPageKind() {
     }
 
     return "other";
-}
-
-export function isBandcampFanProfileUrl(rawUrl) {
-    try {
-        const url = new URL(rawUrl, window.location.href);
-        if (url.hostname !== "bandcamp.com") {
-            return false;
-        }
-
-        const pathname = url.pathname.replace(/\/+$/, "");
-        if (!pathname || pathname === "/") {
-            return false;
-        }
-
-        if (
-            /\/(album|track|tagged|discover|feed|fans|terms_of_use|about|help|search|gift_cards)(\/|$)/i.test(
-                pathname,
-            )
-        ) {
-            return false;
-        }
-
-        return pathname.split("/").filter(Boolean).length === 1;
-    } catch (_error) {
-        return false;
-    }
-}
-
-export function isFanCollectionPage() {
-    if (!isBandcampFanCollectionPageUrl(window.location.href)) {
-        return false;
-    }
-
-    return Boolean(findFanCollectionActiveGrid());
-}
-
-export function isFanWishlistPage() {
-    return /\/wishlist\/?$/i.test(window.location.pathname || "");
-}
-
-export function isBandcampFanCollectionPageUrl(rawUrl) {
-    try {
-        const url = new URL(rawUrl, window.location.href);
-        if (url.hostname !== "bandcamp.com") {
-            return false;
-        }
-
-        const segments = url.pathname.split("/").filter(Boolean);
-        if (segments.length === 1) {
-            return isBandcampFanProfileUrl(url.href);
-        }
-
-        const fanRoot = `${url.origin}/${encodeURIComponent(segments[0])}`;
-        if (!isBandcampFanProfileUrl(fanRoot)) {
-            return false;
-        }
-
-        const section = segments[1].toLowerCase();
-        return (
-            (section === "wishlist" ||
-                section === "followers" ||
-                section === "following") &&
-            segments.length === 2
-        );
-    } catch (_error) {
-        return false;
-    }
-}
-
-let currentFanCollectionPageHref = "";
-
-let currentFanCollectionPageMemo = false;
-
-// isBandcampFanCollectionPageUrl allocates a URL plus path segment arrays
-// per call, and it is consulted once per mutation record. The answer only
-// changes on navigation, so memoize it against the current href.
-export function isCurrentFanCollectionPage() {
-    const href = window.location.href || "";
-    if (href !== currentFanCollectionPageHref) {
-        currentFanCollectionPageHref = href;
-        currentFanCollectionPageMemo =
-            isBandcampFanCollectionPageUrl(href);
-    }
-
-    return currentFanCollectionPageMemo;
-}
-
-export function findFanCollectionActiveGrid() {
-    const activeGridContainer = document.querySelector(
-        "#grids > .grid.active",
-    );
-    if (activeGridContainer) {
-        return findFanCollectionGridIn(activeGridContainer);
-    }
-
-    const activeTab = document.querySelector(
-        "li.active[data-grid-id][data-tab]",
-    );
-    const activeGridId = cleanText(
-        activeTab && activeTab.getAttribute("data-grid-id"),
-    );
-    if (activeGridId) {
-        const activeTabGrid = document.querySelector(
-            `#${CSS.escape(activeGridId)}`,
-        );
-        if (activeTabGrid) {
-            return findFanCollectionGridIn(activeTabGrid);
-        }
-    }
-
-    const preferredGridId = isFanWishlistPage()
-        ? "wishlist-grid"
-        : "collection-grid";
-    const preferredGrid = document.querySelector(`#${preferredGridId}`);
-    if (preferredGrid) {
-        const resolved = findFanCollectionGridIn(preferredGrid);
-        if (resolved) {
-            return resolved;
-        }
-    }
-
-    const activeGrid = document.querySelector(".grid.active");
-    return activeGrid ? findFanCollectionGridIn(activeGrid) : null;
-}
-
-// The collection can render as a grid or as a list; both expose
-// .collection-item-container items. Fall back to the items' parent when the
-// container class has changed.
-function findFanCollectionGridIn(container) {
-    if (!(container instanceof Element)) {
-        return null;
-    }
-
-    const named = container.querySelector(
-        [
-            "#collection-search-items > .collection-grid",
-            "#wishlist-search-items > .collection-grid",
-            ".collection-grid",
-            ".collection-list",
-        ].join(", "),
-    );
-    if (named) {
-        return named;
-    }
-
-    const item = container.querySelector(".collection-item-container");
-    return item && item.parentElement ? item.parentElement : null;
 }
 
 export function isArtistMusicPage() {
@@ -1088,7 +454,7 @@ export function queueAutoFetch(controller, observedRect = null) {
     applyReleaseShellLoadingState(controller);
     STATE.autoFetchQueue.push({
         controller,
-        sequence: ++STATE.autoFetchSequence,
+        sequence: ++coreState.autoFetchSequence,
         distance,
     });
     updateAutoFetchDebugState();
@@ -1096,13 +462,13 @@ export function queueAutoFetch(controller, observedRect = null) {
 }
 
 function scheduleAutoFetchQueueDrain() {
-    if (STATE.autoFetchDrainScheduled) {
+    if (coreState.autoFetchDrainScheduled) {
         return;
     }
 
-    STATE.autoFetchDrainScheduled = true;
+    coreState.autoFetchDrainScheduled = true;
     const run = () => {
-        STATE.autoFetchDrainScheduled = false;
+        coreState.autoFetchDrainScheduled = false;
         drainAutoFetchQueue();
     };
     if (typeof window.queueMicrotask === "function") {
@@ -1115,9 +481,9 @@ function scheduleAutoFetchQueueDrain() {
 function drainAutoFetchQueue() {
     const pauseUntil = Number(STATE.releaseFetchCooldownUntil) || 0;
     if (pauseUntil > Date.now()) {
-        if (!STATE.releaseFetchResumeTimer) {
-            STATE.releaseFetchResumeTimer = window.setTimeout(() => {
-                STATE.releaseFetchResumeTimer = 0;
+        if (!coreState.releaseFetchResumeTimer) {
+            coreState.releaseFetchResumeTimer = window.setTimeout(() => {
+                coreState.releaseFetchResumeTimer = 0;
                 drainAutoFetchQueue();
             }, Math.min(60000, pauseUntil - Date.now()));
         }
@@ -1125,7 +491,7 @@ function drainAutoFetchQueue() {
     }
 
     while (
-        STATE.activeAutoFetchCount < CONFIG.maxConcurrentAutoFetches &&
+        coreState.activeAutoFetchCount < CONFIG.maxConcurrentAutoFetches &&
         STATE.autoFetchQueue.length
     ) {
         const next = takeNearestAutoFetch();
@@ -1145,18 +511,18 @@ function drainAutoFetchQueue() {
             continue;
         }
 
-        STATE.activeAutoFetchCount += 1;
-        STATE.peakAutoFetchCount = Math.max(
-            STATE.peakAutoFetchCount,
-            STATE.activeAutoFetchCount,
+        coreState.activeAutoFetchCount += 1;
+        coreState.peakAutoFetchCount = Math.max(
+            coreState.peakAutoFetchCount,
+            coreState.activeAutoFetchCount,
         );
         updateAutoFetchDebugState();
         Promise.resolve(controller.fetchAndRender({ auto: true }))
             .catch(() => {})
             .finally(() => {
-                STATE.activeAutoFetchCount = Math.max(
+                coreState.activeAutoFetchCount = Math.max(
                     0,
-                    STATE.activeAutoFetchCount - 1,
+                    coreState.activeAutoFetchCount - 1,
                 );
                 updateAutoFetchDebugState();
                 drainAutoFetchQueue();
@@ -1209,7 +575,7 @@ function getAutoFetchQueueDistance(card, observedRect = null) {
 export function updateAutoFetchDebugState() {
     markDebugState(
         "data-bcampx-auto-fetch-active-count",
-        String(STATE.activeAutoFetchCount),
+        String(coreState.activeAutoFetchCount),
     );
     markDebugState(
         "data-bcampx-auto-fetch-queue-count",
@@ -1217,7 +583,7 @@ export function updateAutoFetchDebugState() {
     );
     markDebugState(
         "data-bcampx-auto-fetch-peak-count",
-        String(STATE.peakAutoFetchCount),
+        String(coreState.peakAutoFetchCount),
     );
     markDebugState(
         "data-bcampx-auto-fetch-limit",
@@ -1241,14 +607,14 @@ const MUTATION_OBSERVER_OPTIONS = {
 };
 
 export function suspendMutationObserver() {
-    if (STATE.mutationObserver) {
-        STATE.mutationObserver.disconnect();
+    if (coreState.mutationObserver) {
+        coreState.mutationObserver.disconnect();
     }
 }
 
 export function resumeMutationObserver() {
-    if (STATE.mutationObserver && document.body) {
-        STATE.mutationObserver.observe(
+    if (coreState.mutationObserver && document.body) {
+        coreState.mutationObserver.observe(
             document.body,
             MUTATION_OBSERVER_OPTIONS,
         );
@@ -1284,7 +650,7 @@ function setupMutationObserver() {
         return;
     }
 
-    STATE.mutationObserver = new MutationObserver((mutations) => {
+    coreState.mutationObserver = new MutationObserver((mutations) => {
         let shouldFullScan = false;
         let shouldInvalidateMemo = false;
         let shouldSyncReleaseGridFeed = false;
@@ -1379,7 +745,7 @@ function setupMutationObserver() {
         }
     });
 
-    STATE.mutationObserver.observe(
+    coreState.mutationObserver.observe(
         document.body,
         MUTATION_OBSERVER_OPTIONS,
     );
@@ -1408,17 +774,17 @@ export function scheduleScan(root = null) {
         const roots = getScanRootsForElement(root);
         if (roots.length) {
             roots.forEach((scanRoot) => {
-                STATE.pendingScanRoots.add(scanRoot);
+                coreState.pendingScanRoots.add(scanRoot);
             });
         } else {
-            STATE.pendingFullScan = true;
+            coreState.pendingFullScan = true;
         }
     } else {
-        STATE.pendingFullScan = true;
+        coreState.pendingFullScan = true;
     }
 
-    window.clearTimeout(STATE.scanTimer);
-    STATE.scanTimer = window.setTimeout(
+    window.clearTimeout(coreState.scanTimer);
+    coreState.scanTimer = window.setTimeout(
         scanForCards,
         CONFIG.scanDebounceMs,
     );
@@ -1649,18 +1015,18 @@ function hasPotentialReleaseSignal(node) {
 function getScanRoots() {
     const roots = [];
 
-    if (STATE.pendingFullScan || !STATE.pendingScanRoots.size) {
+    if (coreState.pendingFullScan || !coreState.pendingScanRoots.size) {
         roots.push(document);
     } else {
-        STATE.pendingScanRoots.forEach((root) => {
+        coreState.pendingScanRoots.forEach((root) => {
             if (root instanceof Element && document.contains(root)) {
                 roots.push(root);
             }
         });
     }
 
-    STATE.pendingScanRoots.clear();
-    STATE.pendingFullScan = false;
+    coreState.pendingScanRoots.clear();
+    coreState.pendingFullScan = false;
     return roots.length ? roots : [document];
 }
 
@@ -1711,208 +1077,6 @@ function enhanceScannableCards(cards) {
         incrementDebugCounter("data-bcampx-fan-activity-link-count");
         enhanceCard(card, releaseUrl, releaseContext);
     });
-}
-
-export function normalizeReleaseUrl(rawUrl) {
-    try {
-        const url = new URL(rawUrl, window.location.href);
-        if (url.protocol !== "https:") {
-            return "";
-        }
-
-        if (!/(^|\/)(album|track)\//.test(url.pathname)) {
-            return "";
-        }
-
-        url.hash = "";
-        url.search = "";
-        return url.toString().replace(/\/$/, "");
-    } catch (_error) {
-        return "";
-    }
-}
-
-export function looksLikeFeedCard(node) {
-    if (!(node instanceof Element)) {
-        return false;
-    }
-
-    const memo = getNodeMemo(node);
-    if (
-        memo &&
-        Object.prototype.hasOwnProperty.call(memo, "looksLikeFeedCard")
-    ) {
-        return memo.looksLikeFeedCard;
-    }
-
-    const result = computeLooksLikeFeedCard(node);
-    if (memo) {
-        memo.looksLikeFeedCard = result;
-    }
-    return result;
-}
-
-function computeLooksLikeFeedCard(node) {
-    if (isAlsoBoughtRecommendationCard(node)) {
-        return false;
-    }
-
-    if (!isLikelyFanActivityCard(node)) {
-        return false;
-    }
-
-    if (!hasFanActivitySignals(node)) {
-        return false;
-    }
-
-    const releaseLinkCount = node.querySelectorAll(
-        RELEASE_LINK_SELECTOR,
-    ).length;
-    if (releaseLinkCount < 1 || releaseLinkCount > 12) {
-        return false;
-    }
-
-    const rect = node.getBoundingClientRect();
-    const hasUsefulSize = rect.width >= 120 && rect.height >= 45;
-    const hasCoverOrText =
-        Boolean(node.querySelector("img")) ||
-        normalizedText(node).length > 20;
-    return hasUsefulSize && hasCoverOrText;
-}
-
-function hasFanActivitySignals(node) {
-    if (
-        node.querySelector(
-            ".story-title .fan-name, .story-title .artist-name",
-        )
-    ) {
-        return true;
-    }
-
-    if (
-        node.querySelector(".story-title") &&
-        FAN_ACTIVITY_TEXT_PATTERN.test(
-            normalizedText(node.querySelector(".story-title")),
-        )
-    ) {
-        return true;
-    }
-
-    const text = normalizedText(node);
-    if (FAN_ACTIVITY_TEXT_PATTERN.test(text)) {
-        return true;
-    }
-
-    const profileLinks = Array.from(
-        node.querySelectorAll("a[href]"),
-    ).filter(isLikelyProfileLink);
-    return profileLinks.length > 0;
-}
-
-export function isLikelyProfileLink(link) {
-    try {
-        const url = new URL(link.href, window.location.href);
-        if (url.hostname !== "bandcamp.com") {
-            return false;
-        }
-
-        const pathname = url.pathname.replace(/\/+$/, "");
-        if (!pathname || pathname === "/") {
-            return false;
-        }
-
-        if (
-            /\/(album|track|tagged|discover|feed|fans|terms_of_use|about|help|search|gift_cards)(\/|$)/.test(
-                pathname,
-            )
-        ) {
-            return false;
-        }
-
-        const segments = pathname.split("/").filter(Boolean);
-        return segments.length === 1;
-    } catch (_error) {
-        return false;
-    }
-}
-
-function isLikelyFanActivityCard(node) {
-    if (!(node instanceof Element)) {
-        return false;
-    }
-
-    if (
-        node.closest(EXCLUDED_SECTION_SELECTOR) ||
-        hasSidebarLikeAncestor(node)
-    ) {
-        return false;
-    }
-
-    if (hasExplicitFeedStoryStructure(node)) {
-        return true;
-    }
-
-    const rect = node.getBoundingClientRect();
-    if (rect.width > 0 && rect.width < CONFIG.minFanActivityCardWidth) {
-        return false;
-    }
-
-    return true;
-}
-
-function hasExplicitFeedStoryStructure(node) {
-    const story = getStoryRoot(node);
-
-    if (!(story instanceof Element)) {
-        return false;
-    }
-
-    if (
-        story.matches("li.story") &&
-        story.hasAttribute("data-story-fan-id")
-    ) {
-        return true;
-    }
-
-    if (
-        story.querySelector(".story-title") &&
-        story.querySelector(".story-innards")
-    ) {
-        return true;
-    }
-
-    if (
-        story.querySelector(".story-title") &&
-        story.querySelector(".tralbum-wrapper")
-    ) {
-        return true;
-    }
-
-    return false;
-}
-
-function hasSidebarLikeAncestor(node) {
-    let current = node;
-
-    for (
-        let depth = 0;
-        current && current !== document.body && depth < 8;
-        depth += 1
-    ) {
-        const idAndClass =
-            `${current.id || ""} ${typeof current.className === "string" ? current.className : ""}`.toLowerCase();
-        if (
-            /(sidebar|side-bar|side_module|right[-_ ]?col|right[-_ ]?column|recommend|discover|new[-_ ]?release)/.test(
-                idAndClass,
-            )
-        ) {
-            return true;
-        }
-
-        current = current.parentElement;
-    }
-
-    return false;
 }
 
 function enhanceCard(card, releaseUrl, releaseRequestContext = null) {
@@ -2026,20 +1190,6 @@ function enhanceCard(card, releaseUrl, releaseRequestContext = null) {
         card.setAttribute(OBSERVED_ATTR, "true");
         STATE.observer.observe(card);
     }
-}
-
-export function resolveFanIdFromPageState(pagedataBlob, collectInfo = {}) {
-    return Number(
-        (pagedataBlob &&
-            pagedataBlob.identities &&
-            pagedataBlob.identities.fan &&
-            pagedataBlob.identities.fan.id) ||
-            (pagedataBlob &&
-                pagedataBlob.fan_info &&
-                pagedataBlob.fan_info.fan_id) ||
-            collectInfo.fan_id ||
-            0,
-    ) || 0;
 }
 
 function injectStyles() {

@@ -92,9 +92,9 @@ Why the broad `@match` is still needed:
 
 ### Browser Extension
 
-The extension build is currently the secondary distribution target built from the same shared core.
+Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/bandcamplifer/ohkoanfoenpenbeehajomlmjnekphbaa) or [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/bandcamplifier/), or download a packaged build from [GitHub Releases](https://github.com/chuan-p/bcamplifier/releases).
 
-Build the browser-specific packages:
+To build the browser-specific packages from source:
 
 ```sh
 ./scripts/build-extension.sh
@@ -189,7 +189,7 @@ npm run test:fixtures
 
 The verification helpers are:
 
-- [`scripts/run-unit-tests.mjs`](./scripts/run-unit-tests.mjs): runs all unit tests (async primitives, date/text formatting, release parser, tag-index persistence, host errors, and extension host/permission bridges)
+- `npm test` (`scripts/test-*.mjs`): runs all unit tests (async primitives, date/text formatting, release parser, tag-index persistence, host errors, and extension host/permission bridges)
 - [`scripts/run-fixture-tests.mjs`](./scripts/run-fixture-tests.mjs): unified headless Chrome fixture test runner covering feed, artist/label `/music`, grid-to-list switching, buy-link titles, description URL wrapping, helper auth, fan profiles/collection/wishlist/tag search, own-collection purchase preservation, Batchcamp coexistence, init failure isolation, and playback intent
 - [`scripts/check-extension-scope.sh`](./scripts/check-extension-scope.sh): locks extension scope to the intended Bandcamp URLs
 - [`scripts/smoke-test-extension.sh`](./scripts/smoke-test-extension.sh): checks that the Chrome build loads without manifest-level errors

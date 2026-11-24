@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in improving Bandcamplifer.
+Thanks for your interest in improving Bandcamplifier.
 
 ## Before You Start
 
@@ -82,7 +82,7 @@ If a browser-dependent check cannot run in your environment, mention that clearl
 
 ## Scope
 
-Bandcamplifer intentionally stays focused on Bandcamp feed enhancement. Please keep new ideas aligned with that goal:
+Bandcamplifier intentionally stays focused on Bandcamp feed enhancement. Please keep new ideas aligned with that goal:
 
 - richer feed context
 - playback ergonomics
